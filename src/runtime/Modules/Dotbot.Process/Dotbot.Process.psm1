@@ -623,6 +623,51 @@ function Get-NextWorkflowTask {
         }
         return $true
     }
+    function _HasOutstandingGeneratedChildren { param($Task, $All)
+        # True when any non-terminal task was generated/expanded by one of $Task's
+        # dependencies. Children stamp extensions.runner.generated_by = <parent id>
+        # and provenance.expanded_by = "task:<parent id>"; a barrier's dependencies
+        # are canonical parent ids, so this is a direct id match (with a slug
+        # fallback for name-based deps). Scope note: this is invoked only for
+        # type=barrier tasks and matches direct children (not nested descendants);
+        # widening is a one-line change at the call site.
+        $deps = @($Task.dependencies) | Where-Object { $_ } | ForEach-Object { [string]$_ }
+        if ($deps.Count -eq 0) { return $false }
+        $depSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($d in $deps) {
+            [void]$depSet.Add($d)
+            $slug = ($d -replace '[^a-zA-Z0-9\s-]','' -replace '\s+','-').ToLowerInvariant()
+            if ($slug) { [void]$depSet.Add($slug) }
+        }
+        foreach ($t in $All) {
+            $c = $t.Content
+            # "Complete" uses the SAME rule as the dependency done-set above: a
+            # skipped child counts as complete only when its skip reason is
+            # intentional. A framework-error skip (max-retries / non-recoverable)
+            # is NOT complete — Reset-SkippedTasks retries it — so the barrier must
+            # keep waiting rather than fire over failed/​retried work. needs-input /
+            # needs-review children are likewise outstanding until resolved.
+            $childComplete = switch ([string]$c.status) {
+                'done'      { $true }
+                'cancelled' { $true }
+                'split'     { $true }
+                'skipped'   { $r = Get-DotbotTaskSkipReason -TaskContent $c; [bool]($r -and $intentionalSkips -contains $r) }
+                default     { $false }
+            }
+            if ($childComplete) { continue }
+            $gen = Get-DotbotTaskNestedProp -Object $c -Path @('extensions','runner','generated_by')
+            $exp = Get-DotbotTaskNestedProp -Object $c -Path @('provenance','expanded_by')
+            if ($exp -and "$exp" -match '^task:(.+)$') { $exp = $Matches[1] }
+            foreach ($ref in @($gen, $exp)) {
+                if (-not $ref) { continue }
+                $refStr = [string]$ref
+                if ($depSet.Contains($refStr)) { return $true }
+                $refSlug = ($refStr -replace '[^a-zA-Z0-9\s-]','' -replace '\s+','-').ToLowerInvariant()
+                if ($refSlug -and $depSet.Contains($refSlug)) { return $true }
+            }
+        }
+        return $false
+    }
     function _IsTaskIgnored { param($Task)
         if ($Task.PSObject.Properties['ignore'] -and $Task.ignore -and
             $Task.ignore.PSObject.Properties['manual'] -and $Task.ignore.manual -eq $true) {
@@ -662,7 +707,18 @@ function Get-NextWorkflowTask {
     foreach ($cand in $candidates) {
         $c = $cand.Content
         if (_IsTaskIgnored -Task $c) { continue }
+        # Dependencies gate the manifest condition. Evaluating the condition first
+        # (as this loop used to) permanently skipped a task whose condition points
+        # at a file its own upstream dependency produces — the file does not exist
+        # yet at launch, so the task was marked condition-not-met before the
+        # producer ran, and that skip cascaded (condition-not-met satisfies
+        # dependents). Checking deps first keeps such a task 'todo' (blocked); the
+        # condition is re-evaluated on a later selection pass once the producer has
+        # completed (Get-NextWorkflowTask reloads task state from disk each call).
+        if (-not (_AreDepsMet -Task $c -Set $doneSet)) { $blockedCount++; continue }
         if (-not (_IsManifestConditionMet -Task $c)) {
+            # Deps are satisfied but the condition is genuinely unmet, so the
+            # producing task has already had its turn — a real condition-skip.
             try {
                 _MarkConditionNotMet -Candidate $cand
             } catch {
@@ -673,7 +729,16 @@ function Get-NextWorkflowTask {
             }
             continue
         }
-        if (-not (_AreDepsMet -Task $c -Set $doneSet)) { $blockedCount++; continue }
+        # A barrier must not fire while work its dependencies spawned into
+        # tasks/todo is still outstanding. Its explicit deps (the generator) go
+        # done the instant generation finishes, but the spawned children run after.
+        if (([string]$c.type -eq 'barrier') -and (_HasOutstandingGeneratedChildren -Task $c -All $allTasks)) {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message "Barrier '$($c.name)' blocked: generated children of its dependencies are not yet complete."
+            }
+            $blockedCount++
+            continue
+        }
         $eligible += $cand
     }
     if ($eligible.Count -gt 0) {
