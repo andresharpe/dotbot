@@ -153,15 +153,19 @@ function Invoke-RepoClone {
     $cloneUrl = "https://$orgHost/$project/_git/$repo"
     $basicToken = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(":$adoPat"))
 
-    # Preserve any GIT_CONFIG_* the caller already set so the finally block can
-    # restore them rather than blindly deleting the caller's environment.
-    $gitCfgVars  = @('GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0')
-    $priorGitCfg = @{}
-    foreach ($v in $gitCfgVars) { $priorGitCfg[$v] = [Environment]::GetEnvironmentVariable($v, 'Process') }
+    # Append the auth header at the next free GIT_CONFIG_* slot, not slot 0:
+    # forcing GIT_CONFIG_COUNT=1 would make git ignore caller-injected config
+    # (e.g. corporate proxy / custom-CA) during the clone. Restored in finally.
+    $priorCount = $env:GIT_CONFIG_COUNT
+    $slot       = if ($priorCount -match '^\d+$') { [int]$priorCount } else { 0 }
+    $keyVar     = "GIT_CONFIG_KEY_$slot"
+    $valVar     = "GIT_CONFIG_VALUE_$slot"
+    $priorKey   = [Environment]::GetEnvironmentVariable($keyVar, 'Process')
+    $priorVal   = [Environment]::GetEnvironmentVariable($valVar, 'Process')
 
-    $env:GIT_CONFIG_COUNT   = '1'
-    $env:GIT_CONFIG_KEY_0   = "http.https://$orgHost/.extraHeader"
-    $env:GIT_CONFIG_VALUE_0 = "Authorization: Basic $basicToken"
+    $env:GIT_CONFIG_COUNT = [string]($slot + 1)
+    [Environment]::SetEnvironmentVariable($keyVar, "http.https://$orgHost/.extraHeader", 'Process')
+    [Environment]::SetEnvironmentVariable($valVar, "Authorization: Basic $basicToken", 'Process')
 
     try {
         $cloneOutput = & git clone $cloneUrl $clonePath 2>&1
@@ -190,7 +194,11 @@ function Invoke-RepoClone {
             path       = $null
         }
     } finally {
-        foreach ($v in $gitCfgVars) { [Environment]::SetEnvironmentVariable($v, $priorGitCfg[$v], 'Process') }
+        # Restore the original count + the slot we appended into, verbatim
+        # (including unset → $null, which removes the entry).
+        [Environment]::SetEnvironmentVariable('GIT_CONFIG_COUNT', $priorCount, 'Process')
+        [Environment]::SetEnvironmentVariable($keyVar, $priorKey, 'Process')
+        [Environment]::SetEnvironmentVariable($valVar, $priorVal, 'Process')
     }
 
     # Detect default branch
