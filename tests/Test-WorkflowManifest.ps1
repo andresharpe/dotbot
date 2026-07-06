@@ -1516,6 +1516,50 @@ Assert-True -Name "Test-TaskOutput supports outputs_dir + min_output_count" `
 Assert-True -Name "Test-TaskOutput falls back to absolute count for non-tasks/ on zero delta" `
     -Condition ($workflowSrc -match 'if\s*\(\$isTasksOutput\s+-or\s+\$fileCount\s+-lt\s+\$minCount\)') `
     -Message "Resume-after-approval would fail when delta is 0 and the artifact already exists unless non-tasks/ outputs fall back to the absolute file count."
+# #568 bug 3 (behavioral): an output declared as a repo-rooted path
+# (".bot/workspace/product/x.md") must resolve to the SAME file as a bare "x.md",
+# not double-join onto $ProductDir (which already ends in workspace/product).
+# Extract just Test-TaskOutput from the script and exercise it against a temp tree.
+$ttoAst = [System.Management.Automation.Language.Parser]::ParseFile($workflowProcessPath, [ref]$null, [ref]$null)
+$ttoFn = $ttoAst.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-TaskOutput' }, $true)
+Assert-True -Name "Test-TaskOutput function is extractable" -Condition ([bool]$ttoFn)
+if ($ttoFn) {
+    . ([ScriptBlock]::Create($ttoFn.Extent.Text))
+    $ttoRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-tto-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $ttoBot = Join-Path $ttoRoot ".bot"
+    $ttoProd = Join-Path $ttoBot "workspace/product"
+    New-Item -ItemType Directory -Force -Path (Join-Path $ttoProd "briefing/repos") | Out-Null
+    Set-Content -Path (Join-Path $ttoProd "research-repos.md") -Value "x"
+    Set-Content -Path (Join-Path $ttoProd "briefing/repos/Foo.md") -Value "x"
+    try {
+        Assert-True -Name "Test-TaskOutput: bare filename validates" `
+            -Condition ($null -eq (Test-TaskOutput -Task @{ outputs = @('research-repos.md') } -BotRoot $ttoBot -ProductDir $ttoProd))
+        Assert-True -Name "Test-TaskOutput: rooted .bot/ path validates (no double-join)" `
+            -Condition ($null -eq (Test-TaskOutput -Task @{ outputs = @('.bot/workspace/product/research-repos.md') } -BotRoot $ttoBot -ProductDir $ttoProd)) `
+            -Message "A repo-rooted output entry must resolve under ProductDir, not double-join to .bot/workspace/product/.bot/workspace/product/..."
+        Assert-True -Name "Test-TaskOutput: nested rooted .bot/ path validates" `
+            -Condition ($null -eq (Test-TaskOutput -Task @{ outputs = @('.bot/workspace/product/briefing/repos/Foo.md') } -BotRoot $ttoBot -ProductDir $ttoProd))
+        # A fully-qualified absolute path (platform-native: C:\... on Windows,
+        # /tmp/... on Linux/macOS) must be used as-is, not trimmed and re-joined
+        # under ProductDir. Build a real absolute path to an existing fixture file.
+        $absOut = (Resolve-Path (Join-Path $ttoProd "research-repos.md")).Path
+        Assert-True -Name "Test-TaskOutput: fully-qualified absolute path validates" `
+            -Condition ($null -eq (Test-TaskOutput -Task @{ outputs = @($absOut) } -BotRoot $ttoBot -ProductDir $ttoProd)) `
+            -Message "An absolute output path must be tested as-is (regression: POSIX /tmp/... was treated as relative and joined under ProductDir)."
+        Assert-True -Name "Test-TaskOutput: genuinely missing output is reported" `
+            -Condition ((Test-TaskOutput -Task @{ outputs = @('does-not-exist.md') } -BotRoot $ttoBot -ProductDir $ttoProd) -match 'not produced')
+    } finally {
+        Remove-Item $ttoRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# #568 bug 1: the clarification apply-answers recipe must resolve through the content
+# resolver (project -> user -> framework), not a hardcoded $BotRoot/recipes path that
+# dotbot never materialises (which made the file always missing inside a worktree).
+Assert-True -Name "Clarification apply-answers resolves recipe via Resolve-DotbotContent" `
+    -Condition (($workflowSrc -match "Resolve-DotbotContent\s+-BotRoot\s+\`$BotRoot\s+-Type\s+recipes\s+-Name\s+'includes/adjust-after-answers\.md'") -and
+                (-not ($workflowSrc -match 'Join-Path\s+\$BotRoot\s+"recipes/includes/adjust-after-answers\.md"'))) `
+    -Message "adjust-after-answers.md must be resolved via Resolve-DotbotContent, not a hardcoded .bot/recipes path that is never materialised."
 Assert-True -Name "Measure-TaskFile counts workflow-run task files" `
     -Condition (($workflowSrc -match 'Get-ChildItem\s+-LiteralPath\s+\$tasksRoot\s+-Recurse\s+-Filter\s+''\*\.json''') -and
                 ($workflowSrc -match "\$_.Name\s+-ne\s+'run\.json'")) `
