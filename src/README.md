@@ -1,6 +1,6 @@
 # dotbot - Autonomous Development Framework
 
-A project-agnostic framework for autonomous software development across Claude Code, Codex, and Antigravity CLIs. Provides task management, two-phase execution (analysis + implementation), per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
+A project-agnostic framework for autonomous software development across Claude Code, Codex, and Antigravity CLIs. Provides task management, single-session task execution, per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
 
 ## Installation
 
@@ -45,7 +45,7 @@ dotbot go
 ├── recipes/
 │   ├── agents/                   # Agent personas (implementer, planner, reviewer, tester)
 │   ├── skills/                   # Technical guidance (status, verify, write-test-plan, write-unit-tests)
-│   ├── prompts/                  # Numbered step-by-step processes (analysis, implementation, etc.)
+│   ├── prompts/                  # Numbered workflow and task prompt templates
 │   ├── includes/                 # Shared prompt fragments
 │   └── research/                 # Research templates
 ├── systems/
@@ -59,42 +59,29 @@ dotbot go
 └── workspace/
     ├── product/                  # Product docs (mission.md, entity-model.md, tech-stack.md)
     ├── decisions/                # Architecture decision records
-    └── tasks/                    # Task queue (todo/, analysed/, in-progress/, done/)
+    └── tasks/
+        ├── workflow-runs/        # Per-run directories with run.json + task JSON files
+        └── standalone/           # Standalone task JSON files
 ```
+
+Task status is stored in each task JSON file; task files do not move between per-status directories.
 
 ## How It Works
 
-### Two-Phase Task Execution
+### Single-Session Task Execution
 
-Every task goes through two phases, each run by a separate provider CLI instance:
-
-**Phase 1 - Analysis** (`98-analyse-task.md`):
-- Identifies affected entities and files
-- Maps applicable coding standards
-- Validates dependencies
-- Produces concrete implementation guidance (insertion points, pattern snippets, field mappings)
-- Asks clarifying questions or proposes task splits if needed
-
-**Phase 2 - Execution** (`99-autonomous-task.md`):
-- Receives pre-packaged analysis context (no re-exploration needed)
-- Implements changes following the analysis guidance
-- Runs verification scripts (privacy scan, git clean, build, format)
-- Commits with task ID references
+Prompt tasks run in one provider CLI session using `content/prompts/100-single-session-task.md`. That session does discovery, planning, implementation, verification, and completion together, so there is no separate pre-flight analysis process or intermediate handoff state. If the provider needs a human answer, it can pause the task as `needs-input`; after an answer or retry, the task returns to `todo` for another same-task session attempt.
 
 ### Per-Task Git Worktrees
 
 Each task runs in an isolated git worktree:
 
 ```
-Analysis picks up task
+Task runner picks up task
   → Creates branch: task/{short-id}-{slug}
   → Creates worktree: ../worktrees/{repo}/task-{short-id}-{slug}/
-  → Sets up junctions for shared .bot/ directories
-  → Copies essential gitignored files (e.g., .env)
-
-Execution picks up analysed task
-  → Looks up existing worktree
-  → Provider CLI implements and commits to task branch
+  → Materialises provider folders and MCP configuration in the worktree
+  → Provider CLI discovers, implements, verifies, and commits to task branch
 
 On completion
   → Rebases task branch onto main
@@ -107,10 +94,14 @@ This provides full isolation between tasks — a failed task never leaves dirty 
 ### Task Lifecycle
 
 ```
-todo → analysing → analysed → in-progress → done
-         │                                     │
-         ├→ needs-input (question/split)        └→ squash-merged to main
-         └→ skipped (non-recoverable)
+todo → in-progress → done
+  │         │           │
+  │         ├→ needs-input (human answer required, then retry from todo)
+  │         ├→ needs-review (completed work awaiting human review)
+  │         ├→ failed
+  │         ├→ skipped
+  │         └→ cancelled
+  └→ skipped / cancelled
 ```
 
 ### Process Launcher
@@ -119,8 +110,7 @@ todo → analysing → analysed → in-progress → done
 
 | Type | Purpose |
 |------|---------|
-| `analysis` | Pre-flight task analysis |
-| `execution` | Task implementation |
+| `task-runner` | Workflow task execution loop |
 | `planning` | Roadmap generation |
 | `commit` | Git operations |
 | `task-creation` | Bulk task creation |
@@ -131,14 +121,14 @@ Each process gets a registry entry for tracking and is managed through the web d
 
 The PowerShell MCP server (`dotbot-mcp.ps1`) exposes tools via stdio transport:
 
-- **Task tools**: create, create-bulk, list, get-next, get-context, get-stats, answer-question, approve-split, mark-todo, mark-analysing, mark-analysed, mark-in-progress, mark-done, mark-needs-input, mark-skipped
+- **Task tools**: create, create-bulk, get, list, get-next, get-context, update, set-status, mark-needs-review, submit-review
 - **Decision tools**: create, get, list, update, mark-accepted, mark-deprecated, mark-superseded
 - **Session tools**: initialize, update, get-state, get-stats, increment-completed
 - **Plan tools**: create, get, update
 - **Dev tools**: start, stop
 - **Steering**: heartbeat with whisper channel for operator interrupts
 
-Tools are auto-discovered from `.bot/systems/mcp/tools/{tool-name}/` — each tool is a folder with `metadata.json` (schema) and `script.ps1` (implementation).
+Tools are auto-discovered from `src/mcp/tools/{tool-name}/` — each tool is a folder with `metadata.json` (schema) and `script.ps1` (implementation).
 
 ## Usage
 
@@ -150,7 +140,7 @@ dotbot go
 
 Opens the web UI on a random port in the IANA dynamic range (49152–65535) where you can:
 - View and manage tasks
-- Start analysis and execution processes
+- Start and stop workflow task runners
 - Monitor running processes
 - Kick off product planning
 
@@ -163,11 +153,12 @@ From the dashboard, use the start-from-prompt workflow to:
 
 ### Autonomous Execution
 
-Start analysis and execution processes from the dashboard. They run in a loop:
+Start a workflow task runner from the dashboard or CLI. It runs in a loop:
 
-1. **Analysis process** picks up `todo` tasks, analyses them, marks them `analysed`
-2. **Execution process** picks up `analysed` tasks, implements them, marks them `done`
-3. Completed tasks are squash-merged to main automatically
+1. Picks the next eligible `todo` task from the workflow run
+2. Runs the task in a single provider session, moving it to `in-progress`
+3. Marks completed work `done`, or parks it as `needs-input`, `needs-review`, `failed`, `skipped`, or `cancelled`
+4. Squash-merges completed task branches to main automatically
 
 ### Manual Task Management
 
