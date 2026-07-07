@@ -2403,6 +2403,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         $processData.completed_at = (Get-Date).ToUniversalTime().ToString("o")
     }
     if ($RunId) {
+        $runStatus = 'running'
         try {
             $runStatus = switch ([string]$processData.status) {
                 'completed' { 'completed' }
@@ -2413,6 +2414,14 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             Set-WorkflowRunLiveStatus -RunId $RunId -Status $runStatus -CurrentTaskId $processData.task_id -ErrorMessage $processData.error
         } catch {
             Write-BotLog -Level Warn -Message "Failed to update WorkflowRun live status for $RunId" -Exception $_
+        }
+
+        if ($runStatus -in @('completed', 'failed', 'cancelled')) {
+            try {
+                Write-ActivityEvent -BotRoot $botRoot -Type "workflow.run_$runStatus" -RunId $RunId -From 'running' -To $runStatus -Actor 'system' -Reason $processData.error
+            } catch {
+                Write-BotLog -Level Warn -Message "Failed to emit workflow.run_$runStatus event for $RunId" -Exception $_
+            }
         }
     }
 

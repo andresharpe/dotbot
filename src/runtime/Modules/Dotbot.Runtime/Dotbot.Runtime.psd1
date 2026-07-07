@@ -42,6 +42,7 @@
         'Write-ActivityEvent'
         'Get-ActivityLogPath'
         'Get-DotbotProjectId'
+        'Get-ActivityLogEventTypes'
 
         # Event bus (publish side)
         'Publish-DotBotEvent'
