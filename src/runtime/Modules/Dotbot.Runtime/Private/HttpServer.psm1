@@ -1034,7 +1034,7 @@ function Invoke-CreateTaskHandler {
     Lock-TaskMutex -TaskId $task.id | Out-Null
     try {
         _Write-TaskFileAtomic -Path $filePath -Content $task
-        Write-ActivityEvent -BotRoot $BotRoot -Type 'task_created' -TaskId $task.id -Actor $actor
+        Write-ActivityEvent -BotRoot $BotRoot -Type 'task.created' -TaskId $task.id -Actor $actor
     } finally {
         Unlock-TaskMutex -TaskId $task.id
     }
@@ -1139,7 +1139,7 @@ function Invoke-PatchTaskHandler {
         }
 
         _Write-TaskFileAtomic -Path $path -Content $task
-        Write-ActivityEvent -BotRoot $BotRoot -Type 'task_updated' -TaskId $task.id -Actor $actor
+        Write-ActivityEvent -BotRoot $BotRoot -Type 'task.updated' -TaskId $task.id -Actor $actor
     } finally {
         Unlock-TaskMutex -TaskId $taskId
     }
@@ -1242,7 +1242,7 @@ function Invoke-TaskStatusHandler {
         # Write the new status FIRST so hooks observe a consistent on-disk
         # view.
         _Write-TaskFileAtomic -Path $path -Content $task
-        Write-ActivityEvent -BotRoot $BotRoot -Type 'task_status_changed' -TaskId $task.id -From $from -To $to -Actor $actor -Reason $reason
+        Write-ActivityEvent -BotRoot $BotRoot -Type 'task.status_changed' -TaskId $task.id -From $from -To $to -Actor $actor -Reason $reason
 
         # Transition-hook dispatch. Hooks run synchronously, inline with
         # this handler, inside the task mutex. A failing hook with
@@ -1291,7 +1291,7 @@ function Invoke-TaskStatusHandler {
 
             Write-ActivityEvent `
                 -BotRoot $BotRoot `
-                -Type    'hook_failed' `
+                -Type    'hook.failed' `
                 -TaskId  $task.id `
                 -From    $to `
                 -To      $from `
@@ -1319,7 +1319,7 @@ function Invoke-TaskStatusHandler {
             # response is honest about the half-finished state.
             Write-ActivityEvent `
                 -BotRoot $BotRoot `
-                -Type    'hook_failed' `
+                -Type    'hook.failed' `
                 -TaskId  $task.id `
                 -To      $to `
                 -Actor   $actor `
@@ -1507,7 +1507,7 @@ function Invoke-CreateRunHandler {
         _Write-TaskFileAtomic -Path $layout.run_record_path -Content $record
         _Write-TaskFileAtomic -Path $layout.live_status_path -Content $status
 
-        Write-ActivityEvent -BotRoot $BotRoot -Type 'workflow_run_started' -RunId $runId -Actor $startedBy
+        Write-ActivityEvent -BotRoot $BotRoot -Type 'workflow.run_started' -RunId $runId -Actor $startedBy
     } finally {
         Unlock-RunMutex -RunId $runId
     }

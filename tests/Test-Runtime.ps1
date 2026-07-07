@@ -538,15 +538,15 @@ try {
     $hasCreated  = $false; $hasUpdated = $false; $hasStatus = $false; $hasRunStarted = $false
     foreach ($l in $lines) {
         $obj = $l | ConvertFrom-Json
-        if ($obj.type -eq 'task_created')           { $hasCreated = $true }
-        if ($obj.type -eq 'task_updated')           { $hasUpdated = $true }
-        if ($obj.type -eq 'task_status_changed')    { $hasStatus  = $true }
-        if ($obj.type -eq 'workflow_run_started')   { $hasRunStarted = $true }
+        if ($obj.type -eq 'task.created')           { $hasCreated = $true }
+        if ($obj.type -eq 'task.updated')           { $hasUpdated = $true }
+        if ($obj.type -eq 'task.status_changed')    { $hasStatus  = $true }
+        if ($obj.type -eq 'workflow.run_started')   { $hasRunStarted = $true }
     }
-    Assert-True -Name "activity.jsonl contains task_created"        -Condition $hasCreated
-    Assert-True -Name "activity.jsonl contains task_updated"        -Condition $hasUpdated
-    Assert-True -Name "activity.jsonl contains task_status_changed" -Condition $hasStatus
-    Assert-True -Name "activity.jsonl contains workflow_run_started" -Condition $hasRunStarted
+    Assert-True -Name "activity.jsonl contains task.created"        -Condition $hasCreated
+    Assert-True -Name "activity.jsonl contains task.updated"        -Condition $hasUpdated
+    Assert-True -Name "activity.jsonl contains task.status_changed" -Condition $hasStatus
+    Assert-True -Name "activity.jsonl contains workflow.run_started" -Condition $hasRunStarted
 
     # ───── Invoke-RuntimeRequest (client helper) ─────
     $oldUrl   = $env:DOTBOT_RUNTIME_URL
@@ -633,10 +633,10 @@ try {
     Get-Content -LiteralPath $logPath | ForEach-Object {
         try {
             $obj = $_ | ConvertFrom-Json -ErrorAction Stop
-            if ($obj.type -eq 'task_updated' -and $obj.task_id -eq $tid) { $updatedLines++ }
+            if ($obj.type -eq 'task.updated' -and $obj.task_id -eq $tid) { $updatedLines++ }
         } catch { }
     }
-    Assert-Equal -Name "Activity log contains exactly 10 task_updated lines for the target task" -Expected 10 -Actual $updatedLines
+    Assert-Equal -Name "Activity log contains exactly 10 task.updated lines for the target task" -Expected 10 -Actual $updatedLines
 
 } finally {
     if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ErrorAction SilentlyContinue }

@@ -8,11 +8,14 @@ line — the runtime is the sole writer, and a per-process SemaphoreSlim
 guards the writer so two listener threads on the same runtime can't
 interleave bytes.
 
-Event shape:
+Event shape (dotted type so each line is a bus event matching task.* /
+workflow.* sink globs):
 {
+  "id":          "evt_xxxxxxxx",
+  "type":        "task.created" | "task.status_changed" | "workflow.run_started" | ...
   "timestamp":   "2026-05-18T10:00:00Z",
+  "source":      "runtime",
   "project_id":  "p_AbCd1234",
-  "type":        "task_created" | "task_status_changed" | ...
   "task_id":     "t_xxxxxxxx",     // when relevant
   "run_id":      "wr_xxxxxxxx",    // when relevant
   "from":        "in-progress",    // on transitions
@@ -124,14 +127,14 @@ function Test-DotBotEventTypeRegistered {
 }
 
 $script:DotbotActivityLogEventTypes = @(
-    'task_created'
-    'task_updated'
-    'task_status_changed'
-    'workflow_run_started'
-    'workflow_run_completed'
-    'workflow_run_failed'
-    'workflow_run_cancelled'
-    'hook_failed'
+    'task.created'
+    'task.updated'
+    'task.status_changed'
+    'workflow.run_started'
+    'workflow.run_completed'
+    'workflow.run_failed'
+    'workflow.run_cancelled'
+    'hook.failed'
 )
 
 function Get-ActivityLogPath {
@@ -343,13 +346,16 @@ function Write-ActivityEvent {
         [string]$From,
         [string]$To,
         [string]$Actor = 'system',
-        [string]$Reason
+        [string]$Reason,
+        [string]$Source = 'runtime'
     )
 
     $event = [ordered]@{
-        timestamp  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        project_id = Get-DotbotProjectId -BotRoot $BotRoot
+        id         = _New-DotBotEventId
         type       = $Type
+        timestamp  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        source     = $Source
+        project_id = Get-DotbotProjectId -BotRoot $BotRoot
     }
     if ($TaskId) { $event['task_id'] = $TaskId }
     if ($RunId)  { $event['run_id']  = $RunId }
