@@ -7,10 +7,10 @@
     PowerShellVersion = '7.0'
 
     # Concerns live as nested modules so each is findable in isolation.
-    # Dispatch (child-runspace execution) and the background Consumer are added
-    # in later steps.
+    # The background Consumer is added in a later step.
     NestedModules     = @(
-        'Private/Discovery.psm1'
+        'Private/Discovery.psm1',
+        'Private/Dispatch.psm1'
     )
 
     FunctionsToExport = @(
@@ -19,6 +19,10 @@
         'Read-SinkMetadata'
         'Get-SinkRegistry'
         'Get-SinksForEvent'
+
+        # Dispatch
+        'Invoke-SingleSink'
+        'Invoke-EventSinks'
     )
 
     CmdletsToExport   = @()

@@ -74,7 +74,8 @@ function New-SinkFixture {
         [object]$Metadata,          # hashtable to serialize, or a raw string for malformed-JSON cases
         [switch]$NoMetadata,
         [switch]$NoScript,
-        [string]$RawMetadata
+        [string]$RawMetadata,
+        [string]$ScriptBody         # override the default Invoke-Sink body
     )
     $sinkDir = Join-Path $Root $Name
     New-Item -ItemType Directory -Path $sinkDir -Force | Out-Null
@@ -89,10 +90,12 @@ function New-SinkFixture {
     }
     if (-not $NoScript) {
         $scriptPath = Join-Path $sinkDir 'script.ps1'
-        Set-Content -LiteralPath $scriptPath -Encoding utf8NoBOM -Value @'
-function Invoke-Sink { param($Event) }
-Export-ModuleMember -Function Invoke-Sink
-'@
+        $body = if ($PSBoundParameters.ContainsKey('ScriptBody')) {
+            $ScriptBody
+        } else {
+            "function Invoke-Sink { param(`$Event) }`nExport-ModuleMember -Function Invoke-Sink"
+        }
+        Set-Content -LiteralPath $scriptPath -Value $body -Encoding utf8NoBOM
     }
     return $sinkDir
 }
@@ -188,10 +191,92 @@ try {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Dispatch (time-boxed child runspace, non-aborting)
+# ═══════════════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  Dispatch" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$disp = New-SinksRoot
+try {
+    # A sink that records the event it received, to prove the payload reaches
+    # the sink runspace (type + nested data round-trip).
+    $markerBody = @'
+function Invoke-Sink {
+    param($Event)
+    Set-Content -LiteralPath $Event.data.marker -Value $Event.type -Encoding utf8NoBOM
+}
+Export-ModuleMember -Function Invoke-Sink
+'@
+    $markerSink = New-SinkFixture -Root $disp -Name 'marker' -Metadata @{ name = 'marker'; subscribed_events = @('task.*'); max_duration = 10 } -ScriptBody $markerBody
+    $markerRec  = Read-SinkMetadata -SinkDir $markerSink
+
+    $markerFile = Join-Path $disp 'marker.out'
+    $evt = @{ type = 'task.created'; data = @{ marker = $markerFile } }
+    $res = Invoke-SingleSink -Sink $markerRec -Event $evt
+    Assert-True  -Name "successful sink reports success"        -Condition ([bool]$res.success)
+    Assert-True  -Name "successful sink is not timed_out"        -Condition (-not $res.timed_out)
+    Assert-True  -Name "sink actually ran (marker file written)" -Condition (Test-Path -LiteralPath $markerFile)
+    Assert-Equal -Name "sink received the event payload (type via data.marker)" -Expected 'task.created' -Actual (Get-Content -LiteralPath $markerFile -Raw).Trim()
+
+    # A sink that throws → captured as failure, never rethrown.
+    $throwSink = New-SinkFixture -Root $disp -Name 'boom' -Metadata @{ name = 'boom'; subscribed_events = @('task.*'); max_duration = 10 } -ScriptBody "function Invoke-Sink { param(`$Event) throw 'kaboom' }`nExport-ModuleMember -Function Invoke-Sink"
+    $throwRec  = Read-SinkMetadata -SinkDir $throwSink
+    $throwRes  = Invoke-SingleSink -Sink $throwRec -Event $evt
+    Assert-True -Name "throwing sink reports failure (not rethrown)" -Condition (-not [bool]$throwRes.success)
+    Assert-True -Name "throwing sink message carries the error"      -Condition ($throwRes.message -match 'kaboom')
+
+    # A slow sink → forcibly stopped at max_duration, marked timed_out.
+    $slowSink = New-SinkFixture -Root $disp -Name 'slow' -Metadata @{ name = 'slow'; subscribed_events = @('task.*'); max_duration = 1 } -ScriptBody "function Invoke-Sink { param(`$Event) Start-Sleep -Seconds 5 }`nExport-ModuleMember -Function Invoke-Sink"
+    $slowRec  = Read-SinkMetadata -SinkDir $slowSink
+    $slowRes  = Invoke-SingleSink -Sink $slowRec -Event $evt
+    Assert-True -Name "slow sink is marked timed_out"     -Condition ([bool]$slowRes.timed_out)
+    Assert-True -Name "slow sink reports failure"          -Condition (-not [bool]$slowRes.success)
+    Assert-True -Name "slow sink stopped near max_duration (< 4s)" -Condition ($slowRes.duration.TotalSeconds -lt 4)
+} finally {
+    Remove-Item -Recurse -Force $disp -ErrorAction SilentlyContinue
+}
+
+# ── Non-aborting fan-out: a failing sink must not stop the others ──
+# 'aaa-boom' sorts first and throws; 'bbb-good' sorts second and writes a
+# marker. If dispatch aborted on failure, the marker would never appear.
+$fan = New-SinksRoot
+try {
+    New-SinkFixture -Root $fan -Name 'aaa-boom' -Metadata @{ name = 'aaa-boom'; subscribed_events = @('task.*'); max_duration = 10 } -ScriptBody "function Invoke-Sink { param(`$Event) throw 'first sink fails' }`nExport-ModuleMember -Function Invoke-Sink" | Out-Null
+    $goodBody = @'
+function Invoke-Sink {
+    param($Event)
+    Set-Content -LiteralPath $Event.data.marker -Value 'ran' -Encoding utf8NoBOM
+}
+Export-ModuleMember -Function Invoke-Sink
+'@
+    New-SinkFixture -Root $fan -Name 'bbb-good' -Metadata @{ name = 'bbb-good'; subscribed_events = @('task.*'); max_duration = 10 } -ScriptBody $goodBody | Out-Null
+
+    $registry = @(Get-SinkRegistry -SinksDir $fan)
+    $fanMarker = Join-Path $fan 'good.out'
+    $dispatch = Invoke-EventSinks -Event @{ type = 'task.created'; data = @{ marker = $fanMarker } } -Registry $registry
+
+    Assert-Equal -Name "Invoke-EventSinks dispatched to both matching sinks" -Expected 2 -Actual $dispatch.dispatched
+    Assert-Equal -Name "Invoke-EventSinks reports event_type" -Expected 'task.created' -Actual $dispatch.event_type
+    Assert-True  -Name "non-aborting: good sink ran despite the earlier sink failing" -Condition (Test-Path -LiteralPath $fanMarker)
+    $boomResult = @($dispatch.results | Where-Object { $_.name -eq 'aaa-boom' })[0]
+    $goodResult = @($dispatch.results | Where-Object { $_.name -eq 'bbb-good' })[0]
+    Assert-True -Name "failing sink recorded as failure in results"  -Condition (-not [bool]$boomResult.success)
+    Assert-True -Name "good sink recorded as success in results"     -Condition ([bool]$goodResult.success)
+
+    # Routing: an event no sink subscribes to dispatches to nothing (no error).
+    $none = Invoke-EventSinks -Event @{ type = 'decision.created'; data = @{} } -Registry $registry
+    Assert-Equal -Name "unsubscribed event dispatches to zero sinks" -Expected 0 -Actual $none.dispatched
+} finally {
+    Remove-Item -Recurse -Force $fan -ErrorAction SilentlyContinue
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════
 
-$allPassed = Write-TestSummary -LayerName "Layer 1: Dotbot.Events Sink Discovery"
+$allPassed = Write-TestSummary -LayerName "Layer 1: Dotbot.Events Sink Discovery + Dispatch"
 
 if (-not $allPassed) {
     exit 1
