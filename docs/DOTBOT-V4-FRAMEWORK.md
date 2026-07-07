@@ -27,7 +27,7 @@ v4 replaces the copy-based installer with a live git checkout model. The framewo
 | Framework location | Copied into `~/dotbot`, updated via `dotbot update` | One git checkout, `DOTBOT_HOME` points at it |
 | Project `.bot/` | Contains copies of `src/`, `content/`, `settings/`, `hooks/` | Contains only `workspace/` and `.gitignore` |
 | Settings source | `<BotRoot>/settings/settings.default.json` | `<DOTBOT_HOME>/content/settings/settings.default.json` |
-| Entry point | `.bot\go.ps1` / `.bot\init.ps1` | `dotbot runtime-start` |
+| Entry point | `.bot\go.ps1` / `.bot\init.ps1` | `dotbot go` (runtime + UI) / `dotbot serve` (runtime only) |
 | PowerShell Gallery | `Install-Module Dotbot` | Retired |
 
 ---
@@ -75,7 +75,7 @@ scoop install dotbot
 
 ### DOTBOT_HOME
 
-The environment variable that points at your dotbot framework checkout. All runtime modules, content, and settings are resolved from this path. Must be set before any `dotbot` command runs.
+The environment variable that points at your dotbot framework checkout. All runtime modules, content, and settings are resolved from this path. Package-managed installs and bootstrapped shims set this automatically — you only need to set it explicitly if you maintain a manual clone or multiple framework versions side by side.
 
 ```powershell
 $env:DOTBOT_HOME = "~/dotbot"   # point at your clone
@@ -97,12 +97,13 @@ Framework content (workflows, stacks, MCP tools) is resolved lazily from `DOTBOT
 
 ### Workflows
 
-A workflow defines the end-to-end process for a class of work (e.g. `start-from-jira`, `start-from-prompt`). Workflows live in `<DOTBOT_HOME>/content/workflows/` and can be extended with `extends:` in `workflow.yaml`.
+A workflow defines the end-to-end process for a class of work (e.g. `start-from-jira`, `start-from-prompt`). Workflows live in `<DOTBOT_HOME>/content/workflows/` and can be extended with `extends` in `workflow.json`.
 
-```yaml
-# workflow.yaml
-name: my-workflow
-extends: start-from-prompt   # inherit from base workflow
+```json
+{
+  "name": "my-workflow",
+  "extends": "start-from-prompt"
+}
 ```
 
 ### Stacks
@@ -123,7 +124,8 @@ A provider configures the AI model backend (Claude, Codex, Copilot, Gemini). Pro
 | `dotbot status --json` | Same, machine-readable — used by CI scripts and the dashboard banner |
 | `dotbot init` | Bootstraps a project `.bot/` directory (sparse — no framework copies) |
 | `dotbot init -Workflow start-from-jira` | Init with a specific workflow materialised |
-| `dotbot runtime-start` | Starts the task runner and Studio UI for the current project |
+| `dotbot go` | Starts the task runner and Studio UI for the current project |
+| `dotbot serve` | Starts the task runner only (no UI) — for headless / CI use |
 | `dotbot workflow add <name>` | Activates a workflow in `.control/settings.json` |
 | `dotbot workflow remove <name>` | Deactivates a workflow |
 
@@ -191,13 +193,17 @@ This records the active workflow in `.control/settings.json`. The workflow's con
 
 ### Workflow inheritance
 
-```yaml
-# .bot/content/workflows/my-workflow/workflow.yaml
-name: my-workflow
-extends: start-from-prompt
-phases:
-  - name: spec
-    # overrides the spec phase from the base workflow
+```json
+// .bot/content/workflows/my-workflow/workflow.json
+{
+  "name": "my-workflow",
+  "extends": "start-from-prompt",
+  "phases": [
+    {
+      "name": "spec"
+    }
+  ]
+}
 ```
 
 ### MCP tool discovery
@@ -223,5 +229,5 @@ The `~/dotbot/user-settings.json → ~/.config/dotbot/user-settings.json` move h
 
 ---
 
-*Last updated: 2026-07-03*
+*Last updated: 2026-07-07*
 *See also: [MIGRATING.md](../MIGRATING.md) · [AGENTS.md](../AGENTS.md) · [Release Notes](release-notes/v4.0.1.md)*
