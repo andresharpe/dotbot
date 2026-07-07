@@ -1232,6 +1232,14 @@ function Invoke-TaskStatusHandler {
             }
         }
 
+        # A transition that is about to proceed resolves any prior hook-blocked-done
+        # breadcrumb (set on the abort-revert path below). Clearing it here means a
+        # stale marker never lingers once the task makes forward progress.
+        if ($task['extensions'] -and ($task['extensions']['runner'] -is [System.Collections.IDictionary]) -and
+            $task['extensions']['runner'].ContainsKey('done_transition_block')) {
+            [void]$task['extensions']['runner'].Remove('done_transition_block')
+        }
+
         try {
             Assert-TaskInstance -Task $task
         } catch {
@@ -1286,6 +1294,24 @@ function Invoke-TaskStatusHandler {
                 $task['completed_at'] = $task['updated_at']
             } else {
                 $task['completed_at'] = $null
+            }
+            # Breadcrumb the task-runner reads to escalate a hook-blocked done to
+            # needs-input instead of skipped(max-retries). Under extensions.runner
+            # (schema rejects unknown top-level fields); cleared on next success.
+            if ($to -eq 'done') {
+                # Type-guard both levels (extensions content is not schema-validated):
+                # a non-dict extensions/runner would make the index-assign below throw.
+                if ($task['extensions'] -isnot [System.Collections.IDictionary])           { $task['extensions'] = @{} }
+                if ($task['extensions']['runner'] -isnot [System.Collections.IDictionary]) { $task['extensions']['runner'] = @{} }
+                # Truncate the persisted message — hook output is unbounded; the full
+                # text stays in the 422 response + activity log (matches AuthError cap).
+                $failingMsg = [string]$hookResult.failing_message
+                if ($failingMsg.Length -gt 1000) { $failingMsg = $failingMsg.Substring(0, 1000) + " … [truncated, showing 1000 of $($failingMsg.Length) chars]" }
+                $task['extensions']['runner']['done_transition_block'] = @{
+                    hook    = [string]$hookResult.failing_hook
+                    message = $failingMsg
+                    at      = $task['updated_at']
+                }
             }
             _Write-TaskFileAtomic -Path $path -Content $task
 

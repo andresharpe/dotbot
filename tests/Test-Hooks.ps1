@@ -372,6 +372,17 @@ try {
     Assert-Equal -Name "After abort: GET returns 200"               -Expected 200 -Actual $r.status_code
     Assert-Equal -Name "After abort: status reverted to in-progress" -Expected 'in-progress' -Actual $r.body.task.status
 
+    # #571: a done-transition abort leaves a breadcrumb under extensions.runner so
+    # the task-runner can escalate to needs-input instead of burning retries.
+    $blockAfterAbort = $null
+    try { $blockAfterAbort = $r.body.task.extensions.runner.done_transition_block } catch { $blockAfterAbort = $null }
+    Assert-True  -Name "#571 After abort: done_transition_block marker present" `
+        -Condition ($null -ne $blockAfterAbort) `
+        -Message "Expected extensions.runner.done_transition_block, got task: $($r.body.task | ConvertTo-Json -Depth 8 -Compress)"
+    Assert-Equal -Name "#571 After abort: marker names the failing hook" -Expected 'enter-done' -Actual "$($blockAfterAbort.hook)"
+    Assert-True  -Name "#571 After abort: marker carries the failing message" `
+        -Condition ("$($blockAfterAbort.message)" -match 'verify says no')
+
     # Activity log carries hook_failed.
     $logPath = Get-ActivityLogPath -BotRoot $bot
     $hookFailedLines = 0
@@ -392,6 +403,13 @@ try {
     Assert-Equal -Name "With non-aborting hook: in-progress → done → 200" -Expected 200 -Actual $r.status_code
     Assert-Equal -Name "Task status now done"                              -Expected 'done' -Actual $r.body.task.status
     Assert-True  -Name "Response includes hook_results"                    -Condition ($r.body.hook_results.Count -ge 1)
+
+    # #571: a successful transition clears the stale hook-block breadcrumb.
+    $blockAfterDone = $null
+    try { $blockAfterDone = $r.body.task.extensions.runner.done_transition_block } catch { $blockAfterDone = $null }
+    Assert-True -Name "#571 After successful done: done_transition_block marker cleared" `
+        -Condition ($null -eq $blockAfterDone) `
+        -Message "Expected marker cleared, got: $($blockAfterDone | ConvertTo-Json -Compress)"
 } finally {
     if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ErrorAction SilentlyContinue }
     try { Remove-Item -Recurse -Force (Split-Path -Parent $bot) } catch { }
