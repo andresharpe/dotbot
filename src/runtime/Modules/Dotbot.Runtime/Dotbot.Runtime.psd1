@@ -43,6 +43,12 @@
         'Get-ActivityLogPath'
         'Get-DotbotProjectId'
 
+        # Event bus (publish side)
+        'Publish-DotBotEvent'
+        'Register-DotBotEventType'
+        'Get-DotBotEventTypeRegistry'
+        'Test-DotBotEventTypeRegistered'
+
         # Control plane
         'Get-ControlPlaneSettings'
         'Start-ControlPlaneRegistration'
