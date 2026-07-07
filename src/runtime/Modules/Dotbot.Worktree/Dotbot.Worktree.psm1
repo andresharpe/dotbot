@@ -1252,6 +1252,11 @@ function Apply-TaskBranchPatch {
         [Parameter(Mandatory)][string]$BranchName
     )
 
+    # When two task branches were both cut while the project had no commits, they
+    # are unrelated orphan roots with no merge-base. Track that so a resulting
+    # conflict can be reported as 'unrelated_history' (an operator-recoverable,
+    # no-common-ancestor collision) rather than the generic 'rebase_conflict'.
+    $unrelatedHistory = $false
     $mergeBase = (git -C $ProjectRoot merge-base $BaseBranch $BranchName 2>$null)
     if ($LASTEXITCODE -ne 0 -or -not $mergeBase) {
         git -C $ProjectRoot rev-parse --verify "$BranchName^{commit}" 2>$null | Out-Null
@@ -1266,6 +1271,7 @@ function Apply-TaskBranchPatch {
         # task branches still have no merge-base; replay them as changes from
         # the empty tree so any task can be the first one completed.
         $mergeBase = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+        $unrelatedHistory = $true
     }
 
     $patchPath = [System.IO.Path]::GetTempFileName()
@@ -1357,11 +1363,18 @@ function Apply-TaskBranchPatch {
                 Remove-Item -LiteralPath $targetPath -Force -ErrorAction SilentlyContinue
             }
 
+            # An empty-tree (unrelated-history) base means the conflict is an
+            # add/add between two orphan branches with no common ancestor — there
+            # is no automatic correct merge, so surface it as its own kind so the
+            # operator gets an actionable choice instead of an opaque conflict.
+            $failureKind = if ($conflictFiles.Count -gt 0) {
+                if ($unrelatedHistory) { 'unrelated_history' } else { 'rebase_conflict' }
+            } else { $null }
             return @{
                 success        = $false
                 output         = @($applyOutput | ForEach-Object { "$_" })
                 conflict_files = $conflictFiles
-                failure_kind   = if ($conflictFiles.Count -gt 0) { 'rebase_conflict' } else { $null }
+                failure_kind   = $failureKind
             }
         }
 
@@ -1795,15 +1808,20 @@ function Complete-TaskWorktree {
             # conflict on <file>" pending_question instead of a generic
             # "Squash-merge command failed". Falls back to merge_command_failed
             # for non-conflict apply failures (no patch context, etc.).
-            $applyConflicts = if ($mergeResult.PSObject.Properties['conflict_files']) {
+            # $mergeResult is a hashtable — its keys aren't surfaced via
+            # .PSObject.Properties[...], which silently dropped conflict_files for
+            # every merge failure (rebase_conflict and unrelated_history). Use key access.
+            $applyConflicts = if ($mergeResult -is [hashtable]) {
+                if ($mergeResult.ContainsKey('conflict_files')) { @($mergeResult['conflict_files'] | Where-Object { $_ }) } else { @() }
+            } elseif ($mergeResult -and $mergeResult.PSObject.Properties['conflict_files']) {
                 @($mergeResult.conflict_files | Where-Object { $_ })
             } else { @() }
             $applyKind = [string]$mergeResult.failure_kind
             $resolvedKind = if ($applyKind) { $applyKind } else { 'merge_command_failed' }
-            $resolvedMessage = if ($resolvedKind -eq 'rebase_conflict') {
-                "Merge conflict during squash-merge: $($applyConflicts -join ', ')"
-            } else {
-                "Task branch patch failed: $($mergeOutput -join ' ')"
+            $resolvedMessage = switch ($resolvedKind) {
+                'rebase_conflict'    { "Merge conflict during squash-merge: $($applyConflicts -join ', ')" }
+                'unrelated_history'  { "Unrelated-history merge conflict (task predates the project's first commit): $($applyConflicts -join ', ')" }
+                default              { "Task branch patch failed: $($mergeOutput -join ' ')" }
             }
             return @{
                 success        = $false

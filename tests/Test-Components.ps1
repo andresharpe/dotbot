@@ -154,7 +154,8 @@ if (Test-Path $worktreeManagerModule) {
         -Message "Genuinely divergent untracked local files must still block patch replay (guard intact), but the blob comparison must NOT use --no-filters: on Windows with core.autocrlf=true a raw hash of a CRLF working-tree leftover never matches the LF branch blob, falsely flagging EOL-only-stale artifacts as divergent and permanently blocking squash-merge retries (issue #517)."
     Assert-True -Name "Apply-TaskBranchPatch surfaces conflict_files + 'rebase_conflict' kind on 3-way apply failure" `
         -Condition (($worktreeManagerSrc -match 'diff\s+--name-only\s+--diff-filter=U') -and
-                    ($worktreeManagerSrc -match "failure_kind\s*=\s*if\s*\(\s*\`$conflictFiles\.Count\s*-gt\s*0\s*\)\s*\{\s*'rebase_conflict'") -and
+                    ($worktreeManagerSrc -match "\`$conflictFiles\.Count\s*-gt\s*0") -and
+                    ($worktreeManagerSrc -match "'rebase_conflict'") -and
                     ($worktreeManagerSrc -match "Merge conflict during squash-merge")) `
         -Message "An add/add conflict on a single file (e.g. .gitignore) must reach the operator as a 'rebase_conflict' pending_question naming the file, not a generic 'merge_command_failed' with empty conflict_files. See botdot task d954f7e7 incident on 2026-05-14."
 
@@ -820,6 +821,77 @@ if (Test-Path $worktreeManagerModule) {
             Remove-Item -Path $unbornWorktreeRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
         Remove-TestProject -Path $unbornRoot
+    }
+
+    # #570: two orphan tasks (both cut while main was unborn) that write the SAME
+    # file collide on merge with no common ancestor. The second merge must be
+    # classified 'unrelated_history' (an actionable operator prompt) rather than
+    # the opaque, unrecoverable 'rebase_conflict'.
+    $collRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-orphan-collide-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+    $collBot  = Join-Path $collRoot ".bot"
+    $collA = $null; $collB = $null
+    try {
+        New-Item -ItemType Directory -Path $collRoot -Force | Out-Null
+        & git -C $collRoot init --quiet 2>&1 | Out-Null
+        & git -C $collRoot config user.email "test@dotbot.dev" 2>&1 | Out-Null
+        & git -C $collRoot config user.name "Dotbot Test" 2>&1 | Out-Null
+        & git -C $collRoot symbolic-ref HEAD refs/heads/main 2>&1 | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $collBot ".control") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $collBot "workspace/tasks") -Force | Out-Null
+        ".control/`n" | Set-Content -Path (Join-Path $collBot ".gitignore") -Encoding UTF8
+
+        # Task B is cut first (earlier orphan), then task A — both while main is unborn.
+        $collB = New-TaskWorktree -TaskId "t_collide0" -TaskName "earlier orphan writes shared file" -ProjectRoot $collRoot -BotRoot $collBot
+        $collA = New-TaskWorktree -TaskId "t_collide2" -TaskName "later orphan writes shared file" -ProjectRoot $collRoot -BotRoot $collBot
+
+        if ($collA -and $collA.success -and $collB -and $collB.success) {
+            $collRun = Join-Path $collBot "workspace/tasks/workflow-runs/2026-07-02-collide"
+            New-Item -ItemType Directory -Force -Path $collRun | Out-Null
+            @{ id = "wr_collide1"; workflow = "start-from-prompt"; status = "running" } |
+                ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $collRun "run.json") -Encoding UTF8
+            @{ id = "t_collide2"; name = "Later orphan"; status = "done"; completed_at = "2026-07-02T12:10:00Z"
+               provenance = @{ workflow = "start-from-prompt"; run_id = "wr_collide1"; definition_name = "Later orphan"; expanded_by = $null } } |
+                ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $collRun "t_collide2.json") -Encoding UTF8
+            @{ id = "t_collide0"; name = "Earlier orphan"; status = "in-progress"
+               provenance = @{ workflow = "start-from-prompt"; run_id = "wr_collide1"; definition_name = "Earlier orphan"; expanded_by = $null } } |
+                ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $collRun "t_collide0.json") -Encoding UTF8
+
+            # BOTH tasks write the same path with different content.
+            "content from later task A" | Set-Content -Path (Join-Path $collA.worktree_path "shared-artifact.txt") -Encoding UTF8
+            "content from earlier task B" | Set-Content -Path (Join-Path $collB.worktree_path "shared-artifact.txt") -Encoding UTF8
+
+            # Merge A first — initializes unborn main with A's shared-artifact.txt.
+            $collMergeA = Complete-TaskWorktree -TaskId "t_collide2" -ProjectRoot $collRoot -BotRoot $collBot
+            Assert-True -Name "#570 orphan-collision: first orphan merges (initializes main)" `
+                -Condition ($collMergeA.success -eq $true) `
+                -Message "Expected success, got: $($collMergeA | ConvertTo-Json -Depth 8 -Compress)"
+
+            # Merge B — same file, no common ancestor -> unrelated-history collision.
+            $collTaskB = Join-Path $collRun "t_collide0.json"
+            $tb = Get-Content -LiteralPath $collTaskB -Raw | ConvertFrom-Json
+            $tb.status = "done"; $tb | ConvertTo-Json -Depth 20 | Set-Content -Path $collTaskB -Encoding UTF8
+
+            $collMergeB = Complete-TaskWorktree -TaskId "t_collide0" -ProjectRoot $collRoot -BotRoot $collBot
+            Assert-True -Name "#570 orphan-collision: second orphan same-file merge fails (not silent success)" `
+                -Condition ($collMergeB.success -eq $false) `
+                -Message "Expected failure, got: $($collMergeB | ConvertTo-Json -Depth 8 -Compress)"
+            Assert-Equal -Name "#570 orphan-collision: classified unrelated_history (not opaque rebase_conflict)" `
+                -Expected "unrelated_history" `
+                -Actual "$($collMergeB.failure_kind)"
+            Assert-True -Name "#570 orphan-collision: conflict file reported" `
+                -Condition (@($collMergeB.conflict_files | Where-Object { $_ -match 'shared-artifact\.txt' }).Count -gt 0) `
+                -Message "Expected shared-artifact.txt in conflict_files, got: $($collMergeB.conflict_files -join ', ')"
+        } else {
+            Write-TestResult -Name "#570 orphan-collision: setup" -Status Fail -Message "worktree setup failed: A=$($collA | ConvertTo-Json -Compress) B=$($collB | ConvertTo-Json -Compress)"
+        }
+    } finally {
+        foreach ($r in @($collA, $collB)) {
+            if ($r -and $r.worktree_path -and (Test-Path $r.worktree_path)) { & git -C $collRoot worktree remove -f $r.worktree_path 2>&1 | Out-Null }
+            if ($r -and $r.branch_name) { & git -C $collRoot branch -D $r.branch_name 2>&1 | Out-Null }
+        }
+        $collWtRoot = Join-Path (Split-Path $collRoot -Parent) "worktrees/$(Split-Path $collRoot -Leaf)"
+        if (Test-Path $collWtRoot) { Remove-Item -Path $collWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
+        Remove-TestProject -Path $collRoot
     }
 } else {
     Write-TestResult -Name "Dotbot.Worktree module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
@@ -3287,6 +3359,7 @@ if (Test-Path $mergeEscModule) {
     # kind → template mapping. Test it directly: cheap, deterministic, no FS I/O.
     $kindCases = @(
         @{ Kind = 'rebase_conflict';      ExpectedId = 'merge-conflict';   ExpectedOptionCount = 3 }
+        @{ Kind = 'unrelated_history';    ExpectedId = 'merge-unrelated-history'; ExpectedOptionCount = 3 }
         @{ Kind = 'branch_missing';       ExpectedId = 'branch-missing';   ExpectedOptionCount = 2 }
         @{ Kind = 'merge_command_failed'; ExpectedId = 'merge-failed';     ExpectedOptionCount = 3 }
         @{ Kind = 'commit_failed';        ExpectedId = 'commit-failed';    ExpectedOptionCount = 2 }
@@ -3320,7 +3393,7 @@ if (Test-Path $mergeEscModule) {
         # rebase_conflict puts file names in context (canonical "conflict files"
         # phrasing). All other kinds put the message + failure_detail in context
         # so the operator sees git output / exception text.
-        if ($kind -eq 'rebase_conflict') {
+        if ($kind -in @('rebase_conflict', 'unrelated_history')) {
             Assert-True -Name "Kind dispatch ($kind): context lists conflict files" `
                 -Condition ($pq.context -match 'src/foo\.cs' -and $pq.context -match 'src/bar\.cs') `
                 -Message "Expected conflict files in context"
