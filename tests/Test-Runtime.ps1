@@ -548,6 +548,35 @@ try {
     Assert-True -Name "activity.jsonl contains task.status_changed" -Condition $hasStatus
     Assert-True -Name "activity.jsonl contains workflow.run_started" -Condition $hasRunStarted
 
+    $termBot = Join-Path ([System.IO.Path]::GetTempPath()) ("rt-term-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Path (Join-Path $termBot '.control') -Force | Out-Null
+    try {
+        $knownTypes = Get-ActivityLogEventTypes
+        foreach ($t in @('workflow.run_completed','workflow.run_failed','workflow.run_cancelled')) {
+            Assert-True -Name "vocabulary includes $t" -Condition ($knownTypes -contains $t)
+        }
+
+        $terminalMap = @{ completed = 'workflow.run_completed'; failed = 'workflow.run_failed'; cancelled = 'workflow.run_cancelled' }
+        foreach ($runStatus in $terminalMap.Keys) {
+            $rid = 'wr_' + (New-DotbotNanoId)
+            Write-ActivityEvent -BotRoot $termBot -Type "workflow.run_$runStatus" -RunId $rid -From 'running' -To $runStatus -Actor 'system'
+        }
+
+        $termLines = Get-Content -LiteralPath (Get-ActivityLogPath -BotRoot $termBot) | ForEach-Object { $_ | ConvertFrom-Json }
+        foreach ($runStatus in $terminalMap.Keys) {
+            $expectedType = $terminalMap[$runStatus]
+            $evt = $termLines | Where-Object { $_.type -eq $expectedType } | Select-Object -First 1
+            Assert-True  -Name "activity.jsonl contains $expectedType"                 -Condition ($null -ne $evt)
+            Assert-Equal -Name "$expectedType carries source=runtime"                  -Expected 'runtime'   -Actual $evt.source
+            Assert-Equal -Name "$expectedType carries to=$runStatus"                   -Expected $runStatus  -Actual $evt.to
+            Assert-Equal -Name "$expectedType carries from=running"                    -Expected 'running'   -Actual $evt.from
+            Assert-True  -Name "$expectedType has a well-formed event id"              -Condition ($evt.id -match '^evt_[A-Za-z0-9]{8}$')
+            Assert-True  -Name "$expectedType matches the workflow.* sink glob"        -Condition ($evt.type -like 'workflow.*')
+        }
+    } finally {
+        Remove-Item -Recurse -Force $termBot -ErrorAction SilentlyContinue
+    }
+
     # ───── Invoke-RuntimeRequest (client helper) ─────
     $oldUrl   = $env:DOTBOT_RUNTIME_URL
     $oldToken = $env:DOTBOT_RUNTIME_TOKEN
