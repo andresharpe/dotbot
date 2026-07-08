@@ -378,10 +378,10 @@ try {
     Get-Content -LiteralPath $logPath | ForEach-Object {
         try {
             $obj = $_ | ConvertFrom-Json -ErrorAction Stop
-            if ($obj.type -eq 'hook_failed' -and $obj.task_id -eq $tid) { $hookFailedLines++ }
+            if ($obj.type -eq 'hook.failed' -and $obj.task_id -eq $tid) { $hookFailedLines++ }
         } catch { }
     }
-    Assert-True -Name "activity.jsonl contains hook_failed for the task" -Condition ($hookFailedLines -ge 1)
+    Assert-True -Name "activity.jsonl contains hook.failed for the task" -Condition ($hookFailedLines -ge 1)
 
     # Replace the aborter with an advisory hook; transition should now succeed.
     Remove-Item -LiteralPath (Join-Path $projectHookDir 'enter-done') -Recurse -Force

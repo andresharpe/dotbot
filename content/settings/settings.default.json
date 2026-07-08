@@ -104,5 +104,21 @@
         "description": "New document in product briefing"
       }
     ]
+  },
+  "events": {
+    "enabled": true,
+    "webhooks": {
+      "enabled": false,
+      "endpoints": [
+        {
+          "url": "https://hooks.example.com/dotbot",
+          "events": ["task.*", "workflow.*"],
+          "secret": ""
+        }
+      ]
+    },
+    "mothership": {
+      "enabled": false
+    }
   }
 }

@@ -42,6 +42,13 @@
         'Write-ActivityEvent'
         'Get-ActivityLogPath'
         'Get-DotbotProjectId'
+        'Get-ActivityLogEventTypes'
+
+        # Event bus (publish side)
+        'Publish-DotBotEvent'
+        'Register-DotBotEventType'
+        'Get-DotBotEventTypeRegistry'
+        'Test-DotBotEventTypeRegistered'
 
         # Control plane
         'Get-ControlPlaneSettings'

@@ -89,7 +89,7 @@ $cleanupRan = $false
 $cleanup = {
     if ($script:cleanupRan) { return }
     $script:cleanupRan = $true
-    try { Stop-DotbotRuntime -BotRoot $botRoot -Listener $start.listener -ControlPlaneRegistration $start.control_plane -ErrorAction SilentlyContinue } catch { $null = $_ }
+    try { Stop-DotbotRuntime -BotRoot $botRoot -Listener $start.listener -ControlPlaneRegistration $start.control_plane -EventConsumer $start.events_consumer -ErrorAction SilentlyContinue } catch { $null = $_ }
 }
 try {
     [Console]::CancelKeyPress.Add({ param($s, $e) $e.Cancel = $true; & $cleanup })

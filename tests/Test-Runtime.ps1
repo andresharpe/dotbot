@@ -270,7 +270,7 @@ try {
         Assert-Equal -Name "Second Start-DotbotRuntime reuses the URL" -Expected $startResult.url -Actual $second.url
         Assert-Equal -Name "Second Start-DotbotRuntime reuses the token" -Expected $startResult.token -Actual $second.token
     } finally {
-        Stop-DotbotRuntime -BotRoot $bot -Listener $startResult.listener -ErrorAction SilentlyContinue
+        Stop-DotbotRuntime -BotRoot $bot -Listener $startResult.listener -ControlPlaneRegistration $startResult.control_plane -EventConsumer $startResult.events_consumer -ErrorAction SilentlyContinue
     }
 
     Assert-True -Name "Stop-DotbotRuntime removes runtime.json" -Condition (-not (Test-Path (Get-RuntimeConnectionFilePath -BotRoot $bot)))
@@ -538,15 +538,44 @@ try {
     $hasCreated  = $false; $hasUpdated = $false; $hasStatus = $false; $hasRunStarted = $false
     foreach ($l in $lines) {
         $obj = $l | ConvertFrom-Json
-        if ($obj.type -eq 'task_created')           { $hasCreated = $true }
-        if ($obj.type -eq 'task_updated')           { $hasUpdated = $true }
-        if ($obj.type -eq 'task_status_changed')    { $hasStatus  = $true }
-        if ($obj.type -eq 'workflow_run_started')   { $hasRunStarted = $true }
+        if ($obj.type -eq 'task.created')           { $hasCreated = $true }
+        if ($obj.type -eq 'task.updated')           { $hasUpdated = $true }
+        if ($obj.type -eq 'task.status_changed')    { $hasStatus  = $true }
+        if ($obj.type -eq 'workflow.run_started')   { $hasRunStarted = $true }
     }
-    Assert-True -Name "activity.jsonl contains task_created"        -Condition $hasCreated
-    Assert-True -Name "activity.jsonl contains task_updated"        -Condition $hasUpdated
-    Assert-True -Name "activity.jsonl contains task_status_changed" -Condition $hasStatus
-    Assert-True -Name "activity.jsonl contains workflow_run_started" -Condition $hasRunStarted
+    Assert-True -Name "activity.jsonl contains task.created"        -Condition $hasCreated
+    Assert-True -Name "activity.jsonl contains task.updated"        -Condition $hasUpdated
+    Assert-True -Name "activity.jsonl contains task.status_changed" -Condition $hasStatus
+    Assert-True -Name "activity.jsonl contains workflow.run_started" -Condition $hasRunStarted
+
+    $termBot = Join-Path ([System.IO.Path]::GetTempPath()) ("rt-term-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Path (Join-Path $termBot '.control') -Force | Out-Null
+    try {
+        $knownTypes = Get-ActivityLogEventTypes
+        foreach ($t in @('workflow.run_completed','workflow.run_failed','workflow.run_cancelled')) {
+            Assert-True -Name "vocabulary includes $t" -Condition ($knownTypes -contains $t)
+        }
+
+        $terminalMap = @{ completed = 'workflow.run_completed'; failed = 'workflow.run_failed'; cancelled = 'workflow.run_cancelled' }
+        foreach ($runStatus in $terminalMap.Keys) {
+            $rid = 'wr_' + (New-DotbotNanoId)
+            Write-ActivityEvent -BotRoot $termBot -Type "workflow.run_$runStatus" -RunId $rid -From 'running' -To $runStatus -Actor 'system'
+        }
+
+        $termLines = Get-Content -LiteralPath (Get-ActivityLogPath -BotRoot $termBot) | ForEach-Object { $_ | ConvertFrom-Json }
+        foreach ($runStatus in $terminalMap.Keys) {
+            $expectedType = $terminalMap[$runStatus]
+            $evt = $termLines | Where-Object { $_.type -eq $expectedType } | Select-Object -First 1
+            Assert-True  -Name "activity.jsonl contains $expectedType"                 -Condition ($null -ne $evt)
+            Assert-Equal -Name "$expectedType carries source=runtime"                  -Expected 'runtime'   -Actual $evt.source
+            Assert-Equal -Name "$expectedType carries to=$runStatus"                   -Expected $runStatus  -Actual $evt.to
+            Assert-Equal -Name "$expectedType carries from=running"                    -Expected 'running'   -Actual $evt.from
+            Assert-True  -Name "$expectedType has a well-formed event id"              -Condition ($evt.id -match '^evt_[A-Za-z0-9]{8}$')
+            Assert-True  -Name "$expectedType matches the workflow.* sink glob"        -Condition ($evt.type -like 'workflow.*')
+        }
+    } finally {
+        Remove-Item -Recurse -Force $termBot -ErrorAction SilentlyContinue
+    }
 
     # ───── Invoke-RuntimeRequest (client helper) ─────
     $oldUrl   = $env:DOTBOT_RUNTIME_URL
@@ -568,7 +597,7 @@ try {
     }
 
 } finally {
-    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ErrorAction SilentlyContinue }
+    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ControlPlaneRegistration $start.control_plane -EventConsumer $start.events_consumer -ErrorAction SilentlyContinue }
     Remove-TestBotRoot -BotRoot $bot
 }
 
@@ -633,15 +662,61 @@ try {
     Get-Content -LiteralPath $logPath | ForEach-Object {
         try {
             $obj = $_ | ConvertFrom-Json -ErrorAction Stop
-            if ($obj.type -eq 'task_updated' -and $obj.task_id -eq $tid) { $updatedLines++ }
+            if ($obj.type -eq 'task.updated' -and $obj.task_id -eq $tid) { $updatedLines++ }
         } catch { }
     }
-    Assert-Equal -Name "Activity log contains exactly 10 task_updated lines for the target task" -Expected 10 -Actual $updatedLines
+    Assert-Equal -Name "Activity log contains exactly 10 task.updated lines for the target task" -Expected 10 -Actual $updatedLines
 
 } finally {
-    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ErrorAction SilentlyContinue }
+    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ControlPlaneRegistration $start.control_plane -EventConsumer $start.events_consumer -ErrorAction SilentlyContinue }
     Remove-TestBotRoot -BotRoot $bot
 }
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Event-bus consumer hosted by the runtime (Step 7 / AC#6)
+# ═══════════════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  Event-bus consumer hosted by the runtime" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$ebot = New-TestBotRoot
+$esinkDir = Join-Path $ebot 'src/runtime/Plugins/Events/Sinks/recorder'
+New-Item -ItemType Directory -Path $esinkDir -Force | Out-Null
+$emarker = Join-Path $ebot 'delivered.out'
+@{ name = 'recorder'; subscribed_events = @('task.*'); max_duration = 10 } | ConvertTo-Json -Depth 6 |
+    Set-Content -LiteralPath (Join-Path $esinkDir 'metadata.json') -Encoding utf8NoBOM
+# Sink writes each matching event's type to a fixed marker path (baked literal).
+Set-Content -LiteralPath (Join-Path $esinkDir 'script.ps1') -Encoding utf8NoBOM -Value @"
+function Invoke-Sink {
+    param(`$Event, `$Context)
+    Add-Content -LiteralPath '$emarker' -Value `$Event.type -Encoding utf8NoBOM
+}
+Export-ModuleMember -Function Invoke-Sink
+"@
+
+$estart = Start-DotbotRuntime -BotRoot $ebot
+try {
+    Assert-True -Name "Start-DotbotRuntime hosts the event consumer" `
+        -Condition ($null -ne $estart.events_consumer -and [bool]$estart.events_consumer.enabled)
+
+    # A producer appends a bus event after the runtime is up (the cursor was
+    # seeded to EOF at start, so this must be tailed and delivered).
+    $eLog = Join-Path $ebot '.control/activity.jsonl'
+    (@{ id = 'evt_rt1'; type = 'task.created'; source = 'runtime'; data = @{} } | ConvertTo-Json -Compress) |
+        Add-Content -LiteralPath $eLog -Encoding utf8NoBOM
+
+    $delivered = $false
+    for ($i = 0; $i -lt 60; $i++) {
+        if (Test-Path -LiteralPath $emarker) { $delivered = $true; break }
+        Start-Sleep -Milliseconds 100
+    }
+    Assert-True -Name "runtime-hosted consumer tails and delivers a bus event to a sink" -Condition $delivered
+} finally {
+    Stop-DotbotRuntime -BotRoot $ebot -Listener $estart.listener -ControlPlaneRegistration $estart.control_plane -EventConsumer $estart.events_consumer -ErrorAction SilentlyContinue
+}
+Assert-True -Name "Stop-DotbotRuntime tears down the event consumer" -Condition ([bool]$estart.events_consumer.stop_flag[0])
+Remove-TestBotRoot -BotRoot $ebot
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Mutex: deterministic acquire order for multi-task ops

@@ -1,0 +1,6 @@
+{
+  "name": "mothership",
+  "description": "Forward selected events to the mothership fleet server. Gated on mothership + events.mothership settings and honours mothership.sync_events. Ships as a gated no-op until the server-side fleet events endpoint (#599/#544) exists.",
+  "subscribed_events": ["*"],
+  "max_duration": 10
+}
