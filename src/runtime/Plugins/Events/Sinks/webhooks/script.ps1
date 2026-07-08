@@ -2,7 +2,7 @@
 .SYNOPSIS
 webhooks sink — POST matching bus events to configured HTTPS endpoints.
 
-Config (from settings' events.webhooks section, handed in via $Context.Events):
+Config (from settings' events.webhooks section, handed in via $Context.Settings.events):
     {
       "enabled": true,
       "endpoints": [
@@ -172,7 +172,9 @@ function Invoke-Sink {
     param($Event, $Context)
 
     $cfg = $null
-    if ($null -ne $Context -and $null -ne $Context.Events) { $cfg = $Context.Events.webhooks }
+    if ($null -ne $Context -and $null -ne $Context.Settings -and $null -ne $Context.Settings.events) {
+        $cfg = $Context.Settings.events.webhooks
+    }
     if ($null -eq $cfg) { return @{ Success = $true; Message = 'webhooks: no config' } }
 
     $enabled = $false
