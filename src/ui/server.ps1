@@ -2827,6 +2827,26 @@ $docContext
                     break
                 }
 
+                # Shared shell/token stylesheets live outside the static root (src/shared/css).
+                # Explicit route with a traversal guard; .css only — nothing else in that
+                # directory is servable (e.g. harness.html is dev-only).
+                { $_ -like '/shared/css/*' } {
+                    $sharedCssRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..' 'shared' 'css'))
+                    $requested = $url.Substring('/shared/css/'.Length)
+                    $candidate = [System.IO.Path]::GetFullPath((Join-Path $sharedCssRoot $requested))
+                    $rootWithSep = $sharedCssRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+                    if ($candidate.StartsWith($rootWithSep, [System.StringComparison]::OrdinalIgnoreCase) -and
+                        [System.IO.Path]::GetExtension($candidate) -eq '.css' -and
+                        (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                        $contentType = 'text/css; charset=utf-8'
+                        $content = Get-Content -LiteralPath $candidate -Raw
+                    } else {
+                        $statusCode = 404
+                        $content = "Not found: $url"
+                    }
+                    break
+                }
+
                 default {
                     # Serve static files
                     $filePath = Join-Path $staticRoot $url.TrimStart('/')
