@@ -167,6 +167,21 @@ function Read-EventBatch {
 
 # ─── One delivery tick ──────────────────────────────────────────────────────
 
+function _Get-EventsSettingsSection {
+    # Resolve the `events` settings section for the sink Context. Guarded so
+    # the tick still works when Dotbot.Settings isn't loaded (isolated tests).
+    param([Parameter(Mandatory)] [string]$BotRoot)
+
+    if (-not (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) { return $null }
+    try {
+        $settings = Get-MergedSettings -BotRoot $BotRoot
+        if ($null -ne $settings) { return $settings.events }
+    } catch {
+        $null = $_
+    }
+    return $null
+}
+
 function Invoke-EventConsumerTick {
     <#
     .SYNOPSIS
@@ -195,12 +210,16 @@ function Invoke-EventConsumerTick {
 
     $batch = Read-EventBatch -LogPath $LogPath -Offset $offset
 
+    # Resolve the sink Context once per tick (fresh settings each cycle so an
+    # operator's config edit takes effect without a restart).
+    $context = @{ BotRoot = $BotRoot; Events = (_Get-EventsSettingsSection -BotRoot $BotRoot) }
+
     $dispatchedTotal = 0
     foreach ($evt in $batch.events) {
         # Invoke-EventSinks is non-aborting and never throws, but guard anyway
         # so a single event can never wedge the cursor.
         try {
-            $r = Invoke-EventSinks -Event $evt -Registry $Registry -BotRoot $BotRoot
+            $r = Invoke-EventSinks -Event $evt -Registry $Registry -BotRoot $BotRoot -Context $context
             $dispatchedTotal += [int]$r.dispatched
         } catch {
             $null = $_
@@ -263,15 +282,20 @@ function Start-EventConsumer {
     Initialize-EventConsumerCursor -BotRoot $BotRoot | Out-Null
 
     $modulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'Dotbot.Events.psd1'
+    # Dotbot.Settings sits alongside Dotbot.Events under Modules/. Import it in
+    # the loop so Invoke-EventConsumerTick can resolve the sink Context's
+    # `events` config each cycle.
+    $settingsPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) (Join-Path 'Dotbot.Settings' 'Dotbot.Settings.psd1')
 
     # Single-element bool array passed by reference into the runspace as the
     # cooperative stop signal.
     $stopFlag = [bool[]]::new(1)
 
     $loop = {
-        param([string]$BotRoot, $Registry, [double]$IntervalSeconds, [string]$ModulePath, [bool[]]$StopFlag)
+        param([string]$BotRoot, $Registry, [double]$IntervalSeconds, [string]$ModulePath, [string]$SettingsPath, [bool[]]$StopFlag)
 
         Import-Module $ModulePath -DisableNameChecking -Global -ErrorAction SilentlyContinue
+        Import-Module $SettingsPath -DisableNameChecking -Global -ErrorAction SilentlyContinue
 
         while (-not $StopFlag[0]) {
             try {
@@ -297,6 +321,7 @@ function Start-EventConsumer {
     $null = $ps.AddArgument($registry)
     $null = $ps.AddArgument($IntervalSeconds)
     $null = $ps.AddArgument($modulePath)
+    $null = $ps.AddArgument($settingsPath)
     $null = $ps.AddArgument($stopFlag)
     $async = $ps.BeginInvoke()
 

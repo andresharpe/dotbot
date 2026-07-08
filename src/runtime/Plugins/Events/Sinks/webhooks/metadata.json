@@ -1,0 +1,6 @@
+{
+  "name": "webhooks",
+  "description": "POST matching events to configured HTTPS endpoints, HMAC-signed per endpoint. HTTPS-only with SSRF URL validation; each endpoint honours its own event filter.",
+  "subscribed_events": ["*"],
+  "max_duration": 15
+}

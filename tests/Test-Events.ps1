@@ -93,7 +93,7 @@ function New-SinkFixture {
         $body = if ($PSBoundParameters.ContainsKey('ScriptBody')) {
             $ScriptBody
         } else {
-            "function Invoke-Sink { param(`$Event) }`nExport-ModuleMember -Function Invoke-Sink"
+            "function Invoke-Sink { param(`$Event, `$Context) }`nExport-ModuleMember -Function Invoke-Sink"
         }
         Set-Content -LiteralPath $scriptPath -Value $body -Encoding utf8NoBOM
     }
@@ -218,7 +218,7 @@ try {
     # the sink runspace (type + nested data round-trip).
     $markerBody = @'
 function Invoke-Sink {
-    param($Event)
+    param($Event, $Context)
     Set-Content -LiteralPath $Event.data.marker -Value $Event.type -Encoding utf8NoBOM
 }
 Export-ModuleMember -Function Invoke-Sink
@@ -235,14 +235,14 @@ Export-ModuleMember -Function Invoke-Sink
     Assert-Equal -Name "sink received the event payload (type via data.marker)" -Expected 'task.created' -Actual (Get-Content -LiteralPath $markerFile -Raw).Trim()
 
     # A sink that throws → captured as failure, never rethrown.
-    $throwSink = New-SinkFixture -Root $disp -Name 'boom' -Metadata @{ name = 'boom'; subscribed_events = @('task.*'); max_duration = 10 } -ScriptBody "function Invoke-Sink { param(`$Event) throw 'kaboom' }`nExport-ModuleMember -Function Invoke-Sink"
+    $throwSink = New-SinkFixture -Root $disp -Name 'boom' -Metadata @{ name = 'boom'; subscribed_events = @('task.*'); max_duration = 10 } -ScriptBody "function Invoke-Sink { param(`$Event, `$Context) throw 'kaboom' }`nExport-ModuleMember -Function Invoke-Sink"
     $throwRec  = Read-SinkMetadata -SinkDir $throwSink
     $throwRes  = Invoke-SingleSink -Sink $throwRec -Event $evt
     Assert-True -Name "throwing sink reports failure (not rethrown)" -Condition (-not [bool]$throwRes.success)
     Assert-True -Name "throwing sink message carries the error"      -Condition ($throwRes.message -match 'kaboom')
 
     # A slow sink → forcibly stopped at max_duration, marked timed_out.
-    $slowSink = New-SinkFixture -Root $disp -Name 'slow' -Metadata @{ name = 'slow'; subscribed_events = @('task.*'); max_duration = 1 } -ScriptBody "function Invoke-Sink { param(`$Event) Start-Sleep -Seconds 5 }`nExport-ModuleMember -Function Invoke-Sink"
+    $slowSink = New-SinkFixture -Root $disp -Name 'slow' -Metadata @{ name = 'slow'; subscribed_events = @('task.*'); max_duration = 1 } -ScriptBody "function Invoke-Sink { param(`$Event, `$Context) Start-Sleep -Seconds 5 }`nExport-ModuleMember -Function Invoke-Sink"
     $slowRec  = Read-SinkMetadata -SinkDir $slowSink
     $slowRes  = Invoke-SingleSink -Sink $slowRec -Event $evt
     Assert-True -Name "slow sink is marked timed_out"     -Condition ([bool]$slowRes.timed_out)
@@ -257,10 +257,10 @@ Export-ModuleMember -Function Invoke-Sink
 # marker. If dispatch aborted on failure, the marker would never appear.
 $fan = New-SinksRoot
 try {
-    New-SinkFixture -Root $fan -Name 'aaa-boom' -Metadata @{ name = 'aaa-boom'; subscribed_events = @('task.*'); max_duration = 10 } -ScriptBody "function Invoke-Sink { param(`$Event) throw 'first sink fails' }`nExport-ModuleMember -Function Invoke-Sink" | Out-Null
+    New-SinkFixture -Root $fan -Name 'aaa-boom' -Metadata @{ name = 'aaa-boom'; subscribed_events = @('task.*'); max_duration = 10 } -ScriptBody "function Invoke-Sink { param(`$Event, `$Context) throw 'first sink fails' }`nExport-ModuleMember -Function Invoke-Sink" | Out-Null
     $goodBody = @'
 function Invoke-Sink {
-    param($Event)
+    param($Event, $Context)
     Set-Content -LiteralPath $Event.data.marker -Value 'ran' -Encoding utf8NoBOM
 }
 Export-ModuleMember -Function Invoke-Sink
@@ -302,7 +302,7 @@ try {
     # of deliveries (lets us prove at-least-once / no-drop precisely).
     $markerBody = @'
 function Invoke-Sink {
-    param($Event)
+    param($Event, $Context)
     Add-Content -LiteralPath $Event.data.marker -Value $Event.id -Encoding utf8NoBOM
 }
 Export-ModuleMember -Function Invoke-Sink
@@ -369,7 +369,7 @@ try {
         Set-Content -LiteralPath (Join-Path $rsinkDir 'metadata.json') -Encoding utf8NoBOM
     Set-Content -LiteralPath (Join-Path $rsinkDir 'script.ps1') -Encoding utf8NoBOM -Value @'
 function Invoke-Sink {
-    param($Event)
+    param($Event, $Context)
     Add-Content -LiteralPath $Event.data.marker -Value $Event.id -Encoding utf8NoBOM
 }
 Export-ModuleMember -Function Invoke-Sink
@@ -398,10 +398,78 @@ Export-ModuleMember -Function Invoke-Sink
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
+# webhooks sink (HTTPS-only + HMAC + SSRF guard + per-endpoint filter)
+# ═══════════════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  webhooks sink" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$whScript = Join-Path $repoRoot 'src/runtime/Plugins/Events/Sinks/webhooks/script.ps1'
+Assert-True -Name "webhooks sink ships script.ps1"     -Condition (Test-Path -LiteralPath $whScript)
+Assert-True -Name "webhooks sink ships metadata.json"  -Condition (Test-Path -LiteralPath (Join-Path $repoRoot 'src/runtime/Plugins/Events/Sinks/webhooks/metadata.json'))
+
+# The shipped sink must pass the very discovery/validation it will face at runtime.
+$whRec = Read-SinkMetadata -SinkDir (Join-Path $repoRoot 'src/runtime/Plugins/Events/Sinks/webhooks')
+Assert-Equal -Name "webhooks metadata name is 'webhooks'" -Expected 'webhooks' -Actual $whRec.name
+
+$whMod = New-Module -Name 'DotbotWebhooksTest' -ScriptBlock ([ScriptBlock]::Create((Get-Content -LiteralPath $whScript -Raw)))
+
+# ── URL validation: HTTPS-only + SSRF (IP literals → no DNS needed) ──
+$pubIp = '93.184.216.34'
+Assert-True  -Name "https public IP is allowed"            -Condition (& $whMod Test-WebhookUrlAllowed -Url "https://$pubIp/hook").allowed
+Assert-Equal -Name "http scheme is rejected"               -Expected 'not_https'        -Actual (& $whMod Test-WebhookUrlAllowed -Url "http://$pubIp/hook").reason
+Assert-Equal -Name "loopback 127.0.0.1 is rejected"        -Expected 'blocked_ip_range' -Actual (& $whMod Test-WebhookUrlAllowed -Url 'https://127.0.0.1/x').reason
+Assert-Equal -Name "private 10/8 is rejected"              -Expected 'blocked_ip_range' -Actual (& $whMod Test-WebhookUrlAllowed -Url 'https://10.1.2.3/x').reason
+Assert-Equal -Name "private 192.168/16 is rejected"        -Expected 'blocked_ip_range' -Actual (& $whMod Test-WebhookUrlAllowed -Url 'https://192.168.0.1/x').reason
+Assert-Equal -Name "cloud metadata 169.254.169.254 blocked" -Expected 'blocked_ip_range' -Actual (& $whMod Test-WebhookUrlAllowed -Url 'https://169.254.169.254/latest').reason
+Assert-Equal -Name "IPv6 loopback [::1] is rejected"       -Expected 'blocked_ip_range' -Actual (& $whMod Test-WebhookUrlAllowed -Url 'https://[::1]/x').reason
+Assert-Equal -Name "localhost hostname is rejected"        -Expected 'internal_hostname' -Actual (& $whMod Test-WebhookUrlAllowed -Url 'https://localhost/x').reason
+Assert-True  -Name "172.32/x (outside 172.16/12) allowed"  -Condition (& $whMod Test-WebhookUrlAllowed -Url 'https://172.32.0.1/x').allowed
+
+# ── HMAC signature ──
+$sigA = & $whMod New-WebhookSignature -Body '{"a":1}' -Secret 'shh'
+$sigB = & $whMod New-WebhookSignature -Body '{"a":1}' -Secret 'shh'
+$sigC = & $whMod New-WebhookSignature -Body '{"a":1}' -Secret 'different'
+Assert-True  -Name "HMAC signature is well-formed (sha256=<64 hex>)" -Condition ($sigA -match '^sha256=[0-9a-f]{64}$')
+Assert-Equal -Name "HMAC is deterministic for same body+secret"      -Expected $sigA -Actual $sigB
+Assert-True  -Name "HMAC differs when the secret differs"            -Condition ($sigA -ne $sigC)
+
+# ── Delivery plan: per-endpoint filter + SSRF pruning ──
+$cfg = [pscustomobject]@{
+    enabled   = $true
+    endpoints = @(
+        [pscustomobject]@{ url = "https://$pubIp/tasks";     events = @('task.*');     secret = 's1' }
+        [pscustomobject]@{ url = 'https://127.0.0.1/blocked'; events = @('task.*');     secret = 's2' }  # SSRF → pruned
+        [pscustomobject]@{ url = "https://$pubIp/wf";        events = @('workflow.*'); secret = 's3' }
+    )
+}
+$planTask = @(& $whMod Get-WebhookDeliveryPlan -Event @{ type = 'task.created' } -Config $cfg)
+Assert-Equal -Name "plan honours filter + SSRF: task.created → 1 endpoint" -Expected 1 -Actual $planTask.Count
+Assert-Equal -Name "plan keeps the public task endpoint"                    -Expected "https://$pubIp/tasks" -Actual $planTask[0].url
+
+$planWf = @(& $whMod Get-WebhookDeliveryPlan -Event @{ type = 'workflow.run_completed' } -Config $cfg)
+Assert-Equal -Name "plan honours filter: workflow event → workflow endpoint only" -Expected 1 -Actual $planWf.Count
+Assert-Equal -Name "plan keeps the workflow endpoint"                             -Expected "https://$pubIp/wf" -Actual $planWf[0].url
+
+$planNone = @(& $whMod Get-WebhookDeliveryPlan -Event @{ type = 'decision.created' } -Config $cfg)
+Assert-Equal -Name "plan is empty when no endpoint filter matches" -Expected 0 -Actual $planNone.Count
+
+# ── Invoke-Sink gating (no network) ──
+$disabledCtx = @{ BotRoot = 'x'; Events = [pscustomobject]@{ webhooks = [pscustomobject]@{ enabled = $false; endpoints = @() } } }
+$rDisabled = & $whMod Invoke-Sink -Event @{ type = 'task.created' } -Context $disabledCtx
+Assert-True  -Name "Invoke-Sink no-ops when webhooks disabled" -Condition ([bool]$rDisabled.Success)
+Assert-True  -Name "disabled message says disabled"           -Condition ($rDisabled.Message -match 'disabled')
+
+$noCfgCtx = @{ BotRoot = 'x'; Events = $null }
+$rNoCfg = & $whMod Invoke-Sink -Event @{ type = 'task.created' } -Context $noCfgCtx
+Assert-True -Name "Invoke-Sink no-ops when there is no events config" -Condition ([bool]$rNoCfg.Success)
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════
 
-$allPassed = Write-TestSummary -LayerName "Layer 1: Dotbot.Events Sink Discovery + Dispatch + Consumer"
+$allPassed = Write-TestSummary -LayerName "Layer 1: Dotbot.Events Sink Discovery + Dispatch + Consumer + webhooks"
 
 if (-not $allPassed) {
     exit 1
