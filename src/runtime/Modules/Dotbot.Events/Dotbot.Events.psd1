@@ -7,10 +7,10 @@
     PowerShellVersion = '7.0'
 
     # Concerns live as nested modules so each is findable in isolation.
-    # The background Consumer is added in a later step.
     NestedModules     = @(
         'Private/Discovery.psm1',
-        'Private/Dispatch.psm1'
+        'Private/Dispatch.psm1',
+        'Private/Consumer.psm1'
     )
 
     FunctionsToExport = @(
@@ -23,6 +23,16 @@
         # Dispatch
         'Invoke-SingleSink'
         'Invoke-EventSinks'
+
+        # Consumer
+        'Get-EventCursorPath'
+        'Read-EventCursor'
+        'Save-EventCursor'
+        'Initialize-EventConsumerCursor'
+        'Read-EventBatch'
+        'Invoke-EventConsumerTick'
+        'Start-EventConsumer'
+        'Stop-EventConsumer'
     )
 
     CmdletsToExport   = @()

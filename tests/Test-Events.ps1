@@ -100,6 +100,20 @@ function New-SinkFixture {
     return $sinkDir
 }
 
+function Add-EventLine {
+    # Append one activity.jsonl event line (hand-written so this test needn't
+    # import Dotbot.Runtime/Dotbot.Task). data.marker points a sink at its
+    # output file.
+    param(
+        [Parameter(Mandatory)] [string]$LogPath,
+        [Parameter(Mandatory)] [string]$Id,
+        [Parameter(Mandatory)] [string]$Type,
+        [string]$Marker
+    )
+    $line = @{ id = $Id; type = $Type; source = 'runtime'; data = @{ marker = $Marker } } | ConvertTo-Json -Compress
+    Add-Content -LiteralPath $LogPath -Value $line -Encoding utf8NoBOM
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Happy-path discovery
 # ═══════════════════════════════════════════════════════════════════════════
@@ -273,10 +287,121 @@ Export-ModuleMember -Function Invoke-Sink
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Consumer (byte cursor, at-least-once, replay)
+# ═══════════════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  Consumer" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$cbot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-consumer-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+New-Item -ItemType Directory -Path (Join-Path $cbot '.control') -Force | Out-Null
+$csinks = New-SinksRoot
+try {
+    # A sink that APPENDS each received event id to a file → line count = number
+    # of deliveries (lets us prove at-least-once / no-drop precisely).
+    $markerBody = @'
+function Invoke-Sink {
+    param($Event)
+    Add-Content -LiteralPath $Event.data.marker -Value $Event.id -Encoding utf8NoBOM
+}
+Export-ModuleMember -Function Invoke-Sink
+'@
+    New-SinkFixture -Root $csinks -Name 'recorder' -Metadata @{ name = 'recorder'; subscribed_events = @('task.*'); max_duration = 10 } -ScriptBody $markerBody | Out-Null
+    $reg = @(Get-SinkRegistry -SinksDir $csinks)
+
+    $log    = Join-Path $cbot '.control/activity.jsonl'
+    $marker = Join-Path $cbot 'deliveries.out'
+
+    # ── Cursor round-trip ──
+    Save-EventCursor -BotRoot $cbot -Offset 42
+    Assert-Equal -Name "cursor round-trips through disk" -Expected 42 -Actual (Read-EventCursor -BotRoot $cbot)
+
+    # ── Read-EventBatch by offset ──
+    Add-EventLine -LogPath $log -Id 'evt_1' -Type 'task.created'         -Marker $marker
+    Add-EventLine -LogPath $log -Id 'evt_2' -Type 'task.updated'         -Marker $marker
+    Add-EventLine -LogPath $log -Id 'evt_3' -Type 'workflow.run_started' -Marker $marker
+
+    $b0 = Read-EventBatch -LogPath $log -Offset 0
+    Assert-Equal -Name "batch from 0 reads all 3 lines" -Expected 3 -Actual (@($b0.events).Count)
+    Assert-True  -Name "batch position advances to EOF" -Condition ($b0.position -gt 0)
+
+    $b1 = Read-EventBatch -LogPath $log -Offset $b0.position
+    Assert-Equal -Name "batch from EOF reads nothing" -Expected 0 -Actual (@($b1.events).Count)
+    Assert-Equal -Name "batch from EOF keeps position" -Expected $b0.position -Actual $b1.position
+
+    # ── Tick: dispatch task.* only, advance cursor ──
+    Save-EventCursor -BotRoot $cbot -Offset 0
+    $t1 = Invoke-EventConsumerTick -BotRoot $cbot -Registry $reg -LogPath $log
+    Assert-Equal -Name "tick processes every event in the batch" -Expected 3 -Actual $t1.processed
+    Assert-Equal -Name "tick dispatches only the 2 task.* events"  -Expected 2 -Actual $t1.dispatched
+    Assert-Equal -Name "recorder delivered 2 events"               -Expected 2 -Actual (@(Get-Content -LiteralPath $marker)).Count
+    Assert-Equal -Name "cursor advanced to batch position"         -Expected $t1.position -Actual (Read-EventCursor -BotRoot $cbot)
+
+    # ── Second tick with nothing new → no-op ──
+    $t2 = Invoke-EventConsumerTick -BotRoot $cbot -Registry $reg -LogPath $log
+    Assert-Equal -Name "idle tick processes nothing"    -Expected 0 -Actual $t2.processed
+    Assert-Equal -Name "idle tick delivers nothing new" -Expected 2 -Actual (@(Get-Content -LiteralPath $marker)).Count
+
+    # ── Resume from persisted cursor: a new event is delivered, old ones aren't ──
+    Add-EventLine -LogPath $log -Id 'evt_4' -Type 'task.status_changed' -Marker $marker
+    $t3 = Invoke-EventConsumerTick -BotRoot $cbot -Registry $reg -LogPath $log
+    Assert-Equal -Name "resume tick processes only the new event"  -Expected 1 -Actual $t3.processed
+    Assert-Equal -Name "resume tick delivers only the new task.* event" -Expected 3 -Actual (@(Get-Content -LiteralPath $marker)).Count
+
+    # ── At-least-once / replay: rewinding the cursor re-delivers ──
+    Save-EventCursor -BotRoot $cbot -Offset 0
+    $t4 = Invoke-EventConsumerTick -BotRoot $cbot -Registry $reg -LogPath $log
+    Assert-Equal -Name "replay tick re-reads all 4 events"                 -Expected 4 -Actual $t4.processed
+    Assert-Equal -Name "replay re-delivers the 3 task.* events (3+3=6)"    -Expected 6 -Actual (@(Get-Content -LiteralPath $marker)).Count
+} finally {
+    Remove-Item -Recurse -Force $cbot -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $csinks -ErrorAction SilentlyContinue
+}
+
+# ── Runspace lifecycle: Start-EventConsumer delivers, Stop tears down ──
+$rbot = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-consumer-rs-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+$rsinkDir = Join-Path $rbot 'src/runtime/Plugins/Events/Sinks/recorder'
+New-Item -ItemType Directory -Path (Join-Path $rbot '.control') -Force | Out-Null
+New-Item -ItemType Directory -Path $rsinkDir -Force | Out-Null
+try {
+    @{ name = 'recorder'; subscribed_events = @('task.*'); max_duration = 10 } | ConvertTo-Json -Depth 6 |
+        Set-Content -LiteralPath (Join-Path $rsinkDir 'metadata.json') -Encoding utf8NoBOM
+    Set-Content -LiteralPath (Join-Path $rsinkDir 'script.ps1') -Encoding utf8NoBOM -Value @'
+function Invoke-Sink {
+    param($Event)
+    Add-Content -LiteralPath $Event.data.marker -Value $Event.id -Encoding utf8NoBOM
+}
+Export-ModuleMember -Function Invoke-Sink
+'@
+
+    $rlog    = Join-Path $rbot '.control/activity.jsonl'
+    $rmarker = Join-Path $rbot 'deliveries.out'
+
+    $consumer = Start-EventConsumer -BotRoot $rbot -IntervalSeconds 0.5
+    Assert-True -Name "Start-EventConsumer returns a running handle" -Condition ($null -ne $consumer -and $consumer.enabled)
+
+    # Append AFTER start (cursor was seeded to EOF), so the consumer must tail it.
+    Add-EventLine -LogPath $rlog -Id 'evt_rs1' -Type 'task.created' -Marker $rmarker
+
+    $delivered = $false
+    for ($i = 0; $i -lt 60; $i++) {
+        if (Test-Path -LiteralPath $rmarker) { $delivered = $true; break }
+        Start-Sleep -Milliseconds 100
+    }
+    Assert-True -Name "background consumer tails and delivers an appended event" -Condition $delivered
+
+    Stop-EventConsumer -Consumer $consumer
+    Assert-True -Name "Stop-EventConsumer signals the stop flag" -Condition ([bool]$consumer.stop_flag[0])
+} finally {
+    Remove-Item -Recurse -Force $rbot -ErrorAction SilentlyContinue
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════
 
-$allPassed = Write-TestSummary -LayerName "Layer 1: Dotbot.Events Sink Discovery + Dispatch"
+$allPassed = Write-TestSummary -LayerName "Layer 1: Dotbot.Events Sink Discovery + Dispatch + Consumer"
 
 if (-not $allPassed) {
     exit 1
