@@ -689,7 +689,7 @@ $emarker = Join-Path $ebot 'delivered.out'
 # Sink writes each matching event's type to a fixed marker path (baked literal).
 Set-Content -LiteralPath (Join-Path $esinkDir 'script.ps1') -Encoding utf8NoBOM -Value @"
 function Invoke-Sink {
-    param(`$Event)
+    param(`$Event, `$Context)
     Add-Content -LiteralPath '$emarker' -Value `$Event.type -Encoding utf8NoBOM
 }
 Export-ModuleMember -Function Invoke-Sink

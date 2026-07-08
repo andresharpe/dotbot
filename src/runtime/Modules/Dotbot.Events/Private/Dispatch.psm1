@@ -13,10 +13,12 @@ from transition hooks:
 
 Each sink runs in a child runspace so max_duration can be enforced via Stop().
 
-The Invoke-Sink contract from each sink's script.ps1: a single function taking
-$Event (the event envelope) and optionally returning a hashtable with
-Success/Message. A sink that returns nothing is treated as success — its work
-is the side effect (POST a webhook, forward to the mothership, …).
+The Invoke-Sink contract from each sink's script.ps1: a function taking
+$Event (the event envelope) and $Context (a hashtable with BotRoot and the
+resolved `events` settings section — so a sink can read its own config without
+importing anything into its isolated runspace). A sink may return a hashtable
+with Success/Message; returning nothing is treated as success — its work is the
+side effect (POST a webhook, forward to the mothership, …).
 
 Loading note: a bare .ps1 with a top-level Export-ModuleMember isn't a real
 module. We turn it into one at dispatch time via New-Module against a
@@ -41,11 +43,13 @@ function Invoke-SingleSink {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] $Sink,     # one element from Get-SinkRegistry
-        [Parameter(Mandatory)] $Event     # the event envelope (hashtable or pscustomobject)
+        [Parameter(Mandatory)] $Event,    # the event envelope (hashtable or pscustomobject)
+        $Context                          # @{ BotRoot; Events } passed to the sink
     )
 
     $name = [string]$Sink.name
     $maxDuration = [int]$Sink.max_duration
+    if ($null -eq $Context) { $Context = @{} }
 
     # Read the script once; pass the contents into the child runspace rather
     # than re-reading from disk inside it (avoids coupling to a working dir).
@@ -63,7 +67,7 @@ function Invoke-SingleSink {
     }
 
     $runner = {
-        param([string]$Content, [string]$SinkName, $Event)
+        param([string]$Content, [string]$SinkName, $Event, $Context)
 
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         try {
@@ -72,7 +76,7 @@ function Invoke-SingleSink {
             # module — Export-ModuleMember inside the script works, and we can
             # invoke its function via `& $mod <Name>`.
             $mod = New-Module -Name ("DotbotSink_" + $SinkName) -ScriptBlock $sb
-            $sinkResult = & $mod Invoke-Sink -Event $Event
+            $sinkResult = & $mod Invoke-Sink -Event $Event -Context $Context
         } catch {
             $sw.Stop()
             return @{
@@ -107,6 +111,7 @@ function Invoke-SingleSink {
     $null = $ps.AddArgument($scriptContent)
     $null = $ps.AddArgument($name)
     $null = $ps.AddArgument($Event)
+    $null = $ps.AddArgument($Context)
 
     $outerSw = [System.Diagnostics.Stopwatch]::StartNew()
     $async = $ps.BeginInvoke()
@@ -171,6 +176,10 @@ function Invoke-EventSinks {
     registry is discovered from -SinksDir / -BotRoot. The consumer discovers
     once at startup and passes it here per event to avoid re-scanning disk.
 
+    .PARAMETER Context
+    The @{ BotRoot; Events } context handed to each sink. When omitted, a
+    minimal @{ BotRoot = $BotRoot } is built.
+
     .OUTPUTS
         @{
             event_type = '<type>' | $null
@@ -183,8 +192,11 @@ function Invoke-EventSinks {
         [Parameter(Mandatory)] $Event,
         $Registry,
         [string]$BotRoot,
-        [string]$SinksDir
+        [string]$SinksDir,
+        $Context
     )
+
+    if ($null -eq $Context) { $Context = @{ BotRoot = $BotRoot } }
 
     $eventType = if ($Event -is [hashtable]) { [string]$Event['type'] } else { [string]$Event.type }
     if ([string]::IsNullOrWhiteSpace($eventType)) {
@@ -204,7 +216,7 @@ function Invoke-EventSinks {
         # never stop the others.
         $r = $null
         try {
-            $r = Invoke-SingleSink -Sink $s -Event $Event
+            $r = Invoke-SingleSink -Sink $s -Event $Event -Context $Context
         } catch {
             $r = @{
                 name      = [string]$s.name
