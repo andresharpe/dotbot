@@ -270,7 +270,7 @@ try {
         Assert-Equal -Name "Second Start-DotbotRuntime reuses the URL" -Expected $startResult.url -Actual $second.url
         Assert-Equal -Name "Second Start-DotbotRuntime reuses the token" -Expected $startResult.token -Actual $second.token
     } finally {
-        Stop-DotbotRuntime -BotRoot $bot -Listener $startResult.listener -ErrorAction SilentlyContinue
+        Stop-DotbotRuntime -BotRoot $bot -Listener $startResult.listener -ControlPlaneRegistration $startResult.control_plane -EventConsumer $startResult.events_consumer -ErrorAction SilentlyContinue
     }
 
     Assert-True -Name "Stop-DotbotRuntime removes runtime.json" -Condition (-not (Test-Path (Get-RuntimeConnectionFilePath -BotRoot $bot)))
@@ -597,7 +597,7 @@ try {
     }
 
 } finally {
-    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ErrorAction SilentlyContinue }
+    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ControlPlaneRegistration $start.control_plane -EventConsumer $start.events_consumer -ErrorAction SilentlyContinue }
     Remove-TestBotRoot -BotRoot $bot
 }
 
@@ -668,9 +668,55 @@ try {
     Assert-Equal -Name "Activity log contains exactly 10 task.updated lines for the target task" -Expected 10 -Actual $updatedLines
 
 } finally {
-    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ErrorAction SilentlyContinue }
+    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ControlPlaneRegistration $start.control_plane -EventConsumer $start.events_consumer -ErrorAction SilentlyContinue }
     Remove-TestBotRoot -BotRoot $bot
 }
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Event-bus consumer hosted by the runtime (Step 7 / AC#6)
+# ═══════════════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  Event-bus consumer hosted by the runtime" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$ebot = New-TestBotRoot
+$esinkDir = Join-Path $ebot 'src/runtime/Plugins/Events/Sinks/recorder'
+New-Item -ItemType Directory -Path $esinkDir -Force | Out-Null
+$emarker = Join-Path $ebot 'delivered.out'
+@{ name = 'recorder'; subscribed_events = @('task.*'); max_duration = 10 } | ConvertTo-Json -Depth 6 |
+    Set-Content -LiteralPath (Join-Path $esinkDir 'metadata.json') -Encoding utf8NoBOM
+# Sink writes each matching event's type to a fixed marker path (baked literal).
+Set-Content -LiteralPath (Join-Path $esinkDir 'script.ps1') -Encoding utf8NoBOM -Value @"
+function Invoke-Sink {
+    param(`$Event)
+    Add-Content -LiteralPath '$emarker' -Value `$Event.type -Encoding utf8NoBOM
+}
+Export-ModuleMember -Function Invoke-Sink
+"@
+
+$estart = Start-DotbotRuntime -BotRoot $ebot
+try {
+    Assert-True -Name "Start-DotbotRuntime hosts the event consumer" `
+        -Condition ($null -ne $estart.events_consumer -and [bool]$estart.events_consumer.enabled)
+
+    # A producer appends a bus event after the runtime is up (the cursor was
+    # seeded to EOF at start, so this must be tailed and delivered).
+    $eLog = Join-Path $ebot '.control/activity.jsonl'
+    (@{ id = 'evt_rt1'; type = 'task.created'; source = 'runtime'; data = @{} } | ConvertTo-Json -Compress) |
+        Add-Content -LiteralPath $eLog -Encoding utf8NoBOM
+
+    $delivered = $false
+    for ($i = 0; $i -lt 60; $i++) {
+        if (Test-Path -LiteralPath $emarker) { $delivered = $true; break }
+        Start-Sleep -Milliseconds 100
+    }
+    Assert-True -Name "runtime-hosted consumer tails and delivers a bus event to a sink" -Condition $delivered
+} finally {
+    Stop-DotbotRuntime -BotRoot $ebot -Listener $estart.listener -ControlPlaneRegistration $estart.control_plane -EventConsumer $estart.events_consumer -ErrorAction SilentlyContinue
+}
+Assert-True -Name "Stop-DotbotRuntime tears down the event consumer" -Condition ([bool]$estart.events_consumer.stop_flag[0])
+Remove-TestBotRoot -BotRoot $ebot
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Mutex: deterministic acquire order for multi-task ops
