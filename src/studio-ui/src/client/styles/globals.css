@@ -4,6 +4,9 @@
 
 @import '@shared/css/dotbot-tokens.css';
 @import '@shared/css/dotbot-crt.css';
+/* v4 navigation shell (#551/#604) — no .shell markup in Studio yet; importing
+ * keeps the stylesheet build-checked and ready for the R2 consolidation. */
+@import '@shared/css/dotbot-shell.css';
 
 /* === App Layout === */
 #root {
