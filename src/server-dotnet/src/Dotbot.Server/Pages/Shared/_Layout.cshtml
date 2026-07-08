@@ -7,43 +7,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    @* Design tokens now come from the shared stylesheet (single source of truth,
+       #551/#604). Values are identical to the inline block this replaces; the
+       remaining inline component styles below move to the shared shell in #605. *@
+    <link rel="stylesheet" href="/shared/css/dotbot-tokens.css" />
     <style>
-        /* === Custom Properties — Amber Classic palette === */
-        :root {
-            --color-primary: #E8A030;
-            --color-primary-dim: #B87820;
-            --color-secondary: #5FB3B3;
-            --color-success: #00FF88;
-            --color-error: #D16969;
-            --color-muted: #888899;
-            --color-bezel: #3A3B48;
-
-            --bg-deep: #050508;
-            --bg-panel: #0A0B0F;
-            --bg-module: #0D0E14;
-            --bg-screen: #070A08;
-
-            --primary-05: rgba(232, 160, 48, 0.05);
-            --primary-08: rgba(232, 160, 48, 0.08);
-            --primary-10: rgba(232, 160, 48, 0.10);
-            --primary-15: rgba(232, 160, 48, 0.15);
-            --primary-20: rgba(232, 160, 48, 0.20);
-            --primary-30: rgba(232, 160, 48, 0.30);
-            --primary-50: rgba(232, 160, 48, 0.50);
-
-            --secondary-12: rgba(95, 179, 179, 0.12);
-            --secondary-20: rgba(95, 179, 179, 0.20);
-            --secondary-30: rgba(95, 179, 179, 0.30);
-
-            --success-15: rgba(0, 255, 136, 0.15);
-
-            --grid-color: var(--primary-05);
-            --grid-color-strong: rgba(232, 160, 48, 0.075);
-
-            --font-mono: 'JetBrains Mono', 'Consolas', monospace;
-            --font-ui: 'Inter', -apple-system, sans-serif;
-        }
-
         /* === Reset === */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; }

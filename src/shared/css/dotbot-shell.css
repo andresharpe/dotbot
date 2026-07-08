@@ -1,0 +1,333 @@
+/* DOTBOT Shared Navigation Shell
+ * One shell, many rooms: the v4 navigation frame shared by Mothership and Outpost.
+ * Spec: docs/DOTBOT-v4-DESIGN-IDEAS.md §7 — 44px top bar · 56px icon rail (pinnable
+ * to 200px labelled mode) · 28px dispatch ticker · content capped at 1280px.
+ *
+ * Consumption order: dotbot-tokens.css → dotbot-crt.css → dotbot-shell.css
+ * Shell chrome only — no page-content components live here.
+ * Pure token consumer: zero raw colors, so all theme presets work via the
+ * runtime --color-*-rgb injection (src/ui/static/modules/theme.js).
+ *
+ * Deferred hooks:
+ *   Ticker scroll animation + pause/expand behaviour  → #607
+ *   Command palette overlay                           → #553
+ *   Persona type split (data-persona)                 → #607
+ *   Responsive/mobile pass below 1200px               → #552 (content cap goes
+ *   fluid via minmax below; rail/topbar geometry intentionally unchanged)
+ */
+
+/* === Shell frame ======================================================= */
+
+.shell {
+    /* Geometry knobs — override per app or per test, never hardcode below */
+    --shell-topbar-h: 44px;
+    --shell-rail-w: 56px;
+    --shell-rail-w-pinned: 200px;
+    --shell-ticker-h: 28px;
+    --shell-content-max: 1280px;
+    /* Scanline intensity: 6% on chrome, 0% on content (spec §11) */
+    --shell-scanline-alpha: 0.06;
+
+    display: grid;
+    grid-template:
+        "topbar topbar" var(--shell-topbar-h)
+        "rail   content" 1fr
+        "ticker ticker" var(--shell-ticker-h)
+        / var(--shell-rail-w) 1fr;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--color-primary);
+    font-family: var(--font-mono);
+}
+
+.shell[data-rail="pinned"] {
+    grid-template-columns: var(--shell-rail-w-pinned) 1fr;
+}
+
+/* The shell owns its own chrome texture; suppress the global crt.css overlay
+ * so content panels stay at 0% (spec §11). No-op until .shell markup exists. */
+body:has(.shell)::after {
+    content: none;
+}
+
+/* Chrome scanline overlay — applied per region, never on content */
+.shell-topbar::after,
+.shell-rail::after,
+.shell-ticker::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent 0 2px,
+        rgb(0 0 0 / var(--shell-scanline-alpha)) 2px 4px
+    );
+}
+
+/* === Top bar (44px) ==================================================== */
+
+.shell-topbar {
+    grid-area: topbar;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 16px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--bezel-edge);
+}
+
+.shell-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-primary);
+    text-shadow: 0 0 8px var(--primary-glow);
+    white-space: nowrap;
+}
+
+.shell-context {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--color-muted);
+    background: var(--primary-05);
+    border: 1px solid var(--primary-10);
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.shell-context:hover {
+    border-color: var(--primary-20);
+    color: var(--color-primary);
+}
+
+/* Search pill — the visible palette affordance. Behaviour lands with #553. */
+.shell-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    padding: 5px 12px;
+    min-width: 220px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-muted);
+    background: var(--primary-05);
+    border: 1px solid var(--primary-20);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.shell-search:hover,
+.shell-search:focus-visible {
+    border-color: var(--primary-30);
+    color: var(--color-primary);
+    outline: none;
+}
+
+.shell-search-kbd {
+    margin-left: auto;
+    padding: 1px 6px;
+    font-size: 10px;
+    color: var(--color-muted);
+    background: var(--bg-module);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
+}
+
+/* LEDs — system state via [data-type] (success/warning/error/info).
+ * [data-status] is reserved for task lifecycle; do not use it here. */
+.shell-leds {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.shell-led {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--type-color, var(--color-muted));
+    box-shadow: 0 0 6px var(--type-glow, transparent);
+}
+
+/* === Icon rail (56px / 200px pinned) =================================== */
+
+.shell-rail {
+    grid-area: rail;
+    position: relative;
+    overflow: visible; /* tooltip flyouts escape the rail */
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 8px 0;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--bezel-edge);
+    z-index: 10;
+}
+
+.shell-rail-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 8px;
+    padding: 9px 11px;
+    color: var(--color-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.shell-rail-item:hover {
+    color: var(--color-primary);
+    background: var(--primary-08);
+}
+
+.shell-rail-item[aria-current="page"] {
+    color: var(--color-primary);
+    background: var(--primary-10);
+    border-color: var(--primary-20);
+    text-shadow: 0 0 6px var(--primary-glow);
+}
+
+.shell-rail-icon {
+    flex: 0 0 auto;
+    width: 16px;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1;
+}
+
+/* Label: tooltip flyout when unpinned, inline text when pinned */
+.shell-rail-label {
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.shell:not([data-rail="pinned"]) .shell-rail-label {
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    translate: 0 -50%;
+    padding: 4px 10px;
+    color: var(--color-primary);
+    background: var(--bg-module);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgb(var(--color-bg-deep-rgb) / 0.8);
+    opacity: 0;
+    visibility: hidden;
+    z-index: 20;
+}
+
+.shell:not([data-rail="pinned"]) .shell-rail-item:hover .shell-rail-label,
+.shell:not([data-rail="pinned"]) .shell-rail-item:focus-visible .shell-rail-label {
+    opacity: 1;
+    visibility: visible;
+}
+
+.shell-rail-divider {
+    height: 1px;
+    margin: 8px 12px;
+    background: var(--bezel-edge);
+    box-shadow: 0 1px 0 var(--bezel-dark);
+}
+
+/* Pin toggle sits at the rail foot */
+.shell-rail-pin {
+    margin-top: auto;
+}
+
+/* === Content =========================================================== */
+
+.shell-content {
+    grid-area: content;
+    overflow-y: auto;
+    background:
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-color: var(--bg-deep);
+}
+
+.shell-content-inner {
+    max-width: var(--shell-content-max);
+    margin: 0 auto;
+    padding: 32px;
+}
+
+/* === Dispatch ticker (28px) ============================================
+ * Geometry + typography only. Scroll animation, pause-on-hover, collapse
+ * behaviour and event wiring land with #607. */
+
+.shell-ticker {
+    grid-area: ticker;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--bezel-edge);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--color-muted);
+}
+
+.shell-ticker-line {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.shell-ticker-byline {
+    margin-left: auto;
+    flex: 0 0 auto;
+    color: var(--primary-50);
+}
+
+/* === Reduced motion ====================================================
+ * First prefers-reduced-motion implementation in the codebase (#551
+ * Decision #7): keep color and shape, drop the movement. */
+
+@media (prefers-reduced-motion: reduce) {
+    .shell *,
+    .shell *::before,
+    .shell *::after {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* === Responsive ========================================================
+ * Below the content cap the inner column goes fluid; rail and topbar
+ * geometry stay fixed. Full mobile pass is #552 scope. */
+
+@media (max-width: 1200px) {
+    .shell-content-inner {
+        padding: 20px;
+    }
+    .shell-search {
+        min-width: 140px;
+    }
+}

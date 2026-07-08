@@ -2,13 +2,15 @@ name: Studio UI Build & Validate
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'releases/**']
     paths:
       - 'src/studio-ui/**'
+      - 'src/shared/css/**'
   pull_request:
-    branches: [main]
+    branches: [main, 'releases/**']
     paths:
       - 'src/studio-ui/**'
+      - 'src/shared/css/**'
   workflow_dispatch:
 
 jobs:
