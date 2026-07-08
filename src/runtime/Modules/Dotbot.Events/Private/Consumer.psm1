@@ -167,15 +167,14 @@ function Read-EventBatch {
 
 # ─── One delivery tick ──────────────────────────────────────────────────────
 
-function _Get-EventsSettingsSection {
-    # Resolve the `events` settings section for the sink Context. Guarded so
-    # the tick still works when Dotbot.Settings isn't loaded (isolated tests).
+function _Get-MergedSettingsSafe {
+    # Resolve the full merged settings for the sink Context. Guarded so the
+    # tick still works when Dotbot.Settings isn't loaded (isolated tests).
     param([Parameter(Mandatory)] [string]$BotRoot)
 
     if (-not (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) { return $null }
     try {
-        $settings = Get-MergedSettings -BotRoot $BotRoot
-        if ($null -ne $settings) { return $settings.events }
+        return Get-MergedSettings -BotRoot $BotRoot
     } catch {
         $null = $_
     }
@@ -211,8 +210,10 @@ function Invoke-EventConsumerTick {
     $batch = Read-EventBatch -LogPath $LogPath -Offset $offset
 
     # Resolve the sink Context once per tick (fresh settings each cycle so an
-    # operator's config edit takes effect without a restart).
-    $context = @{ BotRoot = $BotRoot; Events = (_Get-EventsSettingsSection -BotRoot $BotRoot) }
+    # operator's config edit takes effect without a restart). Sinks read the
+    # section they need: webhooks → Settings.events.webhooks, mothership →
+    # Settings.mothership + Settings.events.mothership.
+    $context = @{ BotRoot = $BotRoot; Settings = (_Get-MergedSettingsSafe -BotRoot $BotRoot) }
 
     $dispatchedTotal = 0
     foreach ($evt in $batch.events) {

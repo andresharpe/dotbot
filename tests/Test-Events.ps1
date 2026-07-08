@@ -456,20 +456,65 @@ $planNone = @(& $whMod Get-WebhookDeliveryPlan -Event @{ type = 'decision.create
 Assert-Equal -Name "plan is empty when no endpoint filter matches" -Expected 0 -Actual $planNone.Count
 
 # ── Invoke-Sink gating (no network) ──
-$disabledCtx = @{ BotRoot = 'x'; Events = [pscustomobject]@{ webhooks = [pscustomobject]@{ enabled = $false; endpoints = @() } } }
+$disabledCtx = @{ BotRoot = 'x'; Settings = [pscustomobject]@{ events = [pscustomobject]@{ webhooks = [pscustomobject]@{ enabled = $false; endpoints = @() } } } }
 $rDisabled = & $whMod Invoke-Sink -Event @{ type = 'task.created' } -Context $disabledCtx
 Assert-True  -Name "Invoke-Sink no-ops when webhooks disabled" -Condition ([bool]$rDisabled.Success)
 Assert-True  -Name "disabled message says disabled"           -Condition ($rDisabled.Message -match 'disabled')
 
-$noCfgCtx = @{ BotRoot = 'x'; Events = $null }
+$noCfgCtx = @{ BotRoot = 'x'; Settings = $null }
 $rNoCfg = & $whMod Invoke-Sink -Event @{ type = 'task.created' } -Context $noCfgCtx
 Assert-True -Name "Invoke-Sink no-ops when there is no events config" -Condition ([bool]$rNoCfg.Success)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# mothership sink (gated no-op until the fleet events endpoint exists)
+# ═══════════════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  mothership sink" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$msDir = Join-Path $repoRoot 'src/runtime/Plugins/Events/Sinks/mothership'
+Assert-True  -Name "mothership sink ships script.ps1"    -Condition (Test-Path -LiteralPath (Join-Path $msDir 'script.ps1'))
+$msRec = Read-SinkMetadata -SinkDir $msDir
+Assert-Equal -Name "mothership metadata name is 'mothership'" -Expected 'mothership' -Actual $msRec.name
+
+$msMod = New-Module -Name 'DotbotMothershipTest' -ScriptBlock ([ScriptBlock]::Create((Get-Content -LiteralPath (Join-Path $msDir 'script.ps1') -Raw)))
+
+function New-MsSettings {
+    param([bool]$MsEnabled, [bool]$SinkEnabled, [string]$ServerUrl = 'https://mothership.example', $Sync = @('task.*'))
+    return [pscustomobject]@{
+        mothership = [pscustomobject]@{ enabled = $MsEnabled; server_url = $ServerUrl; sync_events = $Sync }
+        events     = [pscustomobject]@{ mothership = [pscustomobject]@{ enabled = $SinkEnabled } }
+    }
+}
+
+$evt = @{ type = 'task.created' }
+Assert-Equal -Name "gate: mothership disabled → no forward" -Expected 'mothership_disabled' `
+    -Actual (& $msMod Test-MothershipShouldForward -Event $evt -Settings (New-MsSettings -MsEnabled $false -SinkEnabled $true)).reason
+Assert-Equal -Name "gate: sink disabled → no forward" -Expected 'sink_disabled' `
+    -Actual (& $msMod Test-MothershipShouldForward -Event $evt -Settings (New-MsSettings -MsEnabled $true -SinkEnabled $false)).reason
+Assert-Equal -Name "gate: missing server_url → no forward" -Expected 'no_server_url' `
+    -Actual (& $msMod Test-MothershipShouldForward -Event $evt -Settings (New-MsSettings -MsEnabled $true -SinkEnabled $true -ServerUrl '')).reason
+Assert-Equal -Name "gate: event not in sync_events → no forward" -Expected 'not_in_sync_events' `
+    -Actual (& $msMod Test-MothershipShouldForward -Event @{ type = 'workflow.run_started' } -Settings (New-MsSettings -MsEnabled $true -SinkEnabled $true -Sync @('task.*'))).reason
+Assert-True  -Name "all gates pass → forward=true" `
+    -Condition (& $msMod Test-MothershipShouldForward -Event $evt -Settings (New-MsSettings -MsEnabled $true -SinkEnabled $true -Sync @('task.*'))).forward
+
+# Invoke-Sink is a gated no-op: never throws, always Success, never POSTs.
+$rSkip = & $msMod Invoke-Sink -Event $evt -Context @{ BotRoot = 'x'; Settings = (New-MsSettings -MsEnabled $false -SinkEnabled $false) }
+Assert-True -Name "Invoke-Sink no-ops (skipped) when disabled" -Condition ([bool]$rSkip.Success -and $rSkip.Message -match 'skipped')
+
+$rFwd = & $msMod Invoke-Sink -Event $evt -Context @{ BotRoot = 'x'; Settings = (New-MsSettings -MsEnabled $true -SinkEnabled $true -Sync @('task.*')) }
+Assert-True -Name "Invoke-Sink is a gated no-op even when all gates pass" -Condition ([bool]$rFwd.Success -and $rFwd.Message -match 'would forward')
+
+$rNoSettings = & $msMod Invoke-Sink -Event $evt -Context @{ BotRoot = 'x'; Settings = $null }
+Assert-True -Name "Invoke-Sink no-ops when there are no settings" -Condition ([bool]$rNoSettings.Success)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════
 
-$allPassed = Write-TestSummary -LayerName "Layer 1: Dotbot.Events Sink Discovery + Dispatch + Consumer + webhooks"
+$allPassed = Write-TestSummary -LayerName "Layer 1: Dotbot.Events Discovery + Dispatch + Consumer + webhooks + mothership"
 
 if (-not $allPassed) {
     exit 1
