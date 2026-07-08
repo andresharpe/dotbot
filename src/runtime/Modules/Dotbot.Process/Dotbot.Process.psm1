@@ -743,7 +743,7 @@ function Get-NextWorkflowTask {
     }
     if ($eligible.Count -gt 0) {
         $next = $eligible | Sort-Object @(
-            @{ Expression = { if ($_.Content.priority -is [int] -or $_.Content.priority -is [long]) { -[int]$_.Content.priority } else { 0 } }; Ascending = $true }
+            @{ Expression = { if ($_.Content.priority -is [int] -or $_.Content.priority -is [long]) { [int]$_.Content.priority } else { [int]::MaxValue } }; Ascending = $true }
             @{ Expression = { [string]$_.Content.created_at }; Ascending = $true }
         ) | Select-Object -First 1
         return @{
