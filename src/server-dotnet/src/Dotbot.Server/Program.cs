@@ -195,6 +195,28 @@ try
     app.UseMiddleware<MagicLinkAuthMiddleware>();
 
     app.UseStaticFiles();
+
+    // Shared design tokens/shell CSS (src/shared/css) — in Development the repo
+    // checkout is present, so serve straight from it; published output instead
+    // carries a copy under wwwroot/shared/css via the csproj Content link.
+    if (app.Environment.IsDevelopment())
+    {
+        var sharedCss = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "..", "..", "shared", "css"));
+        if (Directory.Exists(sharedCss))
+        {
+            // .css only — the directory also holds the dev-only harness.html,
+            // which must never be served.
+            var cssOnly = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider(
+                new Dictionary<string, string> { [".css"] = "text/css" });
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(sharedCss),
+                RequestPath = "/shared/css",
+                ContentTypeProvider = cssOnly
+            });
+        }
+    }
+
     app.UseRouting();
 
     // Auth middleware pipeline

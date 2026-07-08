@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<!--
+  DOTBOT Shell Harness — dev-only visual test bench for dotbot-shell.css.
+  Never served by any app: the Outpost /shared/css route allowlists .css,
+  the Mothership csproj glob copies *.css only, and Studio imports modules.
+  Open directly via file:// — no server needed. Google Fonts load needs
+  network; JetBrains Mono / Inter fall back to Consolas / system sans.
+
+  Preset RGB values are copied from src/ui/static/theme-config.json
+  (source of truth). Applied via the same mechanism as
+  src/ui/static/modules/theme.js: only the base - -color-*-rgb triplets are
+  set; every derived variant in dotbot-tokens.css recomputes from them.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dotbot shell harness</title>
+<link rel="stylesheet" href="./dotbot-tokens.css">
+<link rel="stylesheet" href="./dotbot-crt.css">
+<link rel="stylesheet" href="./dotbot-shell.css">
+<style>
+    /* Harness chrome — deliberately un-dotbot so it can't be mistaken for shell */
+    .hx-strip {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 8px 12px;
+        background: #1d2430;
+        color: #c8d2e0;
+        font: 12px/1.4 system-ui, sans-serif;
+        border-bottom: 2px solid #35405a;
+    }
+    .hx-strip label { display: flex; align-items: center; gap: 6px; }
+    .hx-strip select, .hx-strip button {
+        font: inherit;
+        padding: 2px 8px;
+        background: #2a3346;
+        color: inherit;
+        border: 1px solid #43507a;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    .hx-note { margin-left: auto; opacity: 0.7; font-size: 11px; }
+    .hx-frame { height: calc(100vh - 38px); }
+    .hx-frame .shell { height: 100%; }
+
+    /* Mock content bits — stand-ins for real app panels, harness-local */
+    .hx-panel {
+        margin-top: 20px;
+        border: 1px solid var(--bezel-edge);
+        border-radius: 6px;
+        background: var(--bg-module);
+        overflow: hidden;
+    }
+    .hx-panel-header {
+        padding: 8px 14px;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--color-muted);
+        background: var(--bg-panel);
+        border-bottom: 1px solid var(--bezel-edge);
+    }
+    .hx-panel-body { padding: 24px; font-size: 13px; }
+    .hx-stat {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--color-primary);
+        text-shadow: 0 0 10px var(--primary-glow);
+    }
+    .hx-stat-label {
+        margin-top: 4px;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--color-muted);
+    }
+</style>
+</head>
+<body>
+
+<div class="hx-strip">
+    <label>variant
+        <select id="hx-variant">
+            <option value="mothership">Mothership</option>
+            <option value="outpost">Outpost</option>
+        </select>
+    </label>
+    <label><input type="checkbox" id="hx-pin"> pin rail (200px)</label>
+    <label>theme
+        <select id="hx-theme">
+            <option value="">Default (tokens.css)</option>
+            <option value="amber">Amber Classic</option>
+            <option value="green">Green</option>
+            <option value="cyan">Cyan</option>
+            <option value="blue">Blue</option>
+            <option value="purple">Purple</option>
+            <option value="white">White</option>
+        </select>
+    </label>
+    <span class="hx-note">reduced motion: toggle via OS / devtools emulation — transitions must stop</span>
+</div>
+
+<div class="hx-frame">
+<div class="shell" id="hx-shell">
+
+    <header class="shell-topbar">
+        <div class="shell-logo">◈ DOTBOT</div>
+        <button class="shell-context" type="button">project/easy-bookmarks ▾</button>
+        <button class="shell-search" type="button">
+            <span>search…</span>
+            <span class="shell-search-kbd">⌘K</span>
+        </button>
+        <div class="shell-leds">
+            <span class="shell-led" data-type="success" title="Connection: online"></span>
+            <span class="shell-led" data-type="warning" title="Running: 2 processes"></span>
+            <span class="shell-led" data-type="info" title="Signal: nominal"></span>
+        </div>
+    </header>
+
+    <nav class="shell-rail" id="hx-rail"></nav>
+
+    <main class="shell-content">
+        <div class="shell-content-inner">
+            <h1 style="font-size:18px; letter-spacing:0.05em;">SHELL HARNESS</h1>
+            <p style="color: var(--color-muted); font-size: 13px; margin-top: 8px;">
+                Content area. Grid texture at token opacity, no scanlines here —
+                chrome regions (top bar, rail, ticker) carry them instead.
+            </p>
+            <div class="hx-panel">
+                <div class="hx-panel-header">Mock module panel</div>
+                <div class="hx-panel-body">
+                    <div class="hx-stat">42</div>
+                    <div class="hx-stat-label">Phosphor-glow stat — check glow follows preset</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="shell-ticker">
+        <span class="shell-ticker-line">DISPATCH · 03 · task T-042 moved to analysed · process P-09 started · all systems nominal</span>
+        <span class="shell-ticker-byline">— M</span>
+    </footer>
+
+</div>
+</div>
+
+<script>
+    // Rail item sets per app variant (glyphs from the design spec §7/§8/§9)
+    var RAILS = {
+        mothership: [
+            { icon: '□', label: 'Fleet' },
+            { icon: '▣', label: 'Decisions', current: true },
+            { icon: '○', label: 'People' },
+            { divider: true },
+            { icon: '◇', label: 'Studio' },
+            { icon: '⚙', label: 'Settings' }
+        ],
+        outpost: [
+            { icon: '□', label: 'Overview', current: true },
+            { icon: '▣', label: 'Tasks' },
+            { icon: '◆', label: 'Product' },
+            { icon: '◇', label: 'Decisions' },
+            { icon: '○', label: 'Workflow' },
+            { divider: true },
+            { icon: '⚙', label: 'Settings' }
+        ]
+    };
+
+    // Preset RGB values copied from src/ui/static/theme-config.json (source of
+    // truth). Keys map to --color-{key}-rgb, same as modules/theme.js does.
+    var PRESETS = {
+        amber:  {"primary":[232,160,48],"primary-dim":[184,120,32],"secondary":[156,112,40],"tertiary":[156,112,40],"success":[0,255,136],"success-dim":[0,170,92],"error":[232,160,48],"warning":[232,160,48],"info":[156,112,40],"muted":[112,104,92],"bezel":[56,52,44],"bg-deep":[5,5,8],"bg-panel":[10,11,15],"bg-module":[13,14,20],"bg-screen":[7,10,8]},
+        green:  {"primary":[0,255,136],"primary-dim":[0,170,92],"secondary":[0,136,72],"tertiary":[0,136,72],"success":[0,255,136],"success-dim":[0,170,92],"error":[0,255,136],"warning":[0,255,136],"info":[0,136,72],"muted":[88,112,96],"bezel":[40,56,46],"bg-deep":[3,8,5],"bg-panel":[6,15,10],"bg-module":[8,20,13],"bg-screen":[4,12,7]},
+        cyan:   {"primary":[95,179,179],"primary-dim":[70,140,140],"secondary":[56,112,112],"tertiary":[56,112,112],"success":[0,255,136],"success-dim":[0,170,92],"error":[95,179,179],"warning":[95,179,179],"info":[56,112,112],"muted":[92,108,108],"bezel":[42,54,54],"bg-deep":[4,7,7],"bg-panel":[8,14,14],"bg-module":[10,18,18],"bg-screen":[5,11,10]},
+        blue:   {"primary":[68,136,255],"primary-dim":[48,100,200],"secondary":[40,80,160],"tertiary":[40,80,160],"success":[0,255,136],"success-dim":[0,170,92],"error":[68,136,255],"warning":[68,136,255],"info":[40,80,160],"muted":[96,100,116],"bezel":[44,48,58],"bg-deep":[4,5,10],"bg-panel":[8,10,18],"bg-module":[10,13,24],"bg-screen":[5,7,14]},
+        purple: {"primary":[170,136,255],"primary-dim":[130,100,200],"secondary":[104,84,160],"tertiary":[104,84,160],"success":[232,160,48],"success-dim":[184,120,32],"error":[170,136,255],"warning":[170,136,255],"info":[104,84,160],"muted":[104,96,116],"bezel":[50,46,58],"bg-deep":[6,4,10],"bg-panel":[12,8,18],"bg-module":[16,11,24],"bg-screen":[9,6,14]},
+        white:  {"primary":[220,220,230],"primary-dim":[170,170,180],"secondary":[100,160,180],"tertiary":[100,160,180],"success":[0,200,255],"success-dim":[0,150,200],"error":[220,220,230],"warning":[220,220,230],"info":[100,160,180],"muted":[108,108,112],"bezel":[52,52,56],"bg-deep":[6,6,8],"bg-panel":[12,12,16],"bg-module":[16,16,22],"bg-screen":[10,10,12]}
+    };
+    var PRESET_KEYS = Object.keys(PRESETS.amber);
+
+    var shell = document.getElementById('hx-shell');
+    var rail = document.getElementById('hx-rail');
+
+    function buildRail(variant) {
+        rail.innerHTML = '';
+        RAILS[variant].forEach(function (item) {
+            if (item.divider) {
+                var d = document.createElement('div');
+                d.className = 'shell-rail-divider';
+                rail.appendChild(d);
+                return;
+            }
+            var a = document.createElement('a');
+            a.className = 'shell-rail-item';
+            a.href = '#';
+            if (item.current) a.setAttribute('aria-current', 'page');
+            a.innerHTML = '<span class="shell-rail-icon">' + item.icon +
+                '</span><span class="shell-rail-label">' + item.label + '</span>';
+            rail.appendChild(a);
+        });
+    }
+
+    function applyPreset(name) {
+        var root = document.documentElement;
+        PRESET_KEYS.forEach(function (key) {
+            var prop = '--color-' + key + '-rgb';
+            if (!name) {
+                root.style.removeProperty(prop);
+            } else {
+                root.style.setProperty(prop, PRESETS[name][key].join(' '));
+            }
+        });
+    }
+
+    document.getElementById('hx-variant').addEventListener('change', function (e) {
+        buildRail(e.target.value);
+    });
+    document.getElementById('hx-pin').addEventListener('change', function (e) {
+        if (e.target.checked) { shell.dataset.rail = 'pinned'; }
+        else { delete shell.dataset.rail; }
+    });
+    document.getElementById('hx-theme').addEventListener('change', function (e) {
+        applyPreset(e.target.value);
+    });
+
+    buildRail('mothership');
+</script>
+
+</body>
+</html>
