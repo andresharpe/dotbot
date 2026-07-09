@@ -35,9 +35,9 @@ test.describe("UI degrades gracefully on server errors", () => {
       `Uncaught page errors:\n${pageErrors.join("\n")}`,
     ).toEqual([]);
 
-    await page.locator('.tab[data-tab="settings"]').click();
+    await page.locator('.shell-rail-item[data-tab="settings"]').click();
     await expect(page.locator("#tab-settings")).toHaveClass(/active/);
-    await page.locator('.tab[data-tab="overview"]').click();
+    await page.locator('.shell-rail-item[data-tab="overview"]').click();
     await expect(page.locator("#tab-overview")).toHaveClass(/active/);
 
     // Confirm the error path ran rather than passing silently.
