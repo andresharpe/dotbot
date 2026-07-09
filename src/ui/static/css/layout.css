@@ -1,33 +1,27 @@
 /* DOTBOT Control Panel - Layout
  * Page structure: control panel, header, footer, main content area
  */
-/* ========== LAYOUT ========== */
-.control-panel {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: var(--bg-deep);
+/* ========== LAYOUT ==========
+ * Page chrome (topbar/rail/ticker) comes from /shared/css/dotbot-shell.css
+ * (#551/#605). This file keeps app-side pieces that live inside the shell:
+ * context group, badges, pickers, LEDs, editor button, main-layout/sidebar. */
+
+/* Glue: the cockpit layout fills the shell content area without the 1280px
+ * reading cap — resizable sidebar + pipeline columns need full width. */
+.shell-content > .main-layout {
+    height: 100%;
 }
 
-/* ========== HEADER ========== */
-.header {
+/* App-side topbar group: project badge + runtime picker + workflow badges */
+.shell-context-group {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 20px;
-    background: var(--bezel-dark);
-    border-bottom: 1px solid var(--bezel-edge);
-    flex-shrink: 0;
-}
-
-.system-id {
-    display: flex;
-    align-items: center;
-    gap: 16px;
+    gap: 12px;
+    min-width: 0;
 }
 
 .logo {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.15em;
     color: var(--color-primary);
@@ -229,11 +223,6 @@
     100% { transform: scale(1); }
 }
 
-.header-signals {
-    display: flex;
-    gap: 24px;
-}
-
 .signal {
     display: flex;
     align-items: center;
@@ -269,7 +258,7 @@
     50% { opacity: 0.4; }
 }
 
-/* Framework banner (DOTBOT_HOME / git state) — lives in .header-signals so
+/* Framework banner (DOTBOT_HOME / git state) — lives in the shell topbar so
    the active checkout is the first thing a dev sees on every page paint.
    Default state stays muted; --warn pops to the warning palette when the
    framework tree is dirty or off main/master. */
@@ -359,82 +348,8 @@
     overflow: hidden;
 }
 
-/* Tab Bar Container (Full Width) */
-.tab-bar-container {
-    background: var(--bezel-dark);
-    border-bottom: 1px solid var(--bezel-edge);
-    flex-shrink: 0;
-}
-
-/* Tab Bar */
-.tab-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--bezel-dark);
-    flex-shrink: 0;
-    padding-right: 12px;
-}
-
-.tab-group-main {
-    display: flex;
-}
-
-.tab {
-    padding: 10px 18px;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    font-family: var(--font-ui);
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--label-color);
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.tab:hover {
-    color: var(--color-primary-dim);
-    background: var(--primary-05);
-}
-
-.tab.active {
-    color: var(--color-primary);
-    border-bottom-color: var(--color-primary);
-    background: var(--primary-08);
-}
-
-/* Tab Action Button (Whisper) */
-.tab-action {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: transparent;
-    border: 1px solid var(--color-secondary-dim);
-    color: var(--color-secondary);
-    padding: 6px 12px;
-    font-family: var(--font-ui);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.tab-action:hover {
-    background: var(--secondary-15);
-    border-color: var(--color-secondary);
-    box-shadow: 0 0 8px var(--secondary-glow);
-}
-
-.tab-action svg {
-    width: 14px;
-    height: 14px;
-}
+/* Tab bar chrome removed in #605 — navigation lives in the shell rail
+ * (/shared/css/dotbot-shell.css). Panes below are still driven by tabs.js. */
 
 /* Tab Content */
 .tab-content {
@@ -453,46 +368,41 @@
     display: block;
 }
 
-/* ========== FOOTER ========== */
-.footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 20px;
-    background: var(--bezel-dark);
-    border-top: 1px solid var(--bezel-edge);
-    font-size: 10px;
+/* Footer chrome removed in #605 — replaced by the shell ticker slot
+ * (/shared/css/dotbot-shell.css); scroll behaviour lands with #607. */
+
+/* Topbar density: nothing wraps in the 44px bar. Priority under pressure:
+ * identity values (project, workflow, DOTBOT_HOME SHA) keep full text; the
+ * inert search pill compresses first; workflow pills ellipsize last — the
+ * full list lives on the Workflows tab. */
+.shell-topbar .workflow-pills {
+    flex-wrap: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.shell-topbar .project-badge,
+.shell-topbar .workflow-badge,
+.shell-topbar .framework-banner {
+    white-space: nowrap;
     flex-shrink: 0;
 }
 
-.footer-left,
-.footer-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.shell-topbar .framework-banner__value {
+    white-space: nowrap;
 }
 
-.footer-center {
-    flex: 1;
-    text-align: center;
+.shell-topbar .shell-search {
+    min-width: 120px;
+    flex-shrink: 1;
+    overflow: hidden;
 }
 
-.footer-label {
-    color: var(--label-color);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.footer-value {
-    color: var(--type-color, var(--color-primary-dim));
-    font-weight: 500;
-}
-
-.footer-sep {
-    color: var(--bezel-edge);
-}
-
-.footer-mission {
-    color: var(--label-color);
-    font-style: italic;
+@media (max-width: 1200px) {
+    .shell-topbar .shell-search,
+    .shell-topbar .workflow-pills {
+        display: none;
+    }
 }
