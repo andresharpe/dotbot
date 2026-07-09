@@ -64,7 +64,9 @@
         display: flex;
     }
 
-    .system-id {
+    .shell-context-group,
+    .shell-search,
+    #framework-banner {
         display: none;
     }
 
@@ -133,11 +135,7 @@
         padding-left: 16px;
     }
 
-    /* Header signals: compact */
-    .header-signals {
-        gap: 12px;
-    }
-
+    /* Topbar signals: LEDs only, no text labels */
     .signal span:not(.led) {
         display: none;
     }
@@ -180,15 +178,5 @@
 
     .stat-card {
         padding: 10px 12px;
-    }
-
-    /* Tab bar: scrollable */
-    .tab-bar {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .tab-group-main {
-        flex-wrap: nowrap;
     }
 }
