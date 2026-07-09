@@ -1,0 +1,62 @@
+name: "Auto-close linked issues (release branches)"
+
+on:
+  # pull_request_target: token can close issues from fork PRs; no checkout.
+  pull_request_target:
+    types: [closed]
+    branches:
+      - 'releases/**'
+
+permissions:
+  issues: write
+
+jobs:
+  close-linked:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close linked issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const base = pr.base.ref;
+            const body = pr.body || '';
+
+            // Same keywords as pr-link-check.yml; bare same-repo #N only.
+            const re = /(?:closes|fixes|resolves):?\s+#(\d+)/gi;
+            const numbers = [...new Set([...body.matchAll(re)].map(m => Number(m[1])))];
+
+            if (numbers.length === 0) {
+              core.info('No linked issues found in PR body.');
+              return;
+            }
+
+            for (const issue_number of numbers) {
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number,
+                });
+                if (issue.pull_request) { core.info(`#${issue_number} is a PR, skipping.`); continue; }
+                if (issue.state === 'closed') { core.info(`#${issue_number} already closed, skipping.`); continue; }
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number,
+                  body: `Closed via #${pr.number} (merged to \`${base}\`).`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                });
+                core.info(`Closed #${issue_number}.`);
+              } catch (err) {
+                core.warning(`Failed to close #${issue_number}: ${err.message}`);
+              }
+            }
