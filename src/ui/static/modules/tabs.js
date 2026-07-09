@@ -34,6 +34,9 @@ function switchToTab(targetId) {
     const targetPane = document.getElementById(`tab-${targetId}`);
     if (targetPane) targetPane.classList.add('active');
 
+    // Keep the shell rail's active marker in sync (modules/shell.js)
+    syncRailActive(targetId);
+
     // Switch context panel in left sidebar
     switchContextPanel(targetId);
 }

@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="css/crt.css">
     <link rel="stylesheet" href="css/processes.css">
     <link rel="stylesheet" href="css/responsive.css">
+    <link rel="stylesheet" href="/shared/css/dotbot-shell.css">
     <style>
         /* Hide body until theme is loaded to prevent flash */
         body { opacity: 0; transition: opacity 0.15s ease-in; }
@@ -23,14 +24,16 @@
 </head>
 <body>
     <div class="mobile-overlay" id="mobile-overlay"></div>
-    <div class="control-panel">
-        <!-- Header (v2 style) -->
-        <header class="header">
+    <div class="shell" id="shell">
+        <!-- Top bar (v4 shell, #551/#605) -->
+        <header class="shell-topbar">
             <button class="hamburger-menu" id="hamburger-menu" aria-label="Toggle menu">
                 <!-- Menu icon loaded dynamically -->
             </button>
-            <div class="system-id">
+            <div class="shell-logo">
                 <span class="logo">◈ DOTBOT</span>
+            </div>
+            <div class="shell-context-group">
                 <span class="project-badge" id="project-name">autonomous</span>
                 <label class="runtime-picker-wrap" title="Registered runtime">
                     <span class="runtime-picker-count" id="runtime-picker-status">0</span>
@@ -41,11 +44,19 @@
                 <span class="workflow-badge" id="workflow-badge"></span>
                 <span class="workflow-pills" id="workflow-pills"></span>
             </div>
-            <div class="header-signals">
-                <div class="framework-banner" id="framework-banner" title="DOTBOT_HOME / framework status">
-                    <span class="framework-banner__label">DOTBOT_HOME</span>
-                    <span class="framework-banner__value" id="framework-banner-value">…</span>
-                </div>
+            <button class="shell-search" type="button" disabled title="Command palette — coming with #553">
+                <span>search…</span>
+                <span class="shell-search-kbd">Ctrl+K</span>
+            </button>
+            <div class="framework-banner" id="framework-banner" title="DOTBOT_HOME / framework status">
+                <span class="framework-banner__label">DOTBOT_HOME</span>
+                <span class="framework-banner__value" id="framework-banner-value">…</span>
+            </div>
+            <button class="editor-btn dimmed" id="editor-btn" title="Configure editor" aria-label="Configure editor">
+                <span class="editor-btn-icon" id="editor-btn-icon"></span>
+                <span class="editor-btn-label" id="editor-btn-label"></span>
+            </button>
+            <div class="shell-leds">
                 <div class="signal">
                     <span class="led" id="connection-led"></span>
                     <span id="connection-status">CONNECTING</span>
@@ -61,26 +72,23 @@
             </div>
         </header>
 
-        <!-- Tab Bar (Full Width) -->
-        <div class="tab-bar-container">
-            <div class="tab-bar">
-                <div class="tab-group-main">
-                    <button class="tab active" data-tab="overview">Overview</button>
-                    <button class="tab" data-tab="product">Product</button>
-                    <button class="tab" data-tab="pipeline">Roadmap</button>
-                    <button class="tab" data-tab="processes">Processes</button>
-                    <button class="tab" data-tab="decisions">Decisions</button>
-                    <button class="tab" data-tab="workflow">Workflows</button>
-                    <button class="tab" data-tab="settings">Settings</button>
-                </div>
-                <button class="editor-btn dimmed" id="editor-btn" title="Configure editor" aria-label="Configure editor">
-                    <span class="editor-btn-icon" id="editor-btn-icon"></span>
-                    <span class="editor-btn-label" id="editor-btn-label"></span>
-                </button>
-            </div>
-        </div>
+        <!-- Icon rail (replaces tab bar; destinations mirror pre-shell tabs 1:1 — restructure in #606) -->
+        <nav class="shell-rail" id="shell-rail" aria-label="Primary">
+            <a class="shell-rail-item" href="#" data-tab="overview" aria-current="page"><span class="shell-rail-icon">□</span><span class="shell-rail-label">Overview</span></a>
+            <a class="shell-rail-item" href="#" data-tab="product"><span class="shell-rail-icon">◆</span><span class="shell-rail-label">Product</span></a>
+            <a class="shell-rail-item" href="#" data-tab="pipeline"><span class="shell-rail-icon">▣</span><span class="shell-rail-label">Roadmap</span></a>
+            <a class="shell-rail-item" href="#" data-tab="processes"><span class="shell-rail-icon">◎</span><span class="shell-rail-label">Processes</span></a>
+            <a class="shell-rail-item" href="#" data-tab="decisions"><span class="shell-rail-icon">◇</span><span class="shell-rail-label">Decisions</span></a>
+            <a class="shell-rail-item" href="#" data-tab="workflow"><span class="shell-rail-icon">○</span><span class="shell-rail-label">Workflows</span></a>
+            <div class="shell-rail-divider"></div>
+            <a class="shell-rail-item" href="#" data-tab="settings"><span class="shell-rail-icon">⚙</span><span class="shell-rail-label">Settings</span></a>
+            <button class="shell-rail-item shell-rail-pin" id="shell-rail-pin" type="button" title="Pin rail open">
+                <span class="shell-rail-icon">⇥</span><span class="shell-rail-label">Pin rail</span>
+            </button>
+        </nav>
 
-        <!-- Main Layout -->
+        <!-- Content -->
+        <div class="shell-content">
         <div class="main-layout" id="main-layout">
             <!-- Left Sidebar (Context-Aware) -->
             <aside class="sidebar-left">
@@ -1239,26 +1247,12 @@
             </main>
         </div>
 
-        <footer class="footer">
-            <div class="footer-left">
-                <span class="footer-label">INSTANCE ID:</span>
-                <span class="footer-value" id="instance-id">--</span>
-                <span class="footer-sep">|</span>
-                <span class="footer-label">LAST UPDATE:</span>
-                <span class="footer-value" id="last-update">--:--:--</span>
-                <span class="footer-sep">|</span>
-                <span class="footer-label">REFRESH:</span>
-                <span class="footer-value" data-type="primary">5s</span>
-                <span class="footer-sep">|</span>
-                <span class="footer-label">CACHE:</span>
-                <span class="footer-value" id="cache-status">--</span>
-            </div>
-            <div class="footer-center">
-                <span class="footer-mission" id="footer-mission">◈ .bot autonomous development system</span>
-            </div>
-            <div class="footer-right">
-                <span class="footer-label">v4.0.0</span>
-            </div>
+        </div><!-- /shell-content -->
+
+        <!-- Dispatch ticker slot (static line; scroll behaviour lands with #607) -->
+        <footer class="shell-ticker">
+            <span class="shell-ticker-line">INSTANCE <span id="instance-id">--</span> · LAST UPDATE <span id="last-update">--:--:--</span> · <span id="footer-mission">◈ .bot autonomous development system</span></span>
+            <span class="shell-ticker-byline">v4.0.0</span>
         </footer>
     </div>
 
@@ -1592,6 +1586,7 @@
     <script src="modules/theme.js"></script>
     <script src="modules/markdown.js"></script>
     <script src="modules/tabs.js"></script>
+    <script src="modules/shell.js"></script>
     <script src="modules/sidebar.js"></script>
     <script src="modules/workflow.js"></script>
     <script src="modules/runs.js"></script>
