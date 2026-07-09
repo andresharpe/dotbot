@@ -1,42 +1,20 @@
 @page
 @model Dotbot.Server.Pages.IndexModel
 @{
-    Layout = null;
+    Layout = "_LayoutDashboard";
+    ViewData["Title"] = "Dashboard";
+    ViewData["UserName"] = Model.UserName;
 }
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dotbot Dashboard</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/dashboard.css" />
-</head>
-<body>
-    <div class="control-panel">
-        <!-- Header -->
-        <div class="header-bar">
-            <div class="header-left">
-                <span class="logo">DOTBOT</span>
-                <span class="logo-sub">DASHBOARD</span>
-            </div>
-            <div class="header-right">
-                <span class="user-info">@Model.UserName</span>
-                <a href="/api/dashboard/signout" class="ctrl-btn-sm">SIGN OUT</a>
-            </div>
-        </div>
 
-        <!-- Tab Bar -->
-        <div class="tab-bar-container">
-            <button class="tab active" data-tab="overview">Overview</button>
-            <button class="tab" data-tab="by-person">By Person</button>
-            <button class="tab" data-tab="by-project">By Project</button>
-        </div>
+<!-- Tab Bar (in-page filters; become filter chips in #606) -->
+<div class="tab-bar-container">
+    <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="by-person">By Person</button>
+    <button class="tab" data-tab="by-project">By Project</button>
+</div>
 
-        <!-- Main Content -->
-        <div class="main-content">
+<!-- Main Content -->
+<div class="main-content">
             <!-- Overview Tab -->
             <div class="tab-pane active" id="tab-overview">
                 <div class="stats-row">
@@ -140,13 +118,6 @@
             </div>
         </div>
 
-        <!-- Footer -->
-        <div class="footer-bar">
-            <span id="last-refresh">Loading...</span>
-            <span class="footer-version">Dotbot Dashboard v1.0</span>
-        </div>
-    </div>
-
+@section Scripts {
     <script src="/js/dashboard.js"></script>
-</body>
-</html>
+}

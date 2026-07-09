@@ -36,7 +36,7 @@ test.describe("Settings persistence via real /api/settings", () => {
     // initSettingsToggles() binds change handlers after several awaited
     // fetches inside the DOMContentLoaded handler.
     await page.waitForLoadState("networkidle");
-    await page.locator('.tab[data-tab="settings"]').click();
+    await page.locator('.shell-rail-item[data-tab="settings"]').click();
     await expect(page.locator("#tab-settings")).toHaveClass(/active/);
 
     // show-debug lives in #settings-execution, which starts hidden until
@@ -72,7 +72,7 @@ test.describe("Settings persistence via real /api/settings", () => {
     // Reload exercises the GET round-trip: stored value → /api/settings → UI.
     await page.reload();
     await page.waitForLoadState("networkidle");
-    await page.locator('.tab[data-tab="settings"]').click();
+    await page.locator('.shell-rail-item[data-tab="settings"]').click();
     await page
       .locator('.settings-nav-item[data-settings-section="execution"]')
       .click();

@@ -10,9 +10,9 @@ test.describe("Control buttons emit correct backend requests", () => {
     page,
   }) => {
     await page.goto("/");
-    await expect(page.locator('.tab[data-tab="overview"]')).toHaveClass(
-      /active/,
-    );
+    await expect(
+      page.locator('.shell-rail-item[data-tab="overview"]'),
+    ).toHaveAttribute("aria-current", "page");
 
     // app.js's DOMContentLoaded handler awaits initSidebar() before calling
     // initControlButtons(), so the panic-reset listener isn't attached at

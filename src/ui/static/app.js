@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize UI components
     initTabs();
+    initShell();
     initLogoClick();
     initHamburgerMenu();
     initSidebarCollapse();
