@@ -11,9 +11,9 @@ test.describe("State polling reflects backend state in the DOM", () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator('.tab[data-tab="overview"]')).toHaveClass(
-      /active/,
-    );
+    await expect(
+      page.locator('.shell-rail-item[data-tab="overview"]'),
+    ).toHaveAttribute("aria-current", "page");
   });
 
   test.afterEach(async () => {
