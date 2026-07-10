@@ -92,7 +92,21 @@
             <!-- Left Sidebar (Context-Aware) -->
             <aside class="sidebar-left">
                 <!-- Overview Context: Control, Session, Verification (mirrors right sidebar) -->
-                <div class="context-panel" data-context="overview">
+                <!-- Overview cockpit moved into the Overview pane in #606 -->
+                <!-- Per-tab context panels moved into their panes in #606 -->
+            </aside>
+
+            <!-- Panel Splitter -->
+            <div class="panel-splitter" id="panel-splitter" title="Drag to resize · Double-click to reset"></div>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Tab Content -->
+                <div class="tab-content">
+                    <!-- Overview Tab -->
+                    <div class="tab-pane active" id="tab-overview">
+                      <div class="overview-cockpit">
+                        <aside class="cockpit-col">
                     <!-- Agent Control -->
                     <div class="left-module">
                         <div class="module-header">
@@ -202,21 +216,8 @@
                         </button>
                         <div class="panic-hint">Clear stale locks &amp; signals</div>
                     </div>
-                </div>
-
-                <!-- Per-tab context panels moved into their panes in #606 -->
-            </aside>
-
-            <!-- Panel Splitter -->
-            <div class="panel-splitter" id="panel-splitter" title="Drag to resize · Double-click to reset"></div>
-
-            <!-- Main Content -->
-            <main class="main-content">
-                <!-- Tab Content -->
-                <div class="tab-content">
-                    <!-- Overview Tab -->
-                    <div class="tab-pane active" id="tab-overview">
-                      <div class="overview-layout">
+                
+                        </aside>
                         <div class="overview-content">
                         <!-- Executive Summary -->
                         <div class="executive-summary" id="executive-summary" style="display: none;"></div>
@@ -308,7 +309,7 @@
                                 <div id="overview-workflow-phases"></div>
                             </div>
                         </div>
-                      </div><!-- /.overview-layout -->
+                      </div><!-- /.overview-cockpit -->
                     </div>
 
                     <!-- Tasks Tab (unified surface: pipeline board + Processes list + stat counts, #606/#551) -->

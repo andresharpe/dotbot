@@ -1840,11 +1840,31 @@
     margin: 0 0.15em;
 }
 
-/* Workflow Phases — Overview side panel */
-.overview-layout {
+/* Overview cockpit grid (#606): controls column + content + optional side panel */
+.overview-cockpit {
     display: flex;
     height: 100%;
     gap: 1rem;
+}
+
+.cockpit-col {
+    flex: 0 0 clamp(240px, 22vw, 300px);
+    min-width: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+@media (max-width: 900px) {
+    .overview-cockpit {
+        flex-direction: column;
+    }
+    /* Control column first so RUN/STOP + panic stay reachable on mobile */
+    .cockpit-col {
+        flex: none;
+        order: -1;
+    }
 }
 
 .overview-content {
