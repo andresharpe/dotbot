@@ -204,100 +204,7 @@
                     </div>
                 </div>
 
-                <!-- Product Context: Project Info + File Navigator -->
-                <div class="context-panel hidden" data-context="product">
-                    <div class="sidebar-section" id="project-info-card">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Project</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="project-info">
-                                <div class="project-info-name" id="project-info-name">--</div>
-                                <div class="project-info-workflow" id="project-info-workflow"></div>
-                                <div class="project-info-summary" id="project-info-summary"></div>
-                                <div class="project-info-path" id="project-info-path"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Product Docs</span>
-                        </div>
-                        <div class="sidebar-content" id="product-file-nav">
-                            <div class="loading-state">Loading...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Pipeline/Processes context panels removed in #606 - superseded by the Tasks surface -->
-
-                <!-- Decisions Context: Decision Summary -->
-                <div class="context-panel hidden" data-context="decisions">
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Decisions</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="decision-summary">
-                                <div class="summary-item">
-                                    <span class="summary-label">Proposed</span>
-                                    <span class="summary-value" id="decision-count-proposed">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Accepted</span>
-                                    <span class="summary-value active" id="decision-count-accepted">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Deprecated</span>
-                                    <span class="summary-value" id="decision-count-deprecated">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Superseded</span>
-                                    <span class="summary-value" id="decision-count-superseded">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Total</span>
-                                    <span class="summary-value" id="decision-count-total">0</span>
-                                </div>
-                            </div>
-                            <div style="margin-top: 10px;">
-                                <button class="ctrl-btn-sm primary" id="decision-create-btn" style="width:100%;">+ New Decision</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Workflow Context: Nav Tree -->
-                <div class="context-panel hidden" data-context="workflow">
-                    <div class="sidebar-section">
-                        <div class="sidebar-content" id="wf-nav-tree">
-                            <div class="loading-state">Loading workflows...</div>
-                        </div>
-                    </div>
-                    <div id="prompts-sidebar" style="display:none"></div>
-                </div>
-
-                <!-- Settings Context -->
-                <div class="context-panel hidden" data-context="settings">
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Settings</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="settings-nav">
-                                <div class="settings-nav-item active" data-settings-section="theme">Theme</div>
-                                <div class="settings-nav-item" data-settings-section="provider">Coding Agent</div>
-                                <div class="settings-nav-item" data-settings-section="analysis">Analysis Phase</div>
-                                <div class="settings-nav-item" data-settings-section="execution">Execution Phase</div>
-                                <div class="settings-nav-item" data-settings-section="verification">Verification</div>
-                                <div class="settings-nav-item" data-settings-section="costs">Costs</div>
-                                <div class="settings-nav-item" data-settings-section="editor">Editor</div>
-                                <div class="settings-nav-item" data-settings-section="mothership">Mothership</div>
-                                <div class="settings-nav-item" data-settings-section="aether" id="aetherNavItem" style="display:none">Aether</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <!-- Per-tab context panels moved into their panes in #606 -->
             </aside>
 
             <!-- Panel Splitter -->
@@ -458,6 +365,31 @@
 
                     <!-- Decisions Tab -->
                     <div class="tab-pane" id="tab-decisions">
+                        <div class="decisions-header-strip">
+                            <div class="decision-summary">
+                                <div class="summary-item">
+                                    <span class="summary-label">Proposed</span>
+                                    <span class="summary-value" id="decision-count-proposed">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Accepted</span>
+                                    <span class="summary-value active" id="decision-count-accepted">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Deprecated</span>
+                                    <span class="summary-value" id="decision-count-deprecated">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Superseded</span>
+                                    <span class="summary-value" id="decision-count-superseded">0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Total</span>
+                                    <span class="summary-value" id="decision-count-total">0</span>
+                                </div>
+                            </div>
+                            <button class="ctrl-btn-sm primary" id="decision-create-btn">+ New Decision</button>
+                        </div>
                         <!-- Decision List (expandable rows grouped by status) -->
                         <div id="decision-list">
                             <div class="empty-state">No decisions yet. Create one or run the interview workflow to generate them automatically.</div>
@@ -541,6 +473,16 @@
 
                     <!-- Workflow Tab -->
                     <div class="tab-pane" id="tab-workflow">
+                      <div class="pane-with-nav">
+                        <div class="pane-nav">
+                            <div class="sidebar-section">
+                                <div class="sidebar-content" id="wf-nav-tree">
+                                    <div class="loading-state">Loading workflows...</div>
+                                </div>
+                            </div>
+                            <div id="prompts-sidebar" style="display:none"></div>
+                        </div>
+                        <div class="pane-body">
                         <!-- All workflow runs (concurrent runs + repeat instances), grouped by run -->
                         <div class="module workflow-runs-panel" id="workflow-runs-panel">
                             <div class="module-header">
@@ -573,14 +515,41 @@
                                 </div>
                             </div>
                         </div>
+                        </div><!-- /pane-body -->
+                      </div><!-- /pane-with-nav -->
                     </div>
 
                     <!-- Product Tab -->
                     <div class="tab-pane" id="tab-product">
-                        <div class="product-viewer">
-                            <div class="product-content full-width">
-                                <div class="doc-viewer" id="doc-viewer">
-                                    <div class="doc-placeholder">Select a document from the left panel</div>
+                        <div class="pane-with-nav">
+                            <div class="pane-nav">
+                                <div class="sidebar-section" id="project-info-card">
+                                    <div class="sidebar-header">
+                                        <span class="sidebar-title">◈ Project</span>
+                                    </div>
+                                    <div class="sidebar-content">
+                                        <div class="project-info">
+                                            <div class="project-info-name" id="project-info-name">--</div>
+                                            <div class="project-info-workflow" id="project-info-workflow"></div>
+                                            <div class="project-info-summary" id="project-info-summary"></div>
+                                            <div class="project-info-path" id="project-info-path"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-header">
+                                        <span class="sidebar-title">◈ Product Docs</span>
+                                    </div>
+                                    <div class="sidebar-content" id="product-file-nav">
+                                        <div class="loading-state">Loading...</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="product-viewer">
+                                <div class="product-content full-width">
+                                    <div class="doc-viewer" id="doc-viewer">
+                                        <div class="doc-placeholder">Select a document from the left panel</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -588,6 +557,27 @@
 
                     <!-- Settings Tab -->
                     <div class="tab-pane" id="tab-settings">
+                      <div class="pane-with-nav">
+                        <div class="pane-nav">
+                            <div class="sidebar-section">
+                                <div class="sidebar-header">
+                                    <span class="sidebar-title">◈ Settings</span>
+                                </div>
+                                <div class="sidebar-content">
+                                    <div class="settings-nav">
+                                        <div class="settings-nav-item active" data-settings-section="theme">Theme</div>
+                                        <div class="settings-nav-item" data-settings-section="provider">Coding Agent</div>
+                                        <div class="settings-nav-item" data-settings-section="analysis">Analysis Phase</div>
+                                        <div class="settings-nav-item" data-settings-section="execution">Execution Phase</div>
+                                        <div class="settings-nav-item" data-settings-section="verification">Verification</div>
+                                        <div class="settings-nav-item" data-settings-section="costs">Costs</div>
+                                        <div class="settings-nav-item" data-settings-section="editor">Editor</div>
+                                        <div class="settings-nav-item" data-settings-section="mothership">Mothership</div>
+                                        <div class="settings-nav-item" data-settings-section="aether" id="aetherNavItem" style="display:none">Aether</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="settings-container">
                             <!-- Theme Section -->
                             <div class="settings-section" id="settings-theme">
@@ -1091,6 +1081,7 @@
                                 </div>
                             </div>
                         </div>
+                      </div><!-- /pane-with-nav -->
                     </div>
                 </div>
             </main>
