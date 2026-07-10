@@ -226,7 +226,7 @@ the decision records created by Phase 1b.]
 
 ### Phase 0: Load Tools
 
-Load dotbot MCP tools in a single ToolSearch call using the comma-separated `select:` form. Same pattern as `content/prompts/98-analyse-task.md`.
+Load dotbot MCP tools in a single ToolSearch call using the comma-separated `select:` form. Same pattern as `content/prompts/100-single-session-task.md`.
 
 ```
 ToolSearch({ query: "select:mcp__dotbot__task_get_context,mcp__dotbot__task_set_status,mcp__dotbot__task_update,mcp__dotbot__decision_create,mcp__dotbot__decision_list" })

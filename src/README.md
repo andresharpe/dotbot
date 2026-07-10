@@ -1,6 +1,6 @@
 # dotbot - Autonomous Development Framework
 
-A project-agnostic framework for autonomous software development across Claude Code, Codex, and Antigravity CLIs. Provides task management, two-phase execution (analysis + implementation), per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
+A project-agnostic framework for autonomous software development across Claude Code, Codex, and Antigravity CLIs. Provides task management, single-session task execution, per-task git worktree isolation, a web dashboard, and a PowerShell MCP server.
 
 ## Installation
 
@@ -64,37 +64,31 @@ dotbot go
 
 ## How It Works
 
-### Two-Phase Task Execution
+### Single-Session Task Execution
 
-Every task goes through two phases, each run by a separate provider CLI instance:
+Every task runs in one provider CLI session driven by `100-single-session-task.md`:
 
-**Phase 1 - Analysis** (`98-analyse-task.md`):
-- Identifies affected entities and files
-- Maps applicable coding standards
-- Validates dependencies
-- Produces concrete implementation guidance (insertion points, pattern snippets, field mappings)
-- Asks clarifying questions or proposes task splits if needed
-
-**Phase 2 - Execution** (`99-autonomous-task.md`):
-- Receives pre-packaged analysis context (no re-exploration needed)
-- Implements changes following the analysis guidance
+- Does focused discovery (or resumes from a `needs-input` handoff without re-exploring)
+- Loads applicable decisions and standards as binding constraints
+- Implements changes following existing project patterns
 - Runs verification scripts (privacy scan, git clean, build, format)
-- Commits with task ID references
+- Commits with task ID references and marks the task done
+
+If human input blocks progress, the session pauses on `needs-input` and resumes the same task once the question is answered. There is no separate analysis provider session.
 
 ### Per-Task Git Worktrees
 
 Each task runs in an isolated git worktree:
 
 ```
-Analysis picks up task
+Task-runner picks up task
   → Creates branch: task/{short-id}-{slug}
   → Creates worktree: ../worktrees/{repo}/task-{short-id}-{slug}/
   → Sets up junctions for shared .bot/ directories
   → Copies essential gitignored files (e.g., .env)
 
-Execution picks up analysed task
-  → Looks up existing worktree
-  → Provider CLI implements and commits to task branch
+Provider session runs in the worktree
+  → Discovers, implements, verifies, and commits to task branch
 
 On completion
   → Rebases task branch onto main
@@ -119,8 +113,7 @@ todo → analysing → analysed → in-progress → done
 
 | Type | Purpose |
 |------|---------|
-| `analysis` | Pre-flight task analysis |
-| `execution` | Task implementation |
+| `task-runner` | Single-session task execution loop |
 | `planning` | Roadmap generation |
 | `commit` | Git operations |
 | `task-creation` | Bulk task creation |

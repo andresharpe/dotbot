@@ -77,4 +77,21 @@ if (Test-Path $controlSettingsPath) {
     }
 }
 
+# Inbound decision funnel (issue #416): record workflow removal as a process
+# decision. Best-effort -- a failure here must not fail the workflow remove.
+try {
+    Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Decision" "Dotbot.Decision.psd1") -DisableNameChecking -Global -ErrorAction Stop
+    $wfNamespace = if ($Name -match '^([^:]+):(.+)$') { $Matches[1] } else { '' }
+    $null = New-InboundDecision -Source registry -BotPath $BotDir -Payload @{
+        action    = 'remove'
+        namespace = $wfNamespace
+        workflow  = $Name
+        title     = "Remove workflow $Name"
+    }
+} catch {
+    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+        Write-BotLog -Level Warn -Message "Inbound decision funnel (registry remove) failed" -Exception $_
+    }
+}
+
 Write-Success "Workflow '$Name' removed."

@@ -1,5 +1,5 @@
 class Dotbot < Formula
-  desc "Structured AI-assisted development framework with two-phase execution"
+  desc "Structured AI-assisted development framework with single-session execution"
   homepage "https://github.com/andresharpe/dotbot"
   # Bootstrap from the current repository snapshot until the v4.0.0 release asset is published.
   url "https://github.com/andresharpe/dotbot/archive/59d58ea441921f977678f54f8ec8408bacdcb45f.tar.gz"

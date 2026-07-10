@@ -89,7 +89,7 @@ function Resolve-DotbotContent {
 
     .PARAMETER Name
     Item name (e.g. 'implementer', 'start-from-prompt',
-    '98-analyse-task.md').
+    '100-single-session-task.md').
 
     .OUTPUTS
     [string] Absolute path, or $null.

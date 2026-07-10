@@ -125,4 +125,21 @@ if (Test-Path $controlSettingsPath) {
 $existing | Add-Member -NotePropertyName 'workflow' -NotePropertyValue $displayName -Force
 $existing | ConvertTo-Json -Depth 10 | Set-Content -Path $controlSettingsPath -Encoding UTF8
 
+# Inbound decision funnel (issue #416): record workflow adoption as a process
+# decision. Best-effort -- a failure here must not fail the workflow add.
+try {
+    Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Decision" "Dotbot.Decision.psd1") -DisableNameChecking -Global -ErrorAction Stop
+    $wfNamespace = if ($Name -match '^([^:]+):(.+)$') { $Matches[1] } else { '' }
+    $null = New-InboundDecision -Source registry -BotPath $BotDir -Payload @{
+        action    = 'add'
+        namespace = $wfNamespace
+        workflow  = $displayName
+        title     = if ($wfNamespace) { "Adopt workflow $displayName from $wfNamespace" } else { "Adopt workflow $displayName" }
+    }
+} catch {
+    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+        Write-BotLog -Level Warn -Message "Inbound decision funnel (registry add) failed" -Exception $_
+    }
+}
+
 Write-Success "Active workflow: $displayName"

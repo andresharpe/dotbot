@@ -4,7 +4,7 @@ Guidance for AI agents (Claude Code, Codex, etc.) working in this repository. `C
 
 ## Project Overview
 
-dotbot is a structured AI-assisted development framework built entirely in **PowerShell 7+**. It wraps AI coding workflows in managed, auditable processes with two-phase execution (analysis → implementation), per-task git worktree isolation, and a web dashboard for monitoring.
+dotbot is a structured AI-assisted development framework built entirely in **PowerShell 7+**. It wraps AI coding workflows in managed, auditable processes with single-session task execution, per-task git worktree isolation, and a web dashboard for monitoring.
 
 ## Commands
 
@@ -61,10 +61,9 @@ The PowerShell framework (`src/runtime/`, `src/mcp/`, `src/ui/`, `src/cli/`, `sr
 
 `src/runtime/Modules/ContentResolver/` implements project-over-framework lookup. A project can override any content item (agents/skills/prompts/workflows/stacks/recipes) by placing it under `<BotRoot>/content/<Type>/`, or override hook scripts by placing them under `<BotRoot>/hooks/<verify|dev|scripts>/`; the runtime falls back to `<DOTBOT_HOME>` otherwise. Merge is by filename — a project file replaces the framework file of the same name; framework-only files still run. APIs: `Resolve-DotbotContent`, `Get-DotbotContentItems`, `Get-DotbotHookChain`.
 
-### Two-phase execution
+### Single-session execution
 
-1. **Analysis** (`98-analyse-task.md`): explores codebase, builds context package, may propose splits. Task: `todo → analysing → analysed`.
-2. **Implementation** (`99-autonomous-task.md`): consumes context, writes code, tests, commits with `[task:XXXXXXXX]` tag. Task: `analysed → in-progress → done`.
+Each task runs in one provider session driven by `100-single-session-task.md`. That session handles discovery, implementation, verification, and commit (with a `[task:XXXXXXXX]` tag), then marks the task done. If human input is needed it pauses on `needs-input` and resumes the same task. Task lifecycle: `todo -> analysing -> analysed -> in-progress -> done`; the task-runner auto-promotes through `analysing`/`analysed` (there is no separate analysis provider session).
 
 ### Git worktree isolation
 

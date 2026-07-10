@@ -1682,8 +1682,7 @@ Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested import of 
 # select: query rather than broadening when the MCP server is still warming up.
 $promptFiles = @(
     (Join-Path $repoRoot "content\workflows\start-from-prompt\prompts\03b-expand-task-group.md"),
-    (Join-Path $repoRoot "content\workflows\start-from-prompt\prompts\01b-generate-decisions.md"),
-    (Join-Path $repoRoot "content/prompts/98-analyse-task.md")
+    (Join-Path $repoRoot "content\workflows\start-from-prompt\prompts\01b-generate-decisions.md")
 )
 foreach ($pf in $promptFiles) {
     $relName = Split-Path $pf -Leaf
@@ -1705,34 +1704,21 @@ Assert-True -Name "Fix#4: 01b-generate-decisions.md marks interview-summary.md a
 Assert-True -Name "Fix#4: 01b-generate-decisions.md still reads mission/tech-stack/entity-model unconditionally" `
     -Condition (($decisionsPromptSrc -match 'mission\.md') -and ($decisionsPromptSrc -match 'tech-stack\.md') -and ($decisionsPromptSrc -match 'entity-model\.md'))
 
-# ── Batch 2, Fix A: 99-autonomous-task.md must teach agents branch-conditional
-# push semantics so tasks that run on shared branches (main/master) are
-# pushed immediately instead of leaving the agent stuck on the
-# 02-git-pushed.ps1 gate at task_mark_done time.
-$autonomousTaskPrompts = @(
-    (Join-Path $repoRoot "content/prompts/99-autonomous-task.md"),
-    (Join-Path $repoRoot "content/workflows/start-from-jira/prompts/99-autonomous-task.md")
-)
-foreach ($pf in $autonomousTaskPrompts) {
-    $relName = Split-Path $pf -Leaf
-    # Label the prompt by its top-level source — "core" for the framework copy,
-    # the workflow name for workflow-scoped overrides.
-    $parentDir = if ($pf -match '[/\\]core[/\\]prompts[/\\]') {
-        'core'
-    } else {
-        Split-Path (Split-Path (Split-Path (Split-Path $pf -Parent) -Parent) -Parent) -Leaf
-    }
-    Assert-PathExists -Name "Fix#A: $parentDir/$relName exists" -Path $pf
-    $src = Get-Content $pf -Raw
-    Assert-True -Name "Fix#A: $parentDir/$relName assumes a task worktree" `
-        -Condition ($src -match 'task\s+worktree')
-    Assert-True -Name "Fix#A: $parentDir/$relName tells agents not to push" `
-        -Condition ($src -match 'do\s+not\s+push')
-    Assert-True -Name "Fix#A: $parentDir/$relName no longer has shared-branch fallback instructions" `
-        -Condition (-not ($src -match 'shared\s+branch|push\s+immediately|02-git-pushed\.ps1'))
-    Assert-True -Name "Fix#A: $parentDir/$relName no longer hardcodes old bold worktree assertion" `
-        -Condition (-not ($src -match 'You are working in a \*\*git worktree\*\* on branch'))
-}
+# ── Batch 2, Fix A: 100-single-session-task.md must assume a task worktree and
+# tell agents not to push (the framework squash-merges the task branch), with
+# no leftover shared-branch fallback that would strand the agent on the
+# 02-git-pushed.ps1 gate at task-completion time.
+$singleSessionPromptPath = Join-Path $repoRoot "content/prompts/100-single-session-task.md"
+Assert-PathExists -Name "Fix#A: 100-single-session-task.md exists" -Path $singleSessionPromptPath
+$singleSessionSrc = Get-Content $singleSessionPromptPath -Raw
+Assert-True -Name "Fix#A: 100-single-session-task.md assumes a task worktree" `
+    -Condition ($singleSessionSrc -match 'task\s+worktree')
+Assert-True -Name "Fix#A: 100-single-session-task.md tells agents not to push" `
+    -Condition ($singleSessionSrc -match 'do\s+not\s+push')
+Assert-True -Name "Fix#A: 100-single-session-task.md has no shared-branch fallback instructions" `
+    -Condition (-not ($singleSessionSrc -match 'shared\s+branch|push\s+immediately|02-git-pushed\.ps1'))
+Assert-True -Name "Fix#A: 100-single-session-task.md no longer hardcodes old bold worktree assertion" `
+    -Condition (-not ($singleSessionSrc -match 'You are working in a \*\*git worktree\*\* on branch'))
 
 # ── Batch 2, Fix B: 03a-plan-task-groups.md must include task-level rigor
 # (schema, acceptance-criteria quality bar, effort sizing, dependency chain)
@@ -1766,36 +1752,11 @@ Assert-True -Name "Fix#B: 03b cross-links to 03a for schema/criteria/sizing" `
 Assert-True -Name "Fix#B: 03b tells agent not to relax constraints during expansion" `
     -Condition ($expandTaskGroupSrc -match 'do\s+not\s+relax\s+them\s+during\s+expansion')
 
-# ── Batch 2, Fix C: 98-analyse-task.md must guard mission/tech-stack/entity-model
-# reads against the current task's outputs list, so tasks that produce those
-# files (e.g. workflow Product Documents) do not error during pre-flight
-# analysis trying to read files they are supposed to create.
-$analyseTaskPath = Join-Path $repoRoot "content/prompts/98-analyse-task.md"
-Assert-PathExists -Name "Fix#C: 98-analyse-task.md exists" -Path $analyseTaskPath
-$analyseTaskSrc = Get-Content $analyseTaskPath -Raw
-Assert-True -Name "Fix#C: 98-analyse-task.md has skip-if-produced guard in Phase 2" `
-    -Condition ($analyseTaskSrc -match '(?s)Phase\s+2:\s+Entity\s+Detection.*?Skip-if-produced\s+guard')
-Assert-True -Name "Fix#C: 98-analyse-task.md has skip-if-produced guard in Phase 6" `
-    -Condition ($analyseTaskSrc -match '(?s)Phase\s+6:\s+Product\s+Context\s+Extraction.*?Skip-if-produced\s+guard')
-Assert-True -Name "Fix#C: 98-analyse-task.md entity-model read is marked skip-if-outputs" `
-    -Condition ($analyseTaskSrc -match 'Read\s+entity\s+model[^\r\n]*skip\s+if\s+in\s+task\s+`outputs`')
-Assert-True -Name "Fix#C: 98-analyse-task.md mission read is marked skip-if-outputs" `
-    -Condition ($analyseTaskSrc -match 'Read\s+mission[^\r\n]*skip\s+if\s+in\s+task\s+`outputs`')
-Assert-True -Name "Fix#C: 98-analyse-task.md refers to task outputs list for the guard" `
-    -Condition ($analyseTaskSrc -match "task's\s+``outputs``\s+list")
-
-# ── #365: 98-analyse-task.md must not probe .bot/recipes/standards/global with
-# a Glob, and 99-autonomous-task.md must not list it as a context-file source.
-# The prompt now relies on {{APPLICABLE_STANDARDS}} plus the task's
-# `applicable_standards` list. Both checks must hold even if a future edit
-# reorders the Glob keys or splits the call across lines.
-Assert-True -Name "#365: 98-analyse-task.md no longer issues a Glob over .bot/recipes/standards/global" `
-    -Condition (-not ($analyseTaskSrc -match '(?s)Glob\([^)]*\.bot/recipes/standards/global'))
-Assert-True -Name "#365: 98-analyse-task.md tells the agent not to probe .bot/recipes/standards/global" `
-    -Condition ($analyseTaskSrc -match 'Do\s+not\s+probe\s+`\.bot/recipes/standards/global/`')
-
-$execPromptSrc = Get-Content (Join-Path $repoRoot "content/prompts/99-autonomous-task.md") -Raw
-Assert-True -Name "#365: 99-autonomous-task.md no longer cites .bot/recipes/standards/global/*.md as a context file" `
+# ── #365: 100-single-session-task.md must not list .bot/recipes/standards/global
+# as a context-file source. The prompt now relies on {{APPLICABLE_STANDARDS}}
+# plus the task's `applicable_standards` list.
+$execPromptSrc = Get-Content (Join-Path $repoRoot "content/prompts/100-single-session-task.md") -Raw
+Assert-True -Name "#365: 100-single-session-task.md no longer cites .bot/recipes/standards/global/*.md as a context file" `
     -Condition (-not ($execPromptSrc -match '\.bot/recipes/standards/global/\*\.md'))
 
 # Runtime fallback must not push agents back toward the directory the prompts
@@ -1886,13 +1847,12 @@ Assert-True -Name "Fix#H: 03a example task-groups.json includes applicable_decis
 Assert-True -Name "Fix#H: 03a Field Reference declares applicable_decisions as a required field" `
     -Condition ($planTaskGroupsSrc -match '\|\s+`applicable_decisions`\s+\|\s+Yes\s+\|')
 
-# ── #364: Both core prompts must warn that the Bash tool runs Bash, not
+# ── #364: The live task prompt must warn that the Bash tool runs Bash, not
 # PowerShell. Agents picked up PowerShell's $obj.property syntax from the
 # project's PowerShell-heavy code and got `extglob.project_name: command not
 # found` errors when piping JSON through Bash.
 $bashWarningPrompts = @(
-    (Join-Path $repoRoot "content/prompts/99-autonomous-task.md"),
-    (Join-Path $repoRoot "content/prompts/98-analyse-task.md")
+    (Join-Path $repoRoot "content/prompts/100-single-session-task.md")
 )
 foreach ($pf in $bashWarningPrompts) {
     $relName = Split-Path $pf -Leaf

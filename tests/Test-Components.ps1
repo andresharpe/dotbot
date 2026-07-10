@@ -6870,6 +6870,114 @@ foreach ($case in $validatorCases) {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# INBOUND DECISION FUNNEL (issue #416)
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  INBOUND DECISION FUNNEL" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Decision/Dotbot.Decision.psd1") -Force -DisableNameChecking
+
+# Isolated .bot for funnel tests (the module accepts -BotPath to target it).
+$funnelBot = Join-Path ([System.IO.Path]::GetTempPath()) (".bot-funnel-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $funnelBot | Out-Null
+
+function Get-FunnelRecord {
+    param([string]$DecisionId)
+    $decisionsDir = Join-Path $funnelBot "workspace" "decisions"
+    $file = Get-ChildItem -Path $decisionsDir -Recurse -Filter "$DecisionId*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $file) { return $null }
+    return (Get-Content $file.FullName -Raw | ConvertFrom-Json)
+}
+
+# --- One record per source, with expected type/status/impact/external_ref ---
+$mAppr = New-InboundDecision -Source mothership -BotPath $funnelBot -Payload @{
+    questionType = 'approval'; answer = 'approved'; questionText = 'Approve the plan?'
+    questionId = 'q-appr'; projectId = 'proj-1'; instanceId = 'inst-1'; taskId = 'task-1'
+}
+$mApprRec = Get-FunnelRecord -DecisionId $mAppr.decision_id
+Assert-True -Name "funnel/mothership approval writes record" -Condition ($null -ne $mApprRec)
+Assert-Equal -Name "funnel/mothership approval type" -Expected 'process' -Actual "$($mApprRec.type)"
+Assert-Equal -Name "funnel/mothership approval status accepted" -Expected 'accepted' -Actual "$($mApprRec.status)"
+Assert-Equal -Name "funnel/mothership approval impact medium" -Expected 'medium' -Actual "$($mApprRec.impact)"
+Assert-Equal -Name "funnel/mothership external_ref.source" -Expected 'mothership' -Actual "$($mApprRec.external_ref.source)"
+Assert-True -Name "funnel/mothership tags inbound:mothership" -Condition (@($mApprRec.tags) -contains 'inbound:mothership')
+
+$regAdd = New-InboundDecision -Source registry -BotPath $funnelBot -Payload @{
+    action = 'add'; namespace = 'myorg'; workflow = 'my-wf'; title = 'Adopt workflow my-wf from myorg'
+}
+$regRec = Get-FunnelRecord -DecisionId $regAdd.decision_id
+Assert-True -Name "funnel/registry add writes record" -Condition ($null -ne $regRec)
+Assert-Equal -Name "funnel/registry type process" -Expected 'process' -Actual "$($regRec.type)"
+Assert-Equal -Name "funnel/registry external_ref.source" -Expected 'registry' -Actual "$($regRec.external_ref.source)"
+Assert-True -Name "funnel/registry tags inbound:registry" -Condition (@($regRec.tags) -contains 'inbound:registry')
+
+$setProv = New-InboundDecision -Source settings -BotPath $funnelBot -Payload @{ key = 'provider'; before = 'claude'; after = 'codex' }
+$setProvRec = Get-FunnelRecord -DecisionId $setProv.decision_id
+Assert-True -Name "funnel/settings provider writes record" -Condition ($null -ne $setProvRec)
+Assert-Equal -Name "funnel/settings external_ref.source" -Expected 'settings' -Actual "$($setProvRec.external_ref.source)"
+Assert-True -Name "funnel/settings tags inbound:settings" -Condition (@($setProvRec.tags) -contains 'inbound:settings')
+
+# --- Idempotency: same key twice -> one record (cache-hit path) ---
+$dupBefore = (Get-ChildItem -Path (Join-Path $funnelBot "workspace/decisions") -Recurse -Filter '*.json' -File).Count
+$mApprDup = New-InboundDecision -Source mothership -BotPath $funnelBot -Payload @{
+    questionType = 'approval'; answer = 'approved'; questionText = 'Approve the plan?'
+    questionId = 'q-appr'; projectId = 'proj-1'; instanceId = 'inst-1'; taskId = 'task-1'
+}
+$dupAfter = (Get-ChildItem -Path (Join-Path $funnelBot "workspace/decisions") -Recurse -Filter '*.json' -File).Count
+Assert-True -Name "funnel/idempotency cache-hit returns null" -Condition ($null -eq $mApprDup)
+Assert-Equal -Name "funnel/idempotency no second record" -Expected $dupBefore -Actual $dupAfter
+
+# --- Dedup with empty cache: committed external_ref.key scan (fresh-clone) ---
+Remove-Item -Path (Join-Path $funnelBot ".control" "decisions-inbound") -Recurse -Force -ErrorAction SilentlyContinue
+$scanBefore = (Get-ChildItem -Path (Join-Path $funnelBot "workspace/decisions") -Recurse -Filter '*.json' -File).Count
+$mApprScan = New-InboundDecision -Source mothership -BotPath $funnelBot -Payload @{
+    questionType = 'approval'; answer = 'approved'; questionText = 'Approve the plan?'
+    questionId = 'q-appr'; projectId = 'proj-1'; instanceId = 'inst-1'; taskId = 'task-1'
+}
+$scanAfter = (Get-ChildItem -Path (Join-Path $funnelBot "workspace/decisions") -Recurse -Filter '*.json' -File).Count
+Assert-True -Name "funnel/dedup empty-cache scans committed records" -Condition ($null -eq $mApprScan)
+Assert-Equal -Name "funnel/dedup empty-cache no new record" -Expected $scanBefore -Actual $scanAfter
+
+# --- Non-material settings key -> no record ---
+$setNon = New-InboundDecision -Source settings -BotPath $funnelBot -Payload @{ key = 'costs.hourly_rate'; before = '50'; after = '60' }
+Assert-True -Name "funnel/settings non-material key skipped" -Condition ($null -eq $setNon)
+
+# --- Provider change and mothership.enabled both impact high ---
+$setMoth = New-InboundDecision -Source settings -BotPath $funnelBot -Payload @{ key = 'mothership.enabled'; before = 'False'; after = 'True' }
+$setMothRec = Get-FunnelRecord -DecisionId $setMoth.decision_id
+Assert-Equal -Name "funnel/settings provider impact high" -Expected 'high' -Actual "$($setProvRec.impact)"
+Assert-Equal -Name "funnel/settings mothership.enabled impact high" -Expected 'high' -Actual "$($setMothRec.impact)"
+
+# --- Free-text mothership -> proposed; approval -> accepted (already asserted) ---
+$mFree = New-InboundDecision -Source mothership -BotPath $funnelBot -Payload @{
+    questionType = 'freeText'; answer = 'some free text answer'
+    questionId = 'q-free'; projectId = 'proj-1'; instanceId = 'inst-1'; taskId = 'task-1'
+}
+$mFreeRec = Get-FunnelRecord -DecisionId $mFree.decision_id
+Assert-Equal -Name "funnel/mothership freeText status proposed" -Expected 'proposed' -Actual "$($mFreeRec.status)"
+
+# --- Best-effort: underlying write throws -> no rethrow, returns null ---
+# Force New-DecisionRecord to fail by occupying workspace/decisions with a FILE
+# so the directory create throws; the funnel must swallow it.
+$brokenBot = Join-Path ([System.IO.Path]::GetTempPath()) (".bot-broken-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+New-Item -ItemType Directory -Force -Path (Join-Path $brokenBot "workspace") | Out-Null
+Set-Content -Path (Join-Path $brokenBot "workspace" "decisions") -Value "not a directory" -Encoding UTF8
+$threwFunnel = $false
+$bestEffortResult = $null
+try {
+    $bestEffortResult = New-InboundDecision -Source settings -BotPath $brokenBot -Payload @{ key = 'provider'; before = 'a'; after = 'b' }
+} catch {
+    $threwFunnel = $true
+}
+Assert-True -Name "funnel/best-effort does not rethrow" -Condition (-not $threwFunnel)
+Assert-True -Name "funnel/best-effort returns null on write failure" -Condition ($null -eq $bestEffortResult)
+Remove-Item -Path $brokenBot -Recurse -Force -ErrorAction SilentlyContinue
+
+Remove-Item -Path $funnelBot -Recurse -Force -ErrorAction SilentlyContinue
+
+# ═══════════════════════════════════════════════════════════════════
 # CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 

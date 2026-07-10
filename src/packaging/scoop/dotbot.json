@@ -1,6 +1,6 @@
 {
     "version": "4.0.0",
-    "description": "Structured AI-assisted development framework with two-phase execution and web dashboard",
+    "description": "Structured AI-assisted development framework with single-session execution and web dashboard",
     "homepage": "https://github.com/andresharpe/dotbot",
     "license": "MIT",
     "url": "https://github.com/andresharpe/dotbot/releases/download/v4.0.0/dotbot-4.0.0.zip",

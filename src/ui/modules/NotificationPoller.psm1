@@ -15,6 +15,7 @@ if (-not (Get-Module TaskFile)) {
     Import-Module (Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "TaskFile.psm1") -DisableNameChecking -Global
 }
 Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.TaskInput" "Dotbot.TaskInput.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Decision" "Dotbot.Decision.psd1") -DisableNameChecking -Global
 
 function Get-NotificationObjectProp {
     param($Object, [string]$Name)
@@ -26,6 +27,30 @@ function Get-NotificationObjectProp {
     $prop = $Object.PSObject.Properties[$Name]
     if ($prop) { return $prop.Value }
     return $null
+}
+
+function Invoke-NotificationInboundDecision {
+    # Inbound decision funnel (issue #416): promote a mothership answer to a
+    # decision record. Best-effort -- New-InboundDecision swallows its own
+    # failures, and this wrapper guards the call site too so a poller tick never
+    # fails on the audit side-effect.
+    param($PendingQuestion, $Notification, $Resolved, [string]$TaskId, [string]$BotRoot)
+    try {
+        $null = New-InboundDecision -Source mothership -BotPath $BotRoot -Payload @{
+            questionType   = "$(Get-NotificationObjectProp -Object $PendingQuestion -Name 'type')"
+            questionText   = Get-NotificationObjectProp -Object $PendingQuestion -Name 'question'
+            answer         = "$($Resolved.answer)"
+            questionId     = "$(Get-NotificationObjectProp -Object $Notification -Name 'question_id')"
+            projectId      = "$(Get-NotificationObjectProp -Object $Notification -Name 'project_id')"
+            instanceId     = "$(Get-NotificationObjectProp -Object $Notification -Name 'instance_id')"
+            taskId         = $TaskId
+            relatedTaskIds = @($TaskId)
+        }
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Warn -Message "Inbound decision funnel (mothership poller) failed" -Exception $_
+        }
+    }
 }
 
 function Get-NotificationTaskRunner {
@@ -221,6 +246,8 @@ function Invoke-NotificationPollTick {
                         Invoke-TaskTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
                             -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot `
                             -Comment $comment -RankedItems $rankedItems -ReviewedAttachmentIds $reviewedIds
+                        Invoke-NotificationInboundDecision -PendingQuestion $pendingQuestion -Notification $notification `
+                            -Resolved $resolved -TaskId $taskId -BotRoot $botRoot
                     }
                 }
                 continue
@@ -259,6 +286,8 @@ function Invoke-NotificationPollTick {
                 Invoke-BatchQuestionTransitionFromNotification -TaskFile $taskFile -TaskContent $taskContent `
                     -Question $pq -Answer $resolved.answer -Attachments $resolved.attachments -BotRoot $botRoot `
                     -Comment $comment -RankedItems $rankedItems -ReviewedAttachmentIds $reviewedIds
+                Invoke-NotificationInboundDecision -PendingQuestion $pq -Notification $notifEntry `
+                    -Resolved $resolved -TaskId $taskId -BotRoot $botRoot
 
                 # Re-read after mutation to pick up updated pending_questions for next iteration
                 if (Test-Path $taskFile.FullName) {

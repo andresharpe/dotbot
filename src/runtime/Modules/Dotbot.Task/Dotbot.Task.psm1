@@ -1638,6 +1638,30 @@ Review all context above. Decide whether to write clarification-questions.json (
                                 if ($resolved) {
                                     $teamsAnswers[$qId] = $resolved
                                     Write-Status "Received Teams answer for $qId : $($resolved.answer)" -Type Info
+
+                                    # Inbound decision funnel (issue #416): promote this
+                                    # interview answer to a decision record. Best-effort --
+                                    # the funnel swallows its own failures and this guard
+                                    # keeps a polling tick alive if the module is absent.
+                                    try {
+                                        if (-not (Get-Command New-InboundDecision -ErrorAction SilentlyContinue)) {
+                                            Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.Decision" "Dotbot.Decision.psd1") -DisableNameChecking -Global -ErrorAction Stop
+                                        }
+                                        $iq = $questions | Where-Object { "$($_.id)" -eq "$qId" } | Select-Object -First 1
+                                        $iqType = if ($iq -and @($iq.options).Count -gt 0) { 'singleChoice' } else { 'freeText' }
+                                        $null = New-InboundDecision -Source mothership -BotPath $BotRoot -Payload @{
+                                            questionType   = $iqType
+                                            questionText   = if ($iq) { "$($iq.question)" } else { $null }
+                                            answer         = "$($resolved.answer)"
+                                            questionId     = "$($notif.question_id)"
+                                            projectId      = "$($notif.project_id)"
+                                            instanceId     = "$($notif.instance_id)"
+                                            taskId         = $TaskId
+                                            relatedTaskIds = if ($TaskId) { @($TaskId) } else { @() }
+                                        }
+                                    } catch {
+                                        Write-BotLog -Level Warn -Message "Inbound decision funnel (interview) failed" -Exception $_
+                                    }
                                 }
                             }
                         } catch { Write-BotLog -Level Warn -Message "Teams polling attempt failed" -Exception $_ }

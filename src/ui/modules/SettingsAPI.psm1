@@ -59,9 +59,84 @@ function Save-OverridesHashtable {
         New-Item -ItemType Directory -Path $script:Config.ControlDir -Force | Out-Null
     }
     $overridesFile = Join-Path $script:Config.ControlDir "settings.json"
+
+    # Capture the prior on-disk state BEFORE the write so the inbound decision
+    # funnel can diff old vs new (issue #416). Runs inside the settings mutex
+    # held by Invoke-SettingsFileLocked, so no extra lock is taken here.
+    $priorOverrides = $null
+    if (Test-Path $overridesFile) {
+        try { $priorOverrides = Get-Content $overridesFile -Raw | ConvertFrom-Json } catch { $priorOverrides = $null }
+    }
+
     $tmp = "$overridesFile.tmp"
     $Overrides | ConvertTo-Json -Depth 10 | Set-Content $tmp -Force -Encoding utf8NoBOM
     Move-Item -LiteralPath $tmp -Destination $overridesFile -Force
+
+    Invoke-SettingsInboundDecisions -Prior $priorOverrides -New $Overrides
+}
+
+# Flatten a settings object to a map of dotted-path -> stringified leaf value.
+# Objects recurse; arrays are treated as a single leaf (compact JSON) so that
+# file_listener.watchers compares as one value rather than per-element.
+function Get-FlatSettingLeaves {
+    param($Object, [string]$Prefix = '')
+    $leaves = @{}
+    if ($null -eq $Object) { return $leaves }
+
+    $props = @()
+    if ($Object -is [System.Collections.IDictionary]) {
+        foreach ($k in $Object.Keys) { $props += , @("$k", $Object[$k]) }
+    } elseif ($Object -is [PSCustomObject]) {
+        foreach ($p in $Object.PSObject.Properties) { $props += , @($p.Name, $p.Value) }
+    } else {
+        return $leaves
+    }
+
+    foreach ($pair in $props) {
+        $name = $pair[0]; $val = $pair[1]
+        $path = if ($Prefix) { "$Prefix.$name" } else { "$name" }
+        if ($val -is [System.Collections.IDictionary] -or $val -is [PSCustomObject]) {
+            $child = Get-FlatSettingLeaves -Object $val -Prefix $path
+            foreach ($ck in $child.Keys) { $leaves[$ck] = $child[$ck] }
+        } elseif (($val -is [System.Array]) -or ($val -is [System.Collections.IList] -and $val -isnot [string])) {
+            $leaves[$path] = ($val | ConvertTo-Json -Depth 10 -Compress)
+        } else {
+            $leaves[$path] = "$val"
+        }
+    }
+    return $leaves
+}
+
+# Best-effort: diff prior vs new settings leaves and route each changed key
+# through the inbound funnel. The funnel owns the material-key allow-list, so
+# this caller deliberately passes EVERY changed key and lets non-material keys
+# be dropped there (single vocabulary source). A failure must not fail the save.
+function Invoke-SettingsInboundDecisions {
+    param($Prior, $New)
+    try {
+        if (-not (Get-Command New-InboundDecision -ErrorAction SilentlyContinue)) {
+            Import-Module (Join-Path $PSScriptRoot ".." ".." "runtime" "Modules" "Dotbot.Decision" "Dotbot.Decision.psd1") -DisableNameChecking -Global -ErrorAction Stop
+        }
+
+        $priorLeaves = Get-FlatSettingLeaves -Object $Prior
+        $newLeaves = Get-FlatSettingLeaves -Object $New
+
+        $allKeys = @($priorLeaves.Keys) + @($newLeaves.Keys) | Select-Object -Unique
+        foreach ($key in $allKeys) {
+            $before = if ($priorLeaves.ContainsKey($key)) { $priorLeaves[$key] } else { $null }
+            $after = if ($newLeaves.ContainsKey($key)) { $newLeaves[$key] } else { $null }
+            if ("$before" -eq "$after") { continue }
+            $null = New-InboundDecision -Source settings -BotPath $script:Config.BotRoot -Payload @{
+                key    = $key
+                before = $before
+                after  = $after
+            }
+        }
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Warn -Message "Inbound decision funnel (settings) failed" -Exception $_
+        }
+    }
 }
 
 # Internal: run a script block under an OS-level named mutex keyed on the
