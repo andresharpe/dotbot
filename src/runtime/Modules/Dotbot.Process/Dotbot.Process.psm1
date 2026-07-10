@@ -106,6 +106,9 @@ function Write-ProcessFile {
         [string]$BotRoot
     )
     $processesDir = Get-ProcessesDir -BotRoot $BotRoot
+    if (-not (Test-Path $processesDir)) {
+        New-Item -Path $processesDir -ItemType Directory -Force | Out-Null
+    }
     $filePath = Join-Path $processesDir "$Id.json"
     $tempFile = "$filePath.tmp"
     $retry = Get-ProcessRetryConfig -BotRoot $BotRoot
