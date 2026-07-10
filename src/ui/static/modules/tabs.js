@@ -37,26 +37,16 @@ function switchToTab(targetId) {
     // Keep the shell rail's active marker in sync (modules/shell.js)
     syncRailActive(targetId);
 
-    // Switch context panel in left sidebar
+    // Run per-tab side effects
     switchContextPanel(targetId);
 }
 
 /**
- * Switch context panel based on current tab
+ * Per-tab side effects (the contextual sidebar this used to drive was
+ * removed in #606 — the name survives for its many call sites).
  * @param {string} tabId - Tab ID
  */
 function switchContextPanel(tabId) {
-    // Hide all context panels
-    document.querySelectorAll('.context-panel').forEach(panel => {
-        panel.classList.add('hidden');
-    });
-
-    // Show the context panel matching the tab
-    const targetPanel = document.querySelector(`.context-panel[data-context="${tabId}"]`);
-    if (targetPanel) {
-        targetPanel.classList.remove('hidden');
-    }
-
     // Tasks surface hosts the process list — poll while it's visible
     if (tabId === 'tasks') {
         startProcessPolling();
@@ -102,22 +92,3 @@ function initLogoClick() {
     }
 }
 
-/**
- * Initialize hamburger menu for mobile
- */
-function initHamburgerMenu() {
-    const hamburger = document.getElementById('hamburger-menu');
-    const sidebar = document.querySelector('.sidebar-left');
-    const overlay = document.getElementById('mobile-overlay');
-
-    if (!hamburger || !sidebar || !overlay) return;
-
-    const toggleMenu = () => {
-        hamburger.classList.toggle('active');
-        sidebar.classList.toggle('mobile-open');
-        overlay.classList.toggle('active');
-    };
-
-    hamburger.addEventListener('click', toggleMenu);
-    overlay.addEventListener('click', toggleMenu);
-}

@@ -56,12 +56,6 @@ function replaceIconPlaceholders() {
     const stopBtn = document.querySelector('.ctrl-btn[data-action="stop"]');
     if (stopBtn) stopBtn.innerHTML = getIcon('stop') + ' STOP';
 
-    // Replace hamburger menu with menu icon
-    const hamburger = document.getElementById('hamburger-menu');
-    if (hamburger) {
-        hamburger.innerHTML = getIcon('menu', 24);
-    }
-
     // Replace sidebar toggles with expand icons
     document.querySelectorAll('.sidebar-toggle').forEach(toggle => {
         toggle.innerHTML = getIcon('expandMore', 16);

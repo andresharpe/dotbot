@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     initTabs();
     initShell();
     initLogoClick();
-    initHamburgerMenu();
     initSidebarCollapse();
     await initSidebar();
     initControlButtons();
@@ -40,7 +39,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     initSettingsToggles();
     initTaskClicks();
     initRoadmapTaskActions();
-    initSidebarItemClicks();
     await initProductNav();
     initModalClose();
     initTasksSurface();

@@ -23,13 +23,9 @@
     </style>
 </head>
 <body>
-    <div class="mobile-overlay" id="mobile-overlay"></div>
     <div class="shell" id="shell">
         <!-- Top bar (v4 shell, #551/#605) -->
         <header class="shell-topbar">
-            <button class="hamburger-menu" id="hamburger-menu" aria-label="Toggle menu">
-                <!-- Menu icon loaded dynamically -->
-            </button>
             <div class="shell-logo">
                 <span class="logo">◈ DOTBOT</span>
             </div>
@@ -86,19 +82,8 @@
             </button>
         </nav>
 
-        <!-- Content -->
+        <!-- Content (contextual sidebar removed in #606 — content lives in the panes) -->
         <div class="shell-content">
-        <div class="main-layout" id="main-layout">
-            <!-- Left Sidebar (Context-Aware) -->
-            <aside class="sidebar-left">
-                <!-- Overview Context: Control, Session, Verification (mirrors right sidebar) -->
-                <!-- Overview cockpit moved into the Overview pane in #606 -->
-                <!-- Per-tab context panels moved into their panes in #606 -->
-            </aside>
-
-            <!-- Panel Splitter -->
-            <div class="panel-splitter" id="panel-splitter" title="Drag to resize · Double-click to reset"></div>
-
             <!-- Main Content -->
             <main class="main-content">
                 <!-- Tab Content -->
@@ -1086,8 +1071,6 @@
                     </div>
                 </div>
             </main>
-        </div>
-
         </div><!-- /shell-content -->
 
         <!-- Dispatch ticker slot (static line; scroll behaviour lands with #607) -->
