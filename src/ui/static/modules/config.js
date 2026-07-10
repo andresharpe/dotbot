@@ -124,18 +124,6 @@ let currentTheme = null;  // Current theme configuration
 // Store discovered directories for use in relationship tree
 let discoveredDirectories = [];
 
-// Pipeline column display limits (for infinite scroll)
-let pipelineDisplayLimits = {
-    'pipeline-todo': 10,
-    'pipeline-progress': 10,
-    'pipeline-done': 10
-};
-let pipelineTaskCounts = {
-    'pipeline-todo': 0,
-    'pipeline-progress': 0,
-    'pipeline-done': 0
-};
-
 // Workflow viewer state
 let currentWorkflowItem = { type: null, file: null };
 

@@ -75,9 +75,8 @@
         <!-- Icon rail (replaces tab bar; destinations mirror pre-shell tabs 1:1 — restructure in #606) -->
         <nav class="shell-rail" id="shell-rail" aria-label="Primary">
             <a class="shell-rail-item" href="#" data-tab="overview" aria-current="page"><span class="shell-rail-icon">□</span><span class="shell-rail-label">Overview</span></a>
+            <a class="shell-rail-item" href="#" data-tab="tasks"><span class="shell-rail-icon">▣</span><span class="shell-rail-label">Tasks</span></a>
             <a class="shell-rail-item" href="#" data-tab="product"><span class="shell-rail-icon">◆</span><span class="shell-rail-label">Product</span></a>
-            <a class="shell-rail-item" href="#" data-tab="pipeline"><span class="shell-rail-icon">▣</span><span class="shell-rail-label">Roadmap</span></a>
-            <a class="shell-rail-item" href="#" data-tab="processes"><span class="shell-rail-icon">◎</span><span class="shell-rail-label">Processes</span></a>
             <a class="shell-rail-item" href="#" data-tab="decisions"><span class="shell-rail-icon">◇</span><span class="shell-rail-label">Decisions</span></a>
             <a class="shell-rail-item" href="#" data-tab="workflow"><span class="shell-rail-icon">○</span><span class="shell-rail-label">Workflows</span></a>
             <div class="shell-rail-divider"></div>
@@ -230,101 +229,7 @@
                     </div>
                 </div>
 
-                <!-- Pipeline/Roadmap Context: Task Summary -->
-                <div class="context-panel hidden" data-context="pipeline">
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Task Summary</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="task-summary">
-                                <div class="summary-item todo">
-                                    <span class="summary-label">Todo</span>
-                                    <span class="count-badge" data-status="todo" id="context-todo-count">-</span>
-                                </div>
-                                <div class="summary-item analysing">
-                                    <span class="summary-label">Analysing</span>
-                                    <span class="count-badge" id="context-analysing-count">-</span>
-                                </div>
-                                <div class="summary-item needs-input">
-                                    <span class="summary-label">Needs Input</span>
-                                    <span class="count-badge" id="context-needs-input-count">-</span>
-                                </div>
-                                <div class="summary-item analysed">
-                                    <span class="summary-label">Analysed</span>
-                                    <span class="count-badge" id="context-analysed-count">-</span>
-                                </div>
-                                <div class="summary-item in-progress">
-                                    <span class="summary-label">In Progress</span>
-                                    <span class="count-badge" data-status="in-progress" id="context-progress-count">-</span>
-                                </div>
-                                <div class="summary-item done">
-                                    <span class="summary-label">Done</span>
-                                    <span class="count-badge" data-status="done" id="context-done-count">-</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Progress</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="progress-bar-container">
-                                <div class="progress-bar" id="context-progress-bar"></div>
-                            </div>
-                            <div class="progress-label" id="context-progress-label">0%</div>
-                        </div>
-                    </div>
-
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Other</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="task-summary secondary">
-                                <div class="summary-item skipped">
-                                    <span class="summary-label">Skipped</span>
-                                    <span class="count-badge muted" id="context-skipped-count">-</span>
-                                </div>
-                                <div class="summary-item cancelled">
-                                    <span class="summary-label">Cancelled</span>
-                                    <span class="count-badge muted" id="context-cancelled-count">-</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Processes Context: Process Summary -->
-                <div class="context-panel hidden" data-context="processes">
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Processes</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="process-summary">
-                                <div class="summary-item">
-                                    <span class="summary-label">Running</span>
-                                    <span class="summary-value active" id="proc-running-count">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Completed</span>
-                                    <span class="summary-value" id="proc-completed-count">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Failed</span>
-                                    <span class="summary-value" id="proc-failed-count">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Total Tasks</span>
-                                    <span class="summary-value" id="proc-total-tasks">0</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <!-- Pipeline/Processes context panels removed in #606 - superseded by the Tasks surface -->
 
                 <!-- Decisions Context: Decision Summary -->
                 <div class="context-panel hidden" data-context="decisions">
@@ -409,37 +314,7 @@
                         <!-- Executive Summary -->
                         <div class="executive-summary" id="executive-summary" style="display: none;"></div>
 
-                        <!-- Stats Row -->
-                        <div class="stats-row">
-                            <div class="stat-card">
-                                <div class="stat-label">TODO</div>
-                                <div class="stat-value" data-status="todo" id="todo-count">-</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">ANALYSING</div>
-                                <div class="stat-value" data-status="in-progress" id="analysing-count">0</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">AWAITING INPUT</div>
-                                <div class="stat-value" data-status="todo" id="needs-input-count">0</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">READY</div>
-                                <div class="stat-value" data-status="todo" id="analysed-count">0</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">IN PROGRESS</div>
-                                <div class="stat-value" data-status="in-progress" id="progress-count">-</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">DONE</div>
-                                <div class="stat-value" data-status="done" id="done-count">-</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">PROGRESS</div>
-                                <div class="stat-value" id="progress-percent">-</div>
-                            </div>
-                        </div>
+                        <!-- Stats row removed in #606 — counts live on the Tasks filter chips -->
 
                         <!-- Activity Oscilloscope -->
                         <div id="activity-scope" class="crt-monitor">
@@ -473,7 +348,7 @@
                                     <div class="empty-state">No running processes</div>
                                 </div>
                                 <div class="view-all-link" id="view-all-processes" style="display: none;">
-                                    <a href="#" onclick="switchToTab('processes'); return false;">View All Processes &rarr;</a>
+                                    <a href="#" onclick="switchToTab('tasks'); return false;">View All Processes &rarr;</a>
                                 </div>
                             </div>
                         </div>
@@ -529,81 +404,55 @@
                       </div><!-- /.overview-layout -->
                     </div>
 
-                    <!-- Pipeline Tab -->
-                    <div class="tab-pane" id="tab-pipeline">
-                        <div class="pipeline-wrapper">
-                            <!-- Unified Task Pipeline -->
-                            <div class="pipeline-stage">
-                                <div class="pipeline-stage-header">
-                                    <span class="pipeline-stage-title">◈ Task Pipeline</span>
+                    <!-- Tasks Tab (unified surface: pipeline board + Processes list + stat counts, #606/#551) -->
+                    <div class="tab-pane" id="tab-tasks">
+                        <div class="tasks-surface">
+                            <div class="tasks-toolbar">
+                                <div class="filter-chips" id="task-filter-chips">
+                                    <button class="filter-chip active" data-task-filter="all">All</button>
+                                    <button class="filter-chip" data-task-filter="todo">Todo <span class="chip-count" id="todo-count">-</span></button>
+                                    <button class="filter-chip" data-task-filter="analysing">Analysing <span class="chip-count" id="analysing-count">0</span></button>
+                                    <button class="filter-chip" data-task-filter="needs-input">Needs input <span class="chip-count" id="needs-input-count">0</span></button>
+                                    <button class="filter-chip" data-task-filter="analysed">Analysed <span class="chip-count" id="analysed-count">0</span></button>
+                                    <button class="filter-chip" data-task-filter="in-progress">In progress <span class="chip-count" id="progress-count">-</span></button>
+                                    <button class="filter-chip" data-task-filter="done">Done <span class="chip-count" id="done-count">-</span></button>
+                                    <span class="chips-extra"><span id="skipped-count">0</span> skipped · <span id="cancelled-count">0</span> cancelled</span>
+                                </div>
+                                <div class="tasks-toolbar-actions">
                                     <select class="pipeline-workflow-filter" id="pipeline-workflow-filter" title="Filter tasks by workflow">
                                         <option value="">All Workflows</option>
                                     </select>
-                                </div>
-                                <div class="pipeline-container">
-                                    <!-- Todo Column -->
-                                    <div class="pipeline-column">
-                                        <div class="column-header roadmap-column-header">
-                                            <span class="column-label">◇ Todo</span>
-                                            <div class="roadmap-column-actions">
-                                                <span class="column-count" id="pipeline-todo-count">0</span>
-                                                <button class="ctrl-btn-sm roadmap-header-action" id="roadmap-deleted-btn" title="View deleted task archive">Deleted</button>
-                                                <button class="ctrl-btn-sm primary add-task-btn roadmap-header-action" id="add-task-btn-pipeline" title="Add new task">New Task</button>
-                                            </div>
-                                        </div>
-                                        <div class="column-items" id="pipeline-todo">
-                                            <div class="loading-state">Loading...</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="flow-arrow">→</div>
-
-                                    <!-- Working Column (Analysing + In Progress) -->
-                                    <div class="pipeline-column highlight">
-                                        <div class="column-header">
-                                            <span class="column-label">◈ Working</span>
-                                            <span class="column-count" id="pipeline-working-count">0</span>
-                                        </div>
-                                        <div class="column-items" id="pipeline-working">
-                                            <div class="empty-state">No active tasks</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="flow-arrow">→</div>
-
-                                    <!-- Needs Input Column -->
-                                    <div class="pipeline-column">
-                                        <div class="column-header">
-                                            <span class="column-label">⚡ Needs Input</span>
-                                            <span class="column-count" id="pipeline-needs-input-count">0</span>
-                                        </div>
-                                        <div class="column-items" id="pipeline-needs-input">
-                                            <div class="empty-state">No tasks</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="flow-arrow">→</div>
-
-                                    <!-- Done Column -->
-                                    <div class="pipeline-column">
-                                        <div class="column-header">
-                                            <span class="column-label">✓ Done</span>
-                                            <span class="column-count" id="pipeline-done-count">0</span>
-                                        </div>
-                                        <div class="column-items" id="pipeline-done">
-                                            <div class="loading-state">Loading...</div>
-                                        </div>
-                                    </div>
+                                    <button class="ctrl-btn-sm roadmap-header-action" id="roadmap-deleted-btn" title="View deleted task archive">Deleted</button>
+                                    <button class="ctrl-btn-sm primary add-task-btn roadmap-header-action" id="add-task-btn-pipeline" title="Add new task">New Task</button>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-
-                    <!-- Processes Tab -->
-                    <div class="tab-pane" id="tab-processes">
-                        <!-- Process List -->
-                        <div id="process-list">
-                            <div class="empty-state">No processes</div>
+                            <div class="tasks-progress-strip">
+                                <div class="tasks-progress-track"><div class="tasks-progress-bar" id="tasks-progress-bar"></div></div>
+                                <span class="tasks-progress-label"><span id="progress-percent">-</span> complete</span>
+                            </div>
+                            <div class="tasks-main">
+                                <div class="task-list tasks-list" id="tasks-list">
+                                    <div class="loading-state">Loading...</div>
+                                </div>
+                                <aside class="task-detail-panel" id="task-detail-panel">
+                                    <div class="empty-state">Select a task to see details</div>
+                                </aside>
+                            </div>
+                            <!-- Running processes share the surface (Q3/Q6); list rendering reused verbatim -->
+                            <div class="tasks-processes-section">
+                                <div class="tasks-processes-header">
+                                    <span class="tasks-processes-title">◈ Processes</span>
+                                    <span class="tasks-processes-counts">
+                                        Running <span id="proc-running-count">0</span> ·
+                                        Completed <span id="proc-completed-count">0</span> ·
+                                        Failed <span id="proc-failed-count">0</span> ·
+                                        Tasks <span id="proc-total-tasks">0</span>
+                                    </span>
+                                </div>
+                                <div id="process-list">
+                                    <div class="empty-state">No processes</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1594,6 +1443,7 @@
     <script src="modules/workflow-launch.js"></script>
     <script src="modules/tasks.js"></script>
     <script src="modules/roadmap-task-actions.js"></script>
+    <script src="modules/tasks-surface.js"></script>
     <script src="modules/processes.js"></script>
     <script src="modules/editor.js"></script>
     <script src="modules/controls.js"></script>

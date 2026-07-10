@@ -36,7 +36,6 @@ test.describe("State polling reflects backend state in the DOM", () => {
     await expect(page.locator("#todo-count")).toHaveText("1", {
       timeout: 10_000,
     });
-    await expect(page.locator("#pipeline-todo-count")).toHaveText("1");
   });
 
   test("moving a task from todo to in-progress shifts the counts", async ({
