@@ -837,7 +837,12 @@ function Invoke-TaskClarificationLoopIfPresent {
         [string]$ModelName,
         [bool]$ShowDebug,
         [bool]$ShowVerbose,
-        [string]$PermissionMode
+        [string]$PermissionMode,
+        # Canonical project .bot root for process-registry writes (proc-*.json).
+        # Distinct from $BotRoot above, which is worktree-scoped (used for the
+        # answers-file path) — process state must never resolve through the
+        # worktree's transient .control junction (#612).
+        [string]$ProcessBotRoot
     )
     $questionsPath = Join-Path $ProductDir "clarification-questions.json"
     if (-not (Test-Path $questionsPath)) { return $null }
@@ -858,7 +863,7 @@ function Invoke-TaskClarificationLoopIfPresent {
         $PD.status = 'running'
         $PD.pending_questions = $null
         $PD.heartbeat_status = "Running task: $TaskName"
-        Write-ProcessFile -Id $Id -Data $PD
+        Write-ProcessFile -Id $Id -Data $PD -BotRoot $ProcessBotRoot
     }
 
     $questionsData = $null
@@ -899,14 +904,14 @@ function Invoke-TaskClarificationLoopIfPresent {
     $ProcessData.product_dir = $ProductDir
     $ProcessData.answers_path = $answersPath
     $ProcessData.heartbeat_status = "Waiting for answers (task: $($Task.name))"
-    Write-ProcessFile -Id $ProcId -Data $ProcessData
+    Write-ProcessFile -Id $ProcId -Data $ProcessData -BotRoot $ProcessBotRoot
 
     while (-not (Test-Path $answersPath)) {
-        if (Test-ProcessStopSignal -Id $ProcId) {
+        if (Test-ProcessStopSignal -Id $ProcId -BotRoot $ProcessBotRoot) {
             $ProcessData.status = 'stopped'
             $ProcessData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
             $ProcessData.pending_questions = $null
-            Write-ProcessFile -Id $ProcId -Data $ProcessData
+            Write-ProcessFile -Id $ProcId -Data $ProcessData -BotRoot $ProcessBotRoot
             return "Process stopped by user during clarification wait"
         }
         Start-Sleep -Seconds 2
@@ -1963,10 +1968,10 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             if ($attemptNumber -gt 1) {
                 Write-Status "Retry attempt $attemptNumber of $maxRetriesPerTask" -Type Warn
             }
-            if (Test-ProcessStopSignal -Id $procId) {
+            if (Test-ProcessStopSignal -Id $procId -BotRoot $botRoot) {
                 $processData.status = 'stopped'
                 $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
-                Write-ProcessFile -Id $procId -Data $processData
+                Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
                 break
             }
 
@@ -2015,7 +2020,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
 
             # Update heartbeat
             $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
-            Write-ProcessFile -Id $procId -Data $processData
+            Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
 
             # Check completion
             $completionCheck = Test-TaskCompletion -TaskId $task.id
@@ -2170,7 +2175,8 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 -ProductDir $executionProductDir -ProcessData $processData -ProcId $procId `
                 -ProjectRoot $worktreePath `
                 -ModelName $modelTier -ShowDebug $ShowDebug `
-                -ShowVerbose $ShowVerbose -PermissionMode $permissionMode
+                -ShowVerbose $ShowVerbose -PermissionMode $permissionMode `
+                -ProcessBotRoot $botRoot
             if ($clarErr) {
                 $taskSuccess = $false
                 $postScriptFailed = $true
