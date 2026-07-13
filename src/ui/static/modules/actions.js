@@ -468,7 +468,16 @@ function clearTaskQuestionDraft(questionBlock) {
     const taskId = questionBlock?.dataset.taskId;
     const questionId = questionBlock?.dataset.questionId;
     if (!taskId || !questionId) return;
-    if (taskQuestionDrafts[taskId]) delete taskQuestionDrafts[taskId][questionId];
+
+    const taskDrafts = taskQuestionDrafts[taskId];
+    if (!taskDrafts) return;
+
+    delete taskDrafts[questionId];
+
+    // Avoid accumulating empty per-task draft maps.
+    if (Object.keys(taskDrafts).length === 0) {
+        delete taskQuestionDrafts[taskId];
+    }
 }
 
 /**
