@@ -29,7 +29,7 @@ $script:DotbotRuntimeListenerState = $null
 function _New-RouteTable {
     # Ordered list so static paths can win over patterned ones if needed.
     # Each entry: @{ method = 'GET'; pattern = '^/tasks/(?<id>t_[A-Za-z0-9]{8})$'; handler = { ... } }
-    $routes = @(
+    return @(
         @{ method = 'GET';   pattern = '^/health$';                                            handler = 'Invoke-HealthHandler' }
 
         # Tasks
@@ -66,15 +66,6 @@ function _New-RouteTable {
         @{ method = 'POST';  pattern = '^/dashboard/control$';                                 handler = 'Invoke-DashboardControlHandler' }
         @{ method = 'POST';  pattern = '^/dashboard/whisper$';                                 handler = 'Invoke-DashboardWhisperHandler' }
     )
-
-    # Test-only routes. Enabled by DOTBOT_TEST_ROUTES=1 so tests can spawn
-    # controlled failure modes (e.g. double-send after Close) that don't exist
-    # elsewhere in the production surface. Never set this env var in production.
-    if ($env:DOTBOT_TEST_ROUTES -eq '1') {
-        $routes += @{ method = 'POST'; pattern = '^/__debug/double-send$'; handler = 'Invoke-DebugDoubleSendHandler' }
-    }
-
-    return $routes
 }
 
 function Start-RuntimeHttpListener {
@@ -809,19 +800,6 @@ function Invoke-HealthHandler {
         pid        = $PID
         started_at = $script:DotbotRuntimeListenerState.started
     }
-}
-
-# Test-only handler. Reproduces the double-send-after-Close crash class that
-# fired in the needs-input escalation bug: sends a successful response (which
-# calls .Close() on the HttpListenerResponse), then throws so the dispatcher's
-# catch tries to serialize a 500 onto the already-closed response. Only
-# reachable when DOTBOT_TEST_ROUTES=1 — the route registration in
-# _New-RouteTable is gated on that env var. Used by Test-Runtime.ps1 as a
-# regression check that any dispatcher-level double-send fix keeps working.
-function Invoke-DebugDoubleSendHandler {
-    [CmdletBinding()] param($BotRoot, $Response, $Request, $RouteParams, $Query, $Body)
-    _Send-JsonResponse -Response $Response -Status 200 -Body @{ ok = $true; note = 'first response sent; about to throw' }
-    throw 'deliberate post-response exception for double-send repro'
 }
 
 function Invoke-DashboardInfoHandler {

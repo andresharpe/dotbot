@@ -662,69 +662,80 @@ try {
 Clear-RuntimeMutexPool
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Dispatcher: no crash cascade + no silent client lie when a handler sends a
-# response and then throws (regression for the needs-input escalation bug).
+# _Send-JsonResponse idempotency: regression for the needs-input escalation
+# crash. Any handler that sends a response and then throws would previously
+# trip the dispatcher into re-serializing onto a closed HttpListenerResponse
+# and crash with "already submitted" / "disposed object" from the property
+# setters. Fix: the first send stamps _dotbotSent on the response; every
+# subsequent _Send-* is a no-op.
 # ═══════════════════════════════════════════════════════════════════════════
 
 Write-Host ""
-Write-Host "  Dispatcher: handler that sends then throws" -ForegroundColor Cyan
+Write-Host "  _Send-JsonResponse idempotency (double-send guard)" -ForegroundColor Cyan
 Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
 
-# The /__debug/double-send route is only registered when DOTBOT_TEST_ROUTES=1.
-# The handler sends a 200, then throws — mimicking any handler that does
-# state-changing work after acknowledging success. Two things we assert:
-#   1. The client sees a successful 200 (matching today's silent-lie symptom)
-#   2. After the throw, the dispatcher's catch does not itself crash the
-#      request-loop worker with an "already submitted / disposed" error
-#      escaping to runtime-errors.log.
-# Test #2 is expected to FAIL against the pre-fix code and PASS once the
-# dispatcher guards against double-send.
-$env:DOTBOT_TEST_ROUTES = '1'
-$bot = New-TestBotRoot
-$start = $null
-try {
-    $start = Start-DotbotRuntime -BotRoot $bot
-
-    # Wait for the listener to be ready.
-    $deadline = [DateTime]::UtcNow.AddSeconds(5)
-    $ready = $false
-    while ([DateTime]::UtcNow -lt $deadline) {
-        try {
-            $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/health' -Token $start.token
-            if ($r.status_code -eq 200) { $ready = $true; break }
-        } catch { Start-Sleep -Milliseconds 100 }
+# HttpListenerResponse is a sealed .NET class with no public constructor,
+# so we stand in a PSCustomObject exposing just the surface _Send-JsonResponse
+# touches: StatusCode / ContentType / ContentLength64 / OutputStream / Close().
+function New-FakeHttpResponse {
+    $r = [PSCustomObject]@{
+        StatusCode      = 0
+        ContentType     = ''
+        ContentLength64 = 0
+        OutputStream    = [System.IO.MemoryStream]::new()
+        CloseCount      = 0
     }
-    Assert-True -Name "Runtime came up for double-send test" -Condition $ready
-
-    $errLog = Join-Path $bot '.control/runtime-errors.log'
-    if (Test-Path -LiteralPath $errLog) { Remove-Item -LiteralPath $errLog -Force }
-
-    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/__debug/double-send' -Token $start.token -Body @{}
-
-    # Symptom #1 — client is told everything is fine.
-    Assert-Equal -Name "POST /__debug/double-send returns 200 to the client (silent lie today)" `
-        -Expected 200 -Actual $r.status_code
-    Assert-True  -Name "POST /__debug/double-send body carries ok=true" `
-        -Condition ($r.body -and $r.body.ok -eq $true)
-
-    # Give the background request-loop worker a beat to flush its error log.
-    Start-Sleep -Milliseconds 250
-
-    # Symptom #2 — the crash cascade currently leaks into runtime-errors.log.
-    # This assertion FAILS on pre-fix code (log exists + contains the stack)
-    # and PASSES once the dispatcher no longer re-sends on a closed response.
-    $errLogContent = if (Test-Path -LiteralPath $errLog) {
-        Get-Content -LiteralPath $errLog -Raw
-    } else { '' }
-    Assert-True -Name "Dispatcher does not log a double-send crash after handler throws" `
-        -Condition (-not ($errLogContent -match '_Send-JsonResponse')) `
-        -Message "runtime-errors.log leaked a dispatcher crash cascade:`n$errLogContent"
-
-} finally {
-    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ErrorAction SilentlyContinue }
-    Remove-TestBotRoot -BotRoot $bot
-    Remove-Item Env:DOTBOT_TEST_ROUTES -ErrorAction SilentlyContinue
+    $r | Add-Member -MemberType ScriptMethod -Name Close -Value { $this.CloseCount++ }
+    return $r
 }
+
+# _Send-JsonResponse is defined in Dotbot.Runtime's HttpServer *nested* module.
+# The top-level Dotbot.Runtime scope can't see nested private functions, so we
+# grab the nested-module handle by name and invoke through it — same trick
+# Pester's InModuleScope uses.
+$httpMod = (Get-Module Dotbot.Runtime).NestedModules | Where-Object { $_.Name -eq 'HttpServer' } | Select-Object -First 1
+Assert-True -Name "HttpServer nested module is loaded (test scaffolding sanity)" -Condition ($null -ne $httpMod)
+
+$fake = New-FakeHttpResponse
+& $httpMod {
+    param($resp)
+    _Send-JsonResponse -Response $resp -Status 200 -Body @{ ok = $true; n = 1 }
+} $fake
+
+Assert-Equal -Name "First send sets StatusCode = 200"          -Expected 200 -Actual $fake.StatusCode
+Assert-Equal -Name "First send calls Close() exactly once"     -Expected 1   -Actual $fake.CloseCount
+Assert-True  -Name "First send stamps _dotbotSent on response" `
+    -Condition ($fake.PSObject.Properties['_dotbotSent'] -and $fake._dotbotSent -eq $true)
+Assert-True  -Name "First send writes body bytes to OutputStream" `
+    -Condition ($fake.OutputStream.Length -gt 0)
+
+$bytesAfterFirst = $fake.OutputStream.Length
+
+# Second call — simulates the dispatcher's catch calling _Send-ErrorResponse
+# after the handler already responded. Must be a no-op: no StatusCode change,
+# no additional Close(), no additional bytes written.
+& $httpMod {
+    param($resp)
+    _Send-JsonResponse -Response $resp -Status 500 -Body @{ error = 'internal_error' }
+} $fake
+
+Assert-Equal -Name "Second send does NOT overwrite StatusCode" -Expected 200 -Actual $fake.StatusCode
+Assert-Equal -Name "Second send does NOT re-Close()"           -Expected 1   -Actual $fake.CloseCount
+Assert-Equal -Name "Second send writes no additional bytes"    -Expected $bytesAfterFirst -Actual $fake.OutputStream.Length
+
+# _Send-ErrorResponse delegates to _Send-JsonResponse, so the guard covers it
+# too — the dispatcher's catch calls _Send-ErrorResponse on the closed response.
+$fake2 = New-FakeHttpResponse
+& $httpMod {
+    param($resp)
+    _Send-JsonResponse   -Response $resp -Status 200 -Body @{ ok = $true }
+    _Send-ErrorResponse  -Response $resp -Status 500 -Code 'internal_error' -Message 'post-response throw'
+} $fake2
+
+Assert-Equal -Name "_Send-ErrorResponse after prior send is a no-op (StatusCode preserved)" `
+    -Expected 200 -Actual $fake2.StatusCode
+Assert-Equal -Name "_Send-ErrorResponse after prior send does not re-Close()" `
+    -Expected 1   -Actual $fake2.CloseCount
 
 Write-TestSummary -LayerName "Runtime"
 
