@@ -8,6 +8,13 @@ let actionItems = [];
 let selectedAnswers = {};    // { taskId: [selectedKeys] }
 let answerAttachments = {};          // { taskId: [{ name, size, content (base64) }] }
 let workflowLaunchAttachments = {};       // { "processId:questionId": [{ name, size, content }] }
+// Un-submitted selections for task-level batch questions (the "task-questions"
+// action item). Keyed { taskId: { questionId: { key, customText } } }. Selections
+// for a batch of pending_questions otherwise live only in the DOM's `.selected`
+// class, so submitting one question — which triggers a full panel re-render —
+// wipes the choices lined up on the sibling questions (issue #622). This store
+// survives re-renders; renderTaskQuestionsItem re-applies it on every paint.
+let taskQuestionDrafts = {};
 let actionWidgetSuppressUntil = 0;
 
 const ANSWER_ALLOWED_EXTENSIONS = ['.md', '.docx', '.xlsx', '.pdf', '.txt'];
@@ -400,14 +407,19 @@ function renderTaskQuestionsItem(item) {
                 <span class="action-item-task">${escapeHtml(item.task_name)}</span>
             </div>
             <div class="action-item-body">
-                ${questions.map((q, idx) => `
+                ${questions.map((q, idx) => {
+                    // Restore any un-submitted selection for this question so a
+                    // re-render (e.g. after a sibling question is submitted)
+                    // does not wipe it — see taskQuestionDrafts (issue #622).
+                    const draft = (taskQuestionDrafts[taskId] || {})[q.id] || {};
+                    return `
                     ${idx > 0 ? '<div class="question-divider"></div>' : ''}
                     <div class="task-question-block" data-question-id="${escapeAttr(q.id)}" data-task-id="${escapeAttr(taskId)}" data-question-type="${escapeAttr(q.type || 'singleChoice')}">
                         <div class="action-question-text"><span class="question-number">Q${idx + 1}.</span> ${escapeHtml(q.question)}</div>
                         ${q.context ? `<div class="action-question-context">${escapeHtml(q.context)}</div>` : ''}
                         <div class="answer-options" data-multi-select="false">
                             ${(q.options || []).map(opt => `
-                                <div class="answer-option"
+                                <div class="answer-option${draft.key != null && draft.key === opt.key ? ' selected' : ''}"
                                      data-key="${escapeAttr(opt.key)}"
                                      data-label="${escapeAttr(opt.label)}"
                                      data-question-key="${escapeAttr(q.id)}">
@@ -420,16 +432,52 @@ function renderTaskQuestionsItem(item) {
                             `).join('')}
                         </div>
                         <div class="workflow-launch-question-freetext">
-                            <textarea class="workflow-launch-freetext-input" placeholder="Or type a custom answer..."></textarea>
+                            <textarea class="workflow-launch-freetext-input" placeholder="Or type a custom answer...">${escapeHtml(draft.customText || '')}</textarea>
                         </div>
                         <div class="interview-question-submit">
                             <button class="ctrl-btn-sm primary submit-task-question" data-task-id="${escapeAttr(taskId)}" data-question-id="${escapeAttr(q.id)}">Submit Q${idx + 1}</button>
                         </div>
                     </div>
-                `).join('')}
+                `;
+                }).join('')}
             </div>
         </div>
     `;
+}
+
+/**
+ * Record an un-submitted selection for a batch (task-questions) question block
+ * so it survives a panel re-render. See taskQuestionDrafts / issue #622.
+ * @param {HTMLElement} questionBlock - The .task-question-block element
+ * @param {{key: string|null, customText: string}} draft - Chosen option key or free text
+ */
+function setTaskQuestionDraft(questionBlock, draft) {
+    const taskId = questionBlock?.dataset.taskId;
+    const questionId = questionBlock?.dataset.questionId;
+    if (!taskId || !questionId) return;
+    if (!taskQuestionDrafts[taskId]) taskQuestionDrafts[taskId] = {};
+    taskQuestionDrafts[taskId][questionId] = draft;
+}
+
+/**
+ * Drop the stored draft for a batch question block — once it is answered or its
+ * inputs are cleared, there is nothing to restore. See taskQuestionDrafts / #622.
+ * @param {HTMLElement} questionBlock - The .task-question-block element
+ */
+function clearTaskQuestionDraft(questionBlock) {
+    const taskId = questionBlock?.dataset.taskId;
+    const questionId = questionBlock?.dataset.questionId;
+    if (!taskId || !questionId) return;
+
+    const taskDrafts = taskQuestionDrafts[taskId];
+    if (!taskDrafts) return;
+
+    delete taskDrafts[questionId];
+
+    // Avoid accumulating empty per-task draft maps.
+    if (Object.keys(taskDrafts).length === 0) {
+        delete taskQuestionDrafts[taskId];
+    }
 }
 
 /**
@@ -479,6 +527,10 @@ async function submitTaskQuestion(taskId, questionId) {
         const result = await response.json();
 
         if (result.success) {
+            // This question is resolved server-side now; drop its draft so the
+            // re-render below does not restore a stale selection (issue #622).
+            clearTaskQuestionDraft(questionBlock);
+
             // Mark this question block as answered
             questionBlock.classList.add('answered');
             questionBlock.innerHTML = `<div class="interview-answered-notice">Q answered ✓ — ${result.questions_remaining_count > 0 ? result.questions_remaining_count + ' question(s) still pending' : 'all done, task resuming...'}</div>`;
@@ -877,6 +929,8 @@ function attachActionHandlers(container) {
             option.classList.add('selected');
             const freetext = questionBlock.querySelector('.workflow-launch-freetext-input');
             if (freetext) freetext.value = '';
+            // Persist the choice so it survives a re-render (issue #622).
+            setTaskQuestionDraft(questionBlock, { key: option.dataset.key, customText: '' });
         });
     });
 
@@ -887,6 +941,11 @@ function attachActionHandlers(container) {
             if (questionBlock?.classList.contains('answered')) return;
             if (textarea.value.trim()) {
                 questionBlock?.querySelectorAll('.answer-option').forEach(opt => opt.classList.remove('selected'));
+                // Persist the free-text draft so it survives a re-render (issue #622).
+                setTaskQuestionDraft(questionBlock, { key: null, customText: textarea.value });
+            } else {
+                // Emptied with no option selected — drop the draft.
+                clearTaskQuestionDraft(questionBlock);
             }
         });
     });
