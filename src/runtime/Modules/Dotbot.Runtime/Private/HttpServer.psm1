@@ -254,6 +254,18 @@ function _Send-JsonResponse {
         [Parameter(Mandatory)] [int]$Status,
         [object]$Body
     )
+
+    # Idempotency guard. Once a response has begun writing, any subsequent
+    # send is a no-op — property setters on a closed/disposed
+    # HttpListenerResponse throw ("already submitted" / "disposed object"),
+    # which is what triggered the needs-input escalation crash cascade.
+    # See dispatcher catch below for the companion diagnosis path.
+    if ($Response.PSObject.Properties['_dotbotSent'] -and $Response._dotbotSent) {
+        return
+    }
+    # Mark BEFORE writing so a partial-failure mid-send still blocks a retry.
+    Add-Member -InputObject $Response -MemberType NoteProperty -Name '_dotbotSent' -Value $true -Force
+
     $Response.StatusCode  = $Status
     $Response.ContentType = 'application/json; charset=utf-8'
 
@@ -410,6 +422,21 @@ function Invoke-RuntimeRequestDispatch {
             -Query       $query `
             -Body        $body
     } catch {
+        # Two failure shapes to distinguish:
+        #   (a) Handler threw before responding — safe to send 500.
+        #   (b) Handler already sent a response and then threw — client
+        #       already has its answer; a second send would trip
+        #       HttpListenerResponse's post-Close guards. Log the
+        #       post-response exception (silent failures are what let
+        #       the needs-input escalation bug hide) but do NOT re-send.
+        if ($response.PSObject.Properties['_dotbotSent'] -and $response._dotbotSent) {
+            try {
+                $errMsg = "[post-response handler exception] $($_.Exception.Message)`n$($_.ScriptStackTrace)"
+                $dbg    = Join-Path $BotRoot (Join-Path '.control' 'runtime-errors.log')
+                Add-Content -LiteralPath $dbg -Value "[$([DateTime]::UtcNow.ToString('o'))] $errMsg" -ErrorAction SilentlyContinue
+            } catch { $null = $_ }
+            return
+        }
         _Send-ErrorResponse -Response $response -Status 500 -Code 'internal_error' -Message $_.Exception.Message
     }
 }
