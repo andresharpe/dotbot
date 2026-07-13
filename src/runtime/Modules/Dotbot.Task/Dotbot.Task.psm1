@@ -1652,6 +1652,7 @@ Review all context above. Decide whether to write clarification-questions.json (
                                         $null = New-InboundDecision -Source mothership -BotPath $BotRoot -Payload @{
                                             questionType   = $iqType
                                             questionText   = if ($iq) { "$($iq.question)" } else { $null }
+                                            options        = if ($iq) { $iq.options } else { $null }
                                             answer         = "$($resolved.answer)"
                                             questionId     = "$($notif.question_id)"
                                             projectId      = "$($notif.project_id)"

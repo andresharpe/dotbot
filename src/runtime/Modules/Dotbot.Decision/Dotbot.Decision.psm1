@@ -252,7 +252,20 @@ function ConvertTo-InboundMothershipFields {
     $questionText = if ($Payload['questionText']) { "$($Payload['questionText'])" } else { $null }
     $questionId = "$($Payload['questionId'])"
     $taskId = "$($Payload['taskId'])"
+    $options = $Payload['options']
     $relatedTaskIds = if ($Payload['relatedTaskIds']) { @($Payload['relatedTaskIds']) } elseif ($taskId) { @($taskId) } else { @() }
+
+    # The mothership answer for an option question is the bare option key (e.g.
+    # "B"). A bare key is meaningless to the analysis/execution reader, so resolve
+    # it against the question options to the "<key> - <label>" form (matching
+    # Resolve-TaskInputAnswer) and carry the option rationale into consequences.
+    # The pause-pattern question carries no explicit type; when options are
+    # present treat it as a single-choice answer.
+    $matched = Get-InboundOptionMatch -Options $options -Key $answer
+    if (-not $questionType -and $matched) { $questionType = 'singleChoice' }
+
+    $decisionText = if ($matched) { "$answer - $($matched.label)" } else { $answer }
+    $consequences = if ($matched) { "$($matched.rationale)" } else { '' }
 
     $requiresReview = $false
     $type =
@@ -266,17 +279,47 @@ function ConvertTo-InboundMothershipFields {
 
     $status = if ($requiresReview) { 'proposed' } else { 'accepted' }
     $title = if ($questionText) { "Inbound answer: $questionText" } else { "Inbound answer for question $questionId" }
+    $context = if ($questionText) {
+        "Answer to '$questionText' received via mothership on task ${taskId}: $decisionText."
+    } else {
+        "Answer received via mothership for question $questionId on task ${taskId}: $decisionText."
+    }
 
     return @{
         title = $title
         type = $type
         status = $status
         impact = 'medium'
-        context = "Answer received via mothership for question $questionId on task $taskId."
-        decision = $answer
+        context = $context
+        decision = $decisionText
+        consequences = $consequences
         related_task_ids = $relatedTaskIds
         tags = @('inbound:mothership')
     }
+}
+
+function Get-InboundOptionMatch {
+    # Resolve a bare option key (e.g. "B") against a question's options array to
+    # the matching option's label + rationale. Options may be hashtables (tests)
+    # or PSCustomObjects (task JSON). Returns $null when there is no single-key
+    # match (approval / freeText / priorityRanking answers fall through).
+    param($Options, [string]$Key)
+
+    if (-not $Options -or [string]::IsNullOrWhiteSpace($Key)) { return $null }
+
+    foreach ($opt in @($Options)) {
+        if (-not $opt) { continue }
+        $k = if ($opt -is [System.Collections.IDictionary]) { $opt['key'] }
+             elseif ($opt.PSObject.Properties['key']) { $opt.key } else { $null }
+        if ("$k" -ne "$Key") { continue }
+
+        $label = if ($opt -is [System.Collections.IDictionary]) { $opt['label'] }
+                 elseif ($opt.PSObject.Properties['label']) { $opt.label } else { $null }
+        $rationale = if ($opt -is [System.Collections.IDictionary]) { $opt['rationale'] }
+                     elseif ($opt.PSObject.Properties['rationale']) { $opt.rationale } else { $null }
+        return @{ label = "$label"; rationale = "$rationale" }
+    }
+    return $null
 }
 
 function ConvertTo-InboundRegistryFields {

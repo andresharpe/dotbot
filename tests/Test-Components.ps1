@@ -6958,6 +6958,20 @@ $mFree = New-InboundDecision -Source mothership -BotPath $funnelBot -Payload @{
 $mFreeRec = Get-FunnelRecord -DecisionId $mFree.decision_id
 Assert-Equal -Name "funnel/mothership freeText status proposed" -Expected 'proposed' -Actual "$($mFreeRec.status)"
 
+# --- Option answer: bare key resolves to "<key> - <label>" + rationale ------
+$mOpt = New-InboundDecision -Source mothership -BotPath $funnelBot -Payload @{
+    questionType = ''; answer = 'C'; questionText = 'What form factor should this ship as?'
+    questionId = 'q-opt'; projectId = 'proj-1'; instanceId = 'inst-1'; taskId = 'task-1'
+    options = @(
+        @{ key = 'A'; label = 'Web app'; rationale = 'Widest reach' },
+        @{ key = 'C'; label = 'Command-line tool'; rationale = 'Developer audience, scriptable' }
+    )
+}
+$mOptRec = Get-FunnelRecord -DecisionId $mOpt.decision_id
+Assert-Equal -Name "funnel/mothership option key resolves to label" -Expected 'C - Command-line tool' -Actual "$($mOptRec.decision)"
+Assert-Equal -Name "funnel/mothership option rationale -> consequences" -Expected 'Developer audience, scriptable' -Actual "$($mOptRec.consequences)"
+Assert-True -Name "funnel/mothership context carries question text" -Condition ("$($mOptRec.context)" -like '*What form factor*')
+
 # --- Best-effort: underlying write throws -> no rethrow, returns null ---
 # Force New-DecisionRecord to fail by occupying workspace/decisions with a FILE
 # so the directory create throws; the funnel must swallow it.
@@ -6976,6 +6990,88 @@ Assert-True -Name "funnel/best-effort returns null on write failure" -Condition 
 Remove-Item -Path $brokenBot -Recurse -Force -ErrorAction SilentlyContinue
 
 Remove-Item -Path $funnelBot -Recurse -Force -ErrorAction SilentlyContinue
+
+# ═══════════════════════════════════════════════════════════════════
+# NEEDS-INPUT -> MOTHERSHIP DISPATCH HOOK (enter-needs-input)
+# ═══════════════════════════════════════════════════════════════════
+# NOTE: this block defines global stubs (Send-TaskNotification etc.) to drive
+# the hook in isolation. It is intentionally the LAST test block so those stubs
+# cannot shadow real commands used by any later test.
+
+Write-Host ""
+Write-Host "  NEEDS-INPUT DISPATCH HOOK" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$niHookScript = Join-Path $repoRoot "src/runtime/Plugins/Hooks/Transitions/enter-needs-input/script.ps1"
+Assert-True -Name "enter-needs-input/script exists" -Condition (Test-Path $niHookScript)
+
+# --- Discovery: the hook is registered and selected for needs-input ---
+Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Hook/Dotbot.Hook.psd1") -Force -DisableNameChecking
+$niRegistry = Get-HookRegistry -BotRoot (Join-Path ([System.IO.Path]::GetTempPath()) ("nohooks-" + [guid]::NewGuid().ToString('N').Substring(0, 6)))
+$niForStatus = @(Get-HooksForStatus -Registry $niRegistry -ToStatus 'needs-input')
+$niMeta = $niForStatus | Where-Object { $_.name -eq 'enter-needs-input' } | Select-Object -First 1
+Assert-True -Name "enter-needs-input/discovered for needs-input status" -Condition ($null -ne $niMeta)
+Assert-True -Name "enter-needs-input/is best-effort (abort_on_failure=false)" -Condition ($null -ne $niMeta -and -not [bool]$niMeta.abort_on_failure)
+
+# --- Functional: drive Invoke-Hook via New-Module (mirrors the dispatcher's isolation) ---
+function New-NiHookModule { New-Module -ScriptBlock ([scriptblock]::Create((Get-Content -LiteralPath $niHookScript -Raw))) }
+function Build-NiTask {
+    param([string]$Path)
+    $t = @{ id = 't_ni'; name = 'NI'; status = 'needs-input'; extensions = @{ runner = @{ pending_questions = @(
+        @{ id = 'q1'; question = 'Platform?'; context = 'c'; options = @(@{ key = 'A'; label = 'Web'; rationale = 'r' }); recommendation = 'A' },
+        @{ id = 'q2'; question = 'Scope?';    context = 'c'; options = @(@{ key = 'A'; label = 'Sci'; rationale = 'r' }); recommendation = 'A' }
+    ) } } }
+    $t | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $Path -Encoding UTF8
+    return $t
+}
+
+$env:DOTBOT_HOME = $repoRoot
+function global:Write-BotLog { param($Level, $Message, $Exception) }
+function global:Write-TaskFileAtomic { param($Path, $Content, $Depth = 20, $TaskId, $BotRoot) $Content | ConvertTo-Json -Depth $Depth | Set-Content -LiteralPath $Path -Encoding UTF8 }
+function global:Get-NotificationSettings { param($BotRoot) [pscustomobject]@{ enabled = $true; channel = 'teams' } }
+function global:Send-TaskNotification { param($TaskContent, $PendingQuestion, $Settings, $Type)
+    @{ success = $true; question_id = "qid-$($PendingQuestion.id)"; instance_id = "inst-$($PendingQuestion.id)"; project_id = 'proj'; channel = 'teams' } }
+
+$niTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("nihook-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $niTmp | Out-Null
+$niBot = Join-Path $niTmp '.bot'; New-Item -ItemType Directory -Force -Path $niBot | Out-Null
+
+# Case 1: enabled + batch -> notifications map keyed by pending_questions ids
+$niTf = Join-Path $niTmp 't_ni.json'
+$niTask = Build-NiTask -Path $niTf
+$niRes = & (New-NiHookModule) Invoke-Hook -Task $niTask -RunContext @{ BotRoot = $niBot; TaskPath = $niTf } -FromStatus 'in-progress' -ToStatus 'needs-input'
+Assert-True -Name "enter-needs-input/enabled batch returns Success" -Condition ([bool]$niRes.Success)
+$niWritten = Get-Content $niTf -Raw | ConvertFrom-Json
+$niMap = $niWritten.extensions.runner.notifications
+Assert-True -Name "enter-needs-input/writes notifications map keyed by question ids" `
+    -Condition ($null -ne $niMap -and $null -ne $niMap.q1 -and $null -ne $niMap.q2)
+Assert-Equal -Name "enter-needs-input/map entry has question_id" -Expected 'qid-q1' -Actual "$($niMap.q1.question_id)"
+Assert-Equal -Name "enter-needs-input/map entry has instance_id" -Expected 'inst-q1' -Actual "$($niMap.q1.instance_id)"
+Assert-Equal -Name "enter-needs-input/map entry has project_id" -Expected 'proj' -Actual "$($niMap.q1.project_id)"
+
+# Case 2: disabled -> no map, still Success
+function global:Get-NotificationSettings { param($BotRoot) [pscustomobject]@{ enabled = $false } }
+$niTf2 = Join-Path $niTmp 't_ni2.json'
+$niTask2 = Build-NiTask -Path $niTf2
+$niRes2 = & (New-NiHookModule) Invoke-Hook -Task $niTask2 -RunContext @{ BotRoot = $niBot; TaskPath = $niTf2 } -FromStatus 'in-progress' -ToStatus 'needs-input'
+$niWritten2 = Get-Content $niTf2 -Raw | ConvertFrom-Json
+Assert-True -Name "enter-needs-input/disabled returns Success" -Condition ([bool]$niRes2.Success)
+Assert-True -Name "enter-needs-input/disabled writes no notifications map" `
+    -Condition (-not [bool]$niWritten2.extensions.runner.PSObject.Properties['notifications'])
+
+# Case 3: send throws -> best-effort, no rethrow, still Success
+function global:Get-NotificationSettings { param($BotRoot) [pscustomobject]@{ enabled = $true } }
+function global:Send-TaskNotification { param($TaskContent, $PendingQuestion, $Settings, $Type) throw "boom" }
+$niTf3 = Join-Path $niTmp 't_ni3.json'
+$niTask3 = Build-NiTask -Path $niTf3
+$niThrew = $false
+$niRes3 = $null
+try { $niRes3 = & (New-NiHookModule) Invoke-Hook -Task $niTask3 -RunContext @{ BotRoot = $niBot; TaskPath = $niTf3 } -FromStatus 'in-progress' -ToStatus 'needs-input' } catch { $niThrew = $true }
+Assert-True -Name "enter-needs-input/send failure does not rethrow" -Condition (-not $niThrew)
+Assert-True -Name "enter-needs-input/send failure still returns Success" -Condition ($null -ne $niRes3 -and [bool]$niRes3.Success)
+
+Remove-Item Function:\global:Send-TaskNotification, Function:\global:Get-NotificationSettings, Function:\global:Write-TaskFileAtomic, Function:\global:Write-BotLog -ErrorAction SilentlyContinue
+Remove-Item -Path $niTmp -Recurse -Force -ErrorAction SilentlyContinue
 
 # ═══════════════════════════════════════════════════════════════════
 # CLEANUP

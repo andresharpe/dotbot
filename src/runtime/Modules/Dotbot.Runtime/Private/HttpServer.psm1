@@ -1253,6 +1253,7 @@ function Invoke-TaskStatusHandler {
             $runContext = @{
                 BotRoot  = $BotRoot
                 Actor    = $actor
+                TaskPath = $path
             }
             if ($task.provenance -and $task.provenance.run_id) {
                 $bundle = _Read-RunRecord -BotRoot $BotRoot -RunId $task.provenance.run_id

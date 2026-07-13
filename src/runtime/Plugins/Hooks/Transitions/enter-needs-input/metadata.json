@@ -1,0 +1,7 @@
+{
+  "name": "enter-needs-input",
+  "description": "Best-effort: dispatch pending questions to mothership when a task enters needs-input, so answers can round-trip back through the notification poller. Advisory -- never aborts the transition.",
+  "target_statuses": ["needs-input"],
+  "max_duration": 60,
+  "abort_on_failure": false
+}

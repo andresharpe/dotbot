@@ -39,6 +39,7 @@ function Invoke-NotificationInboundDecision {
         $null = New-InboundDecision -Source mothership -BotPath $BotRoot -Payload @{
             questionType   = "$(Get-NotificationObjectProp -Object $PendingQuestion -Name 'type')"
             questionText   = Get-NotificationObjectProp -Object $PendingQuestion -Name 'question'
+            options        = Get-NotificationObjectProp -Object $PendingQuestion -Name 'options'
             answer         = "$($Resolved.answer)"
             questionId     = "$(Get-NotificationObjectProp -Object $Notification -Name 'question_id')"
             projectId      = "$(Get-NotificationObjectProp -Object $Notification -Name 'project_id')"
