@@ -661,6 +661,144 @@ try {
 }
 Clear-RuntimeMutexPool
 
+# ═══════════════════════════════════════════════════════════════════════════
+# _Send-JsonResponse idempotency: regression for the needs-input escalation
+# crash. Any handler that sends a response and then throws would previously
+# trip the dispatcher into re-serializing onto a closed HttpListenerResponse
+# and crash with "already submitted" / "disposed object" from the property
+# setters. Fix: the first send stamps _dotbotSent on the response; every
+# subsequent _Send-* is a no-op.
+# ═══════════════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  _Send-JsonResponse idempotency (double-send guard)" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# HttpListenerResponse is a sealed .NET class with no public constructor,
+# so we stand in a PSCustomObject exposing just the surface _Send-JsonResponse
+# touches: StatusCode / ContentType / ContentLength64 / OutputStream / Close().
+function New-FakeHttpResponse {
+    $r = [PSCustomObject]@{
+        StatusCode      = 0
+        ContentType     = ''
+        ContentLength64 = 0
+        OutputStream    = [System.IO.MemoryStream]::new()
+        CloseCount      = 0
+    }
+    $r | Add-Member -MemberType ScriptMethod -Name Close -Value { $this.CloseCount++ }
+    return $r
+}
+
+# _Send-JsonResponse is defined in Dotbot.Runtime's HttpServer *nested* module.
+# The top-level Dotbot.Runtime scope can't see nested private functions, so we
+# grab the nested-module handle by name and invoke through it — same trick
+# Pester's InModuleScope uses.
+$httpMod = (Get-Module Dotbot.Runtime).NestedModules | Where-Object { $_.Name -eq 'HttpServer' } | Select-Object -First 1
+Assert-True -Name "HttpServer nested module is loaded (test scaffolding sanity)" -Condition ($null -ne $httpMod)
+
+$fake = New-FakeHttpResponse
+& $httpMod {
+    param($resp)
+    _Send-JsonResponse -Response $resp -Status 200 -Body @{ ok = $true; n = 1 }
+} $fake
+
+Assert-Equal -Name "First send sets StatusCode = 200"          -Expected 200 -Actual $fake.StatusCode
+Assert-Equal -Name "First send calls Close() exactly once"     -Expected 1   -Actual $fake.CloseCount
+Assert-True  -Name "First send stamps _dotbotSent on response" `
+    -Condition ($fake.PSObject.Properties['_dotbotSent'] -and $fake._dotbotSent -eq $true)
+Assert-True  -Name "First send writes body bytes to OutputStream" `
+    -Condition ($fake.OutputStream.Length -gt 0)
+
+$bytesAfterFirst = $fake.OutputStream.Length
+
+# Second call — simulates the dispatcher's catch calling _Send-ErrorResponse
+# after the handler already responded. Must be a no-op: no StatusCode change,
+# no additional Close(), no additional bytes written.
+& $httpMod {
+    param($resp)
+    _Send-JsonResponse -Response $resp -Status 500 -Body @{ error = 'internal_error' }
+} $fake
+
+Assert-Equal -Name "Second send does NOT overwrite StatusCode" -Expected 200 -Actual $fake.StatusCode
+Assert-Equal -Name "Second send does NOT re-Close()"           -Expected 1   -Actual $fake.CloseCount
+Assert-Equal -Name "Second send writes no additional bytes"    -Expected $bytesAfterFirst -Actual $fake.OutputStream.Length
+
+# _Send-ErrorResponse delegates to _Send-JsonResponse, so the guard covers it
+# too — the dispatcher's catch calls _Send-ErrorResponse on the closed response.
+$fake2 = New-FakeHttpResponse
+& $httpMod {
+    param($resp)
+    _Send-JsonResponse   -Response $resp -Status 200 -Body @{ ok = $true }
+    _Send-ErrorResponse  -Response $resp -Status 500 -Code 'internal_error' -Message 'post-response throw'
+} $fake2
+
+Assert-Equal -Name "_Send-ErrorResponse after prior send is a no-op (StatusCode preserved)" `
+    -Expected 200 -Actual $fake2.StatusCode
+Assert-Equal -Name "_Send-ErrorResponse after prior send does not re-Close()" `
+    -Expected 1   -Actual $fake2.CloseCount
+
+# ─── Prep-failure path (reviewer feedback on PR #639) ────────────────────
+# If ConvertTo-Json throws BEFORE _dotbotSent is stamped, the response must
+# be pristine so the dispatcher's catch can still send a legitimate 500.
+# The flag must NOT be set and Close() must NOT be called.
+$fake3 = New-FakeHttpResponse
+$prepThrew = $false
+try {
+    & $httpMod {
+        param($resp)
+        # Shadow ConvertTo-Json in the nested module's scope so we can
+        # reproduce a serialization failure deterministically.
+        function ConvertTo-Json { throw 'simulated serialization failure' }
+        try {
+            _Send-JsonResponse -Response $resp -Status 200 -Body @{ ok = $true }
+        } finally {
+            Remove-Item Function:\ConvertTo-Json -ErrorAction SilentlyContinue
+        }
+    } $fake3
+} catch { $prepThrew = $true }
+
+Assert-True  -Name "Payload prep failure propagates out of _Send-JsonResponse" `
+    -Condition $prepThrew
+Assert-True  -Name "Payload prep failure does NOT stamp _dotbotSent (dispatcher can still send 500)" `
+    -Condition (-not ($fake3.PSObject.Properties['_dotbotSent'] -and $fake3._dotbotSent -eq $true))
+Assert-Equal -Name "Payload prep failure leaves StatusCode untouched" `
+    -Expected 0 -Actual $fake3.StatusCode
+Assert-Equal -Name "Payload prep failure does not call Close()" `
+    -Expected 0 -Actual $fake3.CloseCount
+
+# ─── Mid-write failure path (reviewer feedback on PR #639) ───────────────
+# If a header setter or OutputStream.Write throws AFTER the flag is set,
+# the response is in an unknown state; the guard must NOT retry (already
+# committed) and Close() must still run via the try/finally so the
+# connection doesn't leak until the client times out.
+function New-ThrowingFakeHttpResponse {
+    $r = New-Object PSObject
+    $r | Add-Member -MemberType NoteProperty -Name ContentType     -Value ''
+    $r | Add-Member -MemberType NoteProperty -Name ContentLength64 -Value 0
+    $r | Add-Member -MemberType NoteProperty -Name OutputStream    -Value ([System.IO.MemoryStream]::new())
+    $r | Add-Member -MemberType NoteProperty -Name CloseCount      -Value 0
+    $r | Add-Member -MemberType ScriptProperty -Name StatusCode `
+        -Value       { 0 } `
+        -SecondValue { param($v) throw 'simulated post-flag setter failure' }
+    $r | Add-Member -MemberType ScriptMethod -Name Close -Value { $this.CloseCount++ }
+    return $r
+}
+$fake4 = New-ThrowingFakeHttpResponse
+$writeThrew = $false
+try {
+    & $httpMod {
+        param($resp)
+        _Send-JsonResponse -Response $resp -Status 200 -Body @{ ok = $true }
+    } $fake4
+} catch { $writeThrew = $true }
+
+Assert-True  -Name "Mid-write setter failure propagates out of _Send-JsonResponse" `
+    -Condition $writeThrew
+Assert-True  -Name "Mid-write setter failure DOES stamp _dotbotSent (response committed, guard blocks retry)" `
+    -Condition ($fake4.PSObject.Properties['_dotbotSent'] -and $fake4._dotbotSent -eq $true)
+Assert-Equal -Name "Mid-write setter failure still calls Close() via finally (no leaked connection)" `
+    -Expected 1 -Actual $fake4.CloseCount
+
 Write-TestSummary -LayerName "Runtime"
 
 if ((Get-TestResults).Failed -gt 0) { exit 1 } else { exit 0 }
