@@ -1330,3 +1330,178 @@ select.filter-input option {
         margin-left: 0;
     }
 }
+
+/* ============================================================
+   FLEET DASHBOARD (#547)
+   ============================================================ */
+
+/* Stat-value tints for fleet node states / alerts */
+.stat-online { color: var(--color-success); text-shadow: 0 0 15px var(--success-30); }
+.stat-stale { color: var(--color-warning); text-shadow: 0 0 15px var(--primary-30); }
+.stat-error { color: var(--color-error); text-shadow: 0 0 15px var(--error-30); }
+.stat-alerts { color: var(--color-error); text-shadow: 0 0 15px var(--error-30); }
+
+/* Instance health cards — grid of vertical cards (overrides .instance-card's row flex) */
+.fleet-instance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+}
+.fleet-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 12px 14px;
+    cursor: default;
+}
+.fleet-card.status-online { border-left-color: var(--color-success); }
+.fleet-card.status-stale { border-left-color: var(--color-warning); }
+.fleet-card.status-error { border-left-color: var(--color-error); }
+
+/* Status LEDs for fleet node states */
+.led-online { background: var(--color-success); box-shadow: 0 0 8px var(--success-30); }
+.led-stale { background: var(--color-warning); box-shadow: 0 0 8px var(--primary-50); }
+.led-error { background: var(--color-error); box-shadow: 0 0 8px var(--error-30); }
+
+.fleet-kind-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-muted);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
+    padding: 1px 6px;
+}
+/* Stale-detection badge — distinct amber pill so stale nodes stand out at a glance */
+.fleet-stale-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-warning);
+    background: var(--warning-15);
+    border: 1px solid var(--color-warning);
+    border-radius: 3px;
+    padding: 1px 6px;
+}
+
+.fleet-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+}
+.fleet-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-primary-dim);
+}
+.fleet-meta-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-muted);
+}
+
+/* Drone utilization sub-block */
+.fleet-drone-util {
+    border-top: 1px solid var(--bezel-edge);
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.fleet-util-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-primary-dim);
+}
+.fleet-util-row .progress-bar-sm { flex: 1; }
+.fleet-util-stats { display: flex; gap: 14px; }
+
+/* Active-alert banner */
+.fleet-alert-banner {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    border: 1px solid var(--color-warning);
+    border-left-width: 3px;
+    background: var(--warning-15);
+    color: var(--color-warning);
+}
+.fleet-alert-banner[data-severity="critical"] {
+    border-color: var(--color-error);
+    background: var(--error-15);
+    color: var(--color-error);
+}
+.fleet-alert-banner[data-severity="info"] {
+    border-color: var(--color-secondary);
+    background: var(--secondary-10);
+    color: var(--color-secondary);
+}
+
+/* Alert rows — notification rail + history */
+.fleet-alert-list { display: flex; flex-direction: column; gap: 4px; }
+.fleet-alert-row {
+    background: var(--bg-panel);
+    border-left: 3px solid var(--color-bezel);
+    border-radius: 0 4px 4px 0;
+    padding: 10px 12px;
+}
+.fleet-alert-row[data-severity="critical"] { border-left-color: var(--color-error); }
+.fleet-alert-row[data-severity="warning"] { border-left-color: var(--color-warning); }
+.fleet-alert-row[data-severity="info"] { border-left-color: var(--color-secondary); }
+.fleet-alert-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.fleet-severity-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-radius: 3px;
+    padding: 1px 6px;
+}
+.fleet-severity-badge.sev-critical { color: var(--color-error); background: var(--error-15); }
+.fleet-severity-badge.sev-warning { color: var(--color-warning); background: var(--warning-15); }
+.fleet-severity-badge.sev-info { color: var(--color-secondary); background: var(--secondary-10); }
+.fleet-alert-instance {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-primary);
+}
+.fleet-alert-time {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--color-muted);
+}
+.fleet-alert-msg {
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--color-primary-dim);
+    line-height: 1.4;
+}
+.fleet-alert-resolved {
+    margin-top: 4px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-success);
+}

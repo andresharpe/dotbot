@@ -27,10 +27,15 @@
             <a href="/api/dashboard/signout" class="ctrl-btn-sm">SIGN OUT</a>
         </header>
 
-        @* Rail shows only destinations that exist; Fleet (#547), People (#601)
-           and Settings slots are added as their pages land — Q5 pattern. *@
+        @* Rail shows only destinations that exist; People (#601) and Settings slots
+           are added as their pages land — Q5 pattern. Active item is driven by
+           ViewData["ActiveRail"], set per page. *@
+        @{
+            var activeRail = ViewData["ActiveRail"] as string;
+        }
         <nav class="shell-rail" aria-label="Primary">
-            <a class="shell-rail-item" href="/" aria-current="page"><span class="shell-rail-icon">▣</span><span class="shell-rail-label">Decisions</span></a>
+            <a class="shell-rail-item" href="/" aria-current="@(activeRail == "fleet" ? "page" : null)"><span class="shell-rail-icon">□</span><span class="shell-rail-label">Fleet</span></a>
+            <a class="shell-rail-item" href="/decisions" aria-current="@(activeRail == "decisions" ? "page" : null)"><span class="shell-rail-icon">▣</span><span class="shell-rail-label">Decisions</span></a>
             <div class="shell-rail-divider"></div>
         </nav>
 
