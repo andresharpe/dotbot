@@ -95,29 +95,6 @@
     display: none;
 }
 
-/* Workflow pills container (header, next to workflow badge) */
-.workflow-pills {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-
-.workflow-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 3px 10px;
-    background: rgb(var(--color-info-rgb) / 0.15);
-    border: 1px solid rgb(var(--color-info-rgb) / 0.4);
-    border-radius: 10px;
-    font-family: var(--font-ui);
-    font-size: 9px;
-    font-weight: 600;
-    color: var(--color-info);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
 /* Editor launch button (tab bar) */
 .editor-btn {
     display: inline-flex;
@@ -299,16 +276,8 @@
 
 /* Topbar density: nothing wraps in the 44px bar. Priority under pressure:
  * identity values (project, workflow, DOTBOT_HOME SHA) keep full text; the
- * inert search pill compresses first; workflow pills ellipsize last — the
- * full list lives on the Workflows tab. */
-.shell-topbar .workflow-pills {
-    flex-wrap: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-}
-
+ * inert search pill compresses first. (Installed-workflow pills were dropped
+ * in #606 — spec #7.3 topbar carries only the current-workflow badge.) */
 .shell-topbar .project-badge,
 .shell-topbar .workflow-badge,
 .shell-topbar .framework-banner {
@@ -327,8 +296,7 @@
 }
 
 @media (max-width: 1200px) {
-    .shell-topbar .shell-search,
-    .shell-topbar .workflow-pills {
+    .shell-topbar .shell-search {
         display: none;
     }
 }

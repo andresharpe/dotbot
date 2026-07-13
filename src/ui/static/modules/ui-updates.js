@@ -558,7 +558,9 @@ async function initProjectName() {
         const workflowName = info.workflow || null;
         currentWorkflowName = workflowName;
         updateWorkflowBadge(workflowName);
-        updateWorkflowPills(info.installed_workflows || []);
+        // Topbar pills were dropped in #606 (spec #7.3 topbar has no pills);
+        // the installed list still feeds the workflow-launch CTA.
+        installedWorkflows = info.installed_workflows || [];
         updateFrameworkBanner(info.framework || null);
     } else {
         projectName = 'autonomous';
@@ -647,29 +649,6 @@ function updateFrameworkBanner(framework) {
         tooltipLines.push('Git: not a repo (likely installed copy)');
     }
     banner.title = tooltipLines.join('\n');
-}
-
-/**
- * Update workflow pills in header from installed_workflows
- * @param {Array} workflows - Array of workflow name strings
- */
-function updateWorkflowPills(workflows) {
-    const container = document.getElementById('workflow-pills');
-    if (!container) return;
-    installedWorkflows = workflows || [];
-    if (workflows && workflows.length > 0) {
-        // Strip the registry prefix (e.g. "iwg:iwg-bs-scoring" -> "iwg-bs-scoring")
-        // so we can de-duplicate against the active workflow badge
-        const activeBase = currentWorkflowName
-            ? currentWorkflowName.replace(/^[^:]+:/, '')
-            : null;
-        const filtered = workflows.filter(name => name !== currentWorkflowName && name !== activeBase);
-        container.innerHTML = filtered.map(name =>
-            `<span class="workflow-pill" title="Installed workflow: ${escapeHtml(name)}">${escapeHtml(name)}</span>`
-        ).join('');
-    } else {
-        container.innerHTML = '';
-    }
 }
 
 /**
