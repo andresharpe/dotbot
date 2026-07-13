@@ -181,6 +181,7 @@ Import-Module (Join-Path $PSScriptRoot "modules/NotificationPoller.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules/DecisionAPI.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules/InboxWatcher.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules/FleetAPI.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "modules/WorkQueueService.psm1") -Force
 
 # Import workflow manifest utilities (for installed workflows API).
 # -Global so Test-ValidWorkflowDir / Read-WorkflowManifest stay visible to
@@ -206,6 +207,7 @@ Initialize-NotificationPoller -BotRoot $botRoot
 Initialize-DecisionAPI -BotRoot $botRoot
 Initialize-InboxWatcher -BotRoot $botRoot
 Initialize-FleetAPI -ControlDir $controlDir -BotRoot $botRoot
+Initialize-WorkQueueService -ControlDir $controlDir
 
 # Request counter for single-line logging
 $script:requestCount = 0
