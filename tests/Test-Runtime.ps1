@@ -661,6 +661,71 @@ try {
 }
 Clear-RuntimeMutexPool
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Dispatcher: no crash cascade + no silent client lie when a handler sends a
+# response and then throws (regression for the needs-input escalation bug).
+# ═══════════════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  Dispatcher: handler that sends then throws" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# The /__debug/double-send route is only registered when DOTBOT_TEST_ROUTES=1.
+# The handler sends a 200, then throws — mimicking any handler that does
+# state-changing work after acknowledging success. Two things we assert:
+#   1. The client sees a successful 200 (matching today's silent-lie symptom)
+#   2. After the throw, the dispatcher's catch does not itself crash the
+#      request-loop worker with an "already submitted / disposed" error
+#      escaping to runtime-errors.log.
+# Test #2 is expected to FAIL against the pre-fix code and PASS once the
+# dispatcher guards against double-send.
+$env:DOTBOT_TEST_ROUTES = '1'
+$bot = New-TestBotRoot
+$start = $null
+try {
+    $start = Start-DotbotRuntime -BotRoot $bot
+
+    # Wait for the listener to be ready.
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    $ready = $false
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            $r = Invoke-RuntimeRaw -Url $start.url -Method GET -Path '/health' -Token $start.token
+            if ($r.status_code -eq 200) { $ready = $true; break }
+        } catch { Start-Sleep -Milliseconds 100 }
+    }
+    Assert-True -Name "Runtime came up for double-send test" -Condition $ready
+
+    $errLog = Join-Path $bot '.control/runtime-errors.log'
+    if (Test-Path -LiteralPath $errLog) { Remove-Item -LiteralPath $errLog -Force }
+
+    $r = Invoke-RuntimeRaw -Url $start.url -Method POST -Path '/__debug/double-send' -Token $start.token -Body @{}
+
+    # Symptom #1 — client is told everything is fine.
+    Assert-Equal -Name "POST /__debug/double-send returns 200 to the client (silent lie today)" `
+        -Expected 200 -Actual $r.status_code
+    Assert-True  -Name "POST /__debug/double-send body carries ok=true" `
+        -Condition ($r.body -and $r.body.ok -eq $true)
+
+    # Give the background request-loop worker a beat to flush its error log.
+    Start-Sleep -Milliseconds 250
+
+    # Symptom #2 — the crash cascade currently leaks into runtime-errors.log.
+    # This assertion FAILS on pre-fix code (log exists + contains the stack)
+    # and PASSES once the dispatcher no longer re-sends on a closed response.
+    $errLogContent = if (Test-Path -LiteralPath $errLog) {
+        Get-Content -LiteralPath $errLog -Raw
+    } else { '' }
+    Assert-True -Name "Dispatcher does not log a double-send crash after handler throws" `
+        -Condition (-not ($errLogContent -match '_Send-JsonResponse')) `
+        -Message "runtime-errors.log leaked a dispatcher crash cascade:`n$errLogContent"
+
+} finally {
+    if ($start) { Stop-DotbotRuntime -BotRoot $bot -Listener $start.listener -ErrorAction SilentlyContinue }
+    Remove-TestBotRoot -BotRoot $bot
+    Remove-Item Env:DOTBOT_TEST_ROUTES -ErrorAction SilentlyContinue
+}
+
 Write-TestSummary -LayerName "Runtime"
 
 if ((Get-TestResults).Failed -gt 0) { exit 1 } else { exit 0 }
