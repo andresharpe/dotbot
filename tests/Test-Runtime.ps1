@@ -737,6 +737,68 @@ Assert-Equal -Name "_Send-ErrorResponse after prior send is a no-op (StatusCode 
 Assert-Equal -Name "_Send-ErrorResponse after prior send does not re-Close()" `
     -Expected 1   -Actual $fake2.CloseCount
 
+# ─── Prep-failure path (reviewer feedback on PR #639) ────────────────────
+# If ConvertTo-Json throws BEFORE _dotbotSent is stamped, the response must
+# be pristine so the dispatcher's catch can still send a legitimate 500.
+# The flag must NOT be set and Close() must NOT be called.
+$fake3 = New-FakeHttpResponse
+$prepThrew = $false
+try {
+    & $httpMod {
+        param($resp)
+        # Shadow ConvertTo-Json in the nested module's scope so we can
+        # reproduce a serialization failure deterministically.
+        function ConvertTo-Json { throw 'simulated serialization failure' }
+        try {
+            _Send-JsonResponse -Response $resp -Status 200 -Body @{ ok = $true }
+        } finally {
+            Remove-Item Function:\ConvertTo-Json -ErrorAction SilentlyContinue
+        }
+    } $fake3
+} catch { $prepThrew = $true }
+
+Assert-True  -Name "Payload prep failure propagates out of _Send-JsonResponse" `
+    -Condition $prepThrew
+Assert-True  -Name "Payload prep failure does NOT stamp _dotbotSent (dispatcher can still send 500)" `
+    -Condition (-not ($fake3.PSObject.Properties['_dotbotSent'] -and $fake3._dotbotSent -eq $true))
+Assert-Equal -Name "Payload prep failure leaves StatusCode untouched" `
+    -Expected 0 -Actual $fake3.StatusCode
+Assert-Equal -Name "Payload prep failure does not call Close()" `
+    -Expected 0 -Actual $fake3.CloseCount
+
+# ─── Mid-write failure path (reviewer feedback on PR #639) ───────────────
+# If a header setter or OutputStream.Write throws AFTER the flag is set,
+# the response is in an unknown state; the guard must NOT retry (already
+# committed) and Close() must still run via the try/finally so the
+# connection doesn't leak until the client times out.
+function New-ThrowingFakeHttpResponse {
+    $r = New-Object PSObject
+    $r | Add-Member -MemberType NoteProperty -Name ContentType     -Value ''
+    $r | Add-Member -MemberType NoteProperty -Name ContentLength64 -Value 0
+    $r | Add-Member -MemberType NoteProperty -Name OutputStream    -Value ([System.IO.MemoryStream]::new())
+    $r | Add-Member -MemberType NoteProperty -Name CloseCount      -Value 0
+    $r | Add-Member -MemberType ScriptProperty -Name StatusCode `
+        -Value       { 0 } `
+        -SecondValue { param($v) throw 'simulated post-flag setter failure' }
+    $r | Add-Member -MemberType ScriptMethod -Name Close -Value { $this.CloseCount++ }
+    return $r
+}
+$fake4 = New-ThrowingFakeHttpResponse
+$writeThrew = $false
+try {
+    & $httpMod {
+        param($resp)
+        _Send-JsonResponse -Response $resp -Status 200 -Body @{ ok = $true }
+    } $fake4
+} catch { $writeThrew = $true }
+
+Assert-True  -Name "Mid-write setter failure propagates out of _Send-JsonResponse" `
+    -Condition $writeThrew
+Assert-True  -Name "Mid-write setter failure DOES stamp _dotbotSent (response committed, guard blocks retry)" `
+    -Condition ($fake4.PSObject.Properties['_dotbotSent'] -and $fake4._dotbotSent -eq $true)
+Assert-Equal -Name "Mid-write setter failure still calls Close() via finally (no leaked connection)" `
+    -Expected 1 -Actual $fake4.CloseCount
+
 Write-TestSummary -LayerName "Runtime"
 
 if ((Get-TestResults).Failed -gt 0) { exit 1 } else { exit 0 }

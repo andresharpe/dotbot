@@ -254,12 +254,11 @@ function _Send-JsonResponse {
     if ($Response.PSObject.Properties['_dotbotSent'] -and $Response._dotbotSent) {
         return
     }
-    # Mark BEFORE writing so a partial-failure mid-send still blocks a retry.
-    Add-Member -InputObject $Response -MemberType NoteProperty -Name '_dotbotSent' -Value $true -Force
 
-    $Response.StatusCode  = $Status
-    $Response.ContentType = 'application/json; charset=utf-8'
-
+    # 1. Serialize the payload FIRST — before touching the response state or
+    #    stamping _dotbotSent. If ConvertTo-Json throws (circular refs,
+    #    unserializable types, etc.) the response is still pristine and the
+    #    dispatcher's catch can send a legitimate 500 to the client.
     if ($null -eq $Body) {
         $bytes = [byte[]]@()
     } else {
@@ -270,11 +269,24 @@ function _Send-JsonResponse {
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
     }
 
-    $Response.ContentLength64 = $bytes.Length
-    if ($bytes.Length -gt 0) {
-        $Response.OutputStream.Write($bytes, 0, $bytes.Length)
+    # 2. Commit — from here on, the response is being written. Stamp the flag
+    #    BEFORE the first mutator so a partial-failure mid-write still blocks
+    #    a retry cascade onto the same closed/disposed HttpListenerResponse.
+    Add-Member -InputObject $Response -MemberType NoteProperty -Name '_dotbotSent' -Value $true -Force
+
+    # 3. Always Close(), even if a header setter or Write throws mid-response.
+    #    Without this, a failed write would leak the connection until the
+    #    client times out.
+    try {
+        $Response.StatusCode  = $Status
+        $Response.ContentType = 'application/json; charset=utf-8'
+        $Response.ContentLength64 = $bytes.Length
+        if ($bytes.Length -gt 0) {
+            $Response.OutputStream.Write($bytes, 0, $bytes.Length)
+        }
+    } finally {
+        try { $Response.Close() } catch { $null = $_ }
     }
-    $Response.Close()
 }
 
 function _Send-ErrorResponse {
