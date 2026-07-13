@@ -308,7 +308,9 @@
                                     <button class="filter-chip" data-task-filter="analysed">Analysed <span class="chip-count" id="analysed-count">0</span></button>
                                     <button class="filter-chip" data-task-filter="in-progress">In progress <span class="chip-count" id="progress-count">-</span></button>
                                     <button class="filter-chip" data-task-filter="done">Done <span class="chip-count" id="done-count">-</span></button>
-                                    <span class="chips-extra"><span id="skipped-count">0</span> skipped · <span id="cancelled-count">0</span> cancelled</span>
+                                    <button class="filter-chip" data-task-filter="skipped">Skipped <span class="chip-count" id="skipped-count">0</span></button>
+                                    <!-- Count only: /api/state carries no cancelled_list, so there is nothing to filter -->
+                                    <span class="chips-extra" title="Count only — the server does not return cancelled tasks"><span id="cancelled-count">0</span> cancelled</span>
                                 </div>
                                 <div class="tasks-toolbar-actions">
                                     <select class="pipeline-workflow-filter" id="pipeline-workflow-filter" title="Filter tasks by workflow">
@@ -351,27 +353,12 @@
                     <!-- Decisions Tab -->
                     <div class="tab-pane" id="tab-decisions">
                         <div class="decisions-header-strip">
-                            <div class="decision-summary">
-                                <div class="summary-item">
-                                    <span class="summary-label">Proposed</span>
-                                    <span class="summary-value" id="decision-count-proposed">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Accepted</span>
-                                    <span class="summary-value active" id="decision-count-accepted">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Deprecated</span>
-                                    <span class="summary-value" id="decision-count-deprecated">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Superseded</span>
-                                    <span class="summary-value" id="decision-count-superseded">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Total</span>
-                                    <span class="summary-value" id="decision-count-total">0</span>
-                                </div>
+                            <div class="filter-chips" id="decision-filter-chips">
+                                <button class="filter-chip active" data-decision-filter="all">All <span class="chip-count" id="decision-count-total">0</span></button>
+                                <button class="filter-chip" data-decision-filter="proposed">Proposed <span class="chip-count" id="decision-count-proposed">0</span></button>
+                                <button class="filter-chip" data-decision-filter="accepted">Accepted <span class="chip-count" id="decision-count-accepted">0</span></button>
+                                <button class="filter-chip" data-decision-filter="deprecated">Deprecated <span class="chip-count" id="decision-count-deprecated">0</span></button>
+                                <button class="filter-chip" data-decision-filter="superseded">Superseded <span class="chip-count" id="decision-count-superseded">0</span></button>
                             </div>
                             <button class="ctrl-btn-sm primary" id="decision-create-btn">+ New Decision</button>
                         </div>
@@ -909,7 +896,7 @@
                                                     <span class="setting-label">Test Connection</span>
                                                     <span class="setting-description" id="notif-test-status"></span>
                                                 </div>
-                                                <button class="btn btn-small" id="notif-test-btn">Test</button>
+                                                <button class="ctrl-btn-sm" id="notif-test-btn">Test</button>
                                             </div>
                                         </div>
 

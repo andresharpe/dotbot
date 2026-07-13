@@ -81,6 +81,7 @@ function collectFilteredTasks(tasks) {
         'analysed': withStatus(tasks.analysed_list, 'analysed'),
         'todo': withStatus(tasks.upcoming, 'todo'),
         'done': withStatus(tasks.recent_completed, 'done'),
+        'skipped': withStatus(tasks.skipped_list, 'skipped'),
     };
 
     let rows;
@@ -88,7 +89,7 @@ function collectFilteredTasks(tasks) {
         rows = [
             ...buckets['in-progress'], ...buckets['needs-input'], ...buckets['analysing'],
             ...buckets['analysed'], ...buckets['todo'], ...buckets['done'],
-            ...withStatus(tasks.skipped_list, 'skipped'),
+            ...buckets['skipped'],
         ];
     } else {
         rows = buckets[activeTaskFilter] || [];
