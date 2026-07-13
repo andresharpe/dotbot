@@ -1,6 +1,6 @@
 /* DOTBOT Shared Navigation Shell
  * One shell, many rooms: the v4 navigation frame shared by Mothership and Outpost.
- * Spec: docs/DOTBOT-v4-DESIGN-IDEAS.md §7 — 44px top bar · 56px icon rail (pinnable
+ * Spec: docs/DOTBOT-v4-DESIGN-IDEAS.md #7 — 44px top bar · 56px icon rail (pinnable
  * to 200px labelled mode) · 28px dispatch ticker · content capped at 1280px.
  *
  * Consumption order: dotbot-tokens.css → dotbot-crt.css → dotbot-shell.css
@@ -25,7 +25,7 @@
     --shell-rail-w-pinned: 200px;
     --shell-ticker-h: 28px;
     --shell-content-max: 1280px;
-    /* Scanline intensity: 6% on chrome, 0% on content (spec §11) */
+    /* Scanline intensity: 6% on chrome, 0% on content (spec #11) */
     --shell-scanline-alpha: 0.06;
 
     display: grid;
@@ -46,7 +46,7 @@
 }
 
 /* The shell owns its own chrome texture; suppress the global crt.css overlay
- * so content panels stay at 0% (spec §11). No-op until .shell markup exists. */
+ * so content panels stay at 0% (spec #11). No-op until .shell markup exists. */
 body:has(.shell)::after {
     content: none;
 }
@@ -112,14 +112,19 @@ body:has(.shell)::after {
     color: var(--color-primary);
 }
 
-/* Search pill — the visible palette affordance. Behaviour lands with #553. */
+/* Search pill — the visible palette affordance (behaviour lands with #553).
+ * Centered mid-bar per the spec #7.3 sketch; clamp keeps it prominent on wide
+ * screens and lets it compress before identity values would truncate. */
 .shell-search {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex: 0 1 clamp(180px, 24vw, 340px);
+    min-width: 140px;
     margin-left: auto;
+    margin-right: auto;
     padding: 5px 12px;
-    min-width: 220px;
+    overflow: hidden;
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--color-muted);
