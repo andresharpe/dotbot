@@ -1,0 +1,95 @@
+[
+  {
+    "instanceId": "atlas-prod",
+    "name": "atlas-prod",
+    "kind": "outpost",
+    "status": "online",
+    "orgId": "default",
+    "uptimeSeconds": 486300,
+    "lastHeartbeatAt": "2026-07-13T18:31:40Z",
+    "activeWorkflow": "start-from-jira",
+    "taskCount": 3,
+    "version": "4.1.0",
+    "droneUtilization": null
+  },
+  {
+    "instanceId": "beacon-staging",
+    "name": "beacon-staging",
+    "kind": "outpost",
+    "status": "stale",
+    "orgId": "default",
+    "uptimeSeconds": 91820,
+    "lastHeartbeatAt": "2026-07-13T18:19:05Z",
+    "activeWorkflow": "start-from-prompt",
+    "taskCount": 1,
+    "version": "4.1.0",
+    "droneUtilization": null
+  },
+  {
+    "instanceId": "orion-dev",
+    "name": "orion-dev",
+    "kind": "outpost",
+    "status": "error",
+    "orgId": "default",
+    "uptimeSeconds": 0,
+    "lastHeartbeatAt": "2026-07-13T17:58:11Z",
+    "activeWorkflow": null,
+    "taskCount": 0,
+    "version": "4.0.2",
+    "droneUtilization": null
+  },
+  {
+    "instanceId": "drone-alpha",
+    "name": "drone-alpha",
+    "kind": "drone",
+    "status": "online",
+    "orgId": "default",
+    "uptimeSeconds": 205400,
+    "lastHeartbeatAt": "2026-07-13T18:31:52Z",
+    "activeWorkflow": "start-from-jira",
+    "taskCount": 2,
+    "version": "4.1.0",
+    "droneUtilization": {
+      "load": 2,
+      "maxConcurrent": 4,
+      "successRate": 0.96,
+      "avgDurationSeconds": 312
+    }
+  },
+  {
+    "instanceId": "drone-bravo",
+    "name": "drone-bravo",
+    "kind": "drone",
+    "status": "online",
+    "orgId": "default",
+    "uptimeSeconds": 205280,
+    "lastHeartbeatAt": "2026-07-13T18:31:48Z",
+    "activeWorkflow": "start-from-repo",
+    "taskCount": 4,
+    "version": "4.1.0",
+    "droneUtilization": {
+      "load": 4,
+      "maxConcurrent": 4,
+      "successRate": 0.88,
+      "avgDurationSeconds": 540
+    }
+  },
+  {
+    "instanceId": "drone-charlie",
+    "name": "drone-charlie",
+    "kind": "drone",
+    "status": "stale",
+    "orgId": "default",
+    "uptimeSeconds": 48120,
+    "lastHeartbeatAt": "2026-07-13T18:27:30Z",
+    "activeWorkflow": null,
+    "taskCount": 0,
+    "version": "4.1.0",
+    "droneUtilization": {
+      "load": 0,
+      "maxConcurrent": 2,
+      "successRate": 0.71,
+      "avgDurationSeconds": 605
+    }
+  }
+]

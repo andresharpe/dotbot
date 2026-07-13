@@ -1,0 +1,56 @@
+[
+  {
+    "id": "alert-1001",
+    "severity": "critical",
+    "instanceId": "orion-dev",
+    "message": "Outpost orion-dev reported a fatal runtime error and stopped heartbeating.",
+    "createdAt": "2026-07-13T17:58:20Z",
+    "status": "active",
+    "resolvedAt": null
+  },
+  {
+    "id": "alert-1002",
+    "severity": "warning",
+    "instanceId": "beacon-staging",
+    "message": "Outpost beacon-staging is stale — no heartbeat for over 5 minutes.",
+    "createdAt": "2026-07-13T18:24:10Z",
+    "status": "active",
+    "resolvedAt": null
+  },
+  {
+    "id": "alert-1003",
+    "severity": "warning",
+    "instanceId": "drone-charlie",
+    "message": "Drone drone-charlie is stale — no heartbeat for over 2 minutes.",
+    "createdAt": "2026-07-13T18:29:45Z",
+    "status": "active",
+    "resolvedAt": null
+  },
+  {
+    "id": "alert-1004",
+    "severity": "info",
+    "instanceId": "drone-bravo",
+    "message": "Drone drone-bravo reached maximum concurrency (4/4).",
+    "createdAt": "2026-07-13T18:15:00Z",
+    "status": "active",
+    "resolvedAt": null
+  },
+  {
+    "id": "alert-0990",
+    "severity": "critical",
+    "instanceId": "atlas-prod",
+    "message": "Work queue depth exceeded threshold (24 > 20).",
+    "createdAt": "2026-07-13T14:02:30Z",
+    "status": "cleared",
+    "resolvedAt": "2026-07-13T14:41:12Z"
+  },
+  {
+    "id": "alert-0985",
+    "severity": "warning",
+    "instanceId": "drone-alpha",
+    "message": "Drone drone-alpha assignment retried after a transient failure.",
+    "createdAt": "2026-07-13T11:20:00Z",
+    "status": "cleared",
+    "resolvedAt": "2026-07-13T11:22:48Z"
+  }
+]

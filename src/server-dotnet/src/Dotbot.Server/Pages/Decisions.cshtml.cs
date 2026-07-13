@@ -4,11 +4,10 @@ using System.Security.Claims;
 
 namespace Dotbot.Server.Pages;
 
-// The Mothership landing surface (/) — the Fleet dashboard (#547). Thin model:
-// resolves the signed-in identity for the shell topbar; Fleet data is fetched
-// client-side by /js/fleet.js from /api/fleet/*.
+// The cross-outpost Q&A dashboard — the "Decisions" rail slot. Re-homed from the
+// site root (/) to /decisions in #547 so Fleet can become the landing surface.
 [Authorize]
-public class IndexModel : PageModel
+public class DecisionsModel : PageModel
 {
     public string UserEmail { get; private set; } = "";
     public string UserName { get; private set; } = "";
