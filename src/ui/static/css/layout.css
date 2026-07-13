@@ -12,12 +12,14 @@
     height: 100%;
 }
 
-/* App-side topbar group: project badge + runtime picker + workflow badges */
+/* App-side topbar group: project badge + runtime picker + workflow badge.
+ * Never shrinks below content — identity values keep full text; the search
+ * pill is the flexible element that absorbs width pressure. */
 .shell-context-group {
     display: flex;
     align-items: center;
     gap: 12px;
-    min-width: 0;
+    flex-shrink: 0;
 }
 
 .logo {
@@ -100,6 +102,8 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
+    flex-shrink: 0;
+    white-space: nowrap;
     padding: 4px 10px;
     background: var(--primary-10);
     border: 1px solid var(--primary-30);
@@ -287,12 +291,6 @@
 
 .shell-topbar .framework-banner__value {
     white-space: nowrap;
-}
-
-.shell-topbar .shell-search {
-    min-width: 120px;
-    flex-shrink: 1;
-    overflow: hidden;
 }
 
 @media (max-width: 1200px) {

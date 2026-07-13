@@ -112,14 +112,19 @@ body:has(.shell)::after {
     color: var(--color-primary);
 }
 
-/* Search pill — the visible palette affordance. Behaviour lands with #553. */
+/* Search pill — the visible palette affordance (behaviour lands with #553).
+ * Centered mid-bar per the spec #7.3 sketch; clamp keeps it prominent on wide
+ * screens and lets it compress before identity values would truncate. */
 .shell-search {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex: 0 1 clamp(180px, 24vw, 340px);
+    min-width: 140px;
     margin-left: auto;
+    margin-right: auto;
     padding: 5px 12px;
-    min-width: 220px;
+    overflow: hidden;
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--color-muted);
