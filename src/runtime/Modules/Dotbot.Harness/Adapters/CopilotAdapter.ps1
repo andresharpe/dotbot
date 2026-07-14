@@ -72,6 +72,12 @@ function ConvertTo-CopilotMcpConfigJson {
         }
     }
 
+    # MCP state resolution targets the stable main root, not the worktree
+    # junction which can be stale during retry/teardown windows (#515).
+    if ($global:DotbotProjectRoot) {
+        $config.mcpServers.dotbot.env['DOTBOT_STATE_ROOT'] = $global:DotbotProjectRoot
+    }
+
     return ($config | ConvertTo-Json -Compress -Depth 8)
 }
 

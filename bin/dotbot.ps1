@@ -205,6 +205,11 @@ function Get-RequestedDashboardPort {
 }
 
 function Invoke-Init {
+    $registryManagerModule = Join-Path $ScriptsDir "RegistryManager.psm1"
+    if (Test-Path $registryManagerModule) {
+        Import-Module $registryManagerModule -Force -DisableNameChecking
+        Update-StaleRegistries -DotbotBase $DotbotBase
+    }
     $initScript = Join-Path $ScriptsDir "init-project.ps1"
     if (Test-Path $initScript) {
         if ($SplatArgs.Count -gt 0) {
@@ -509,6 +514,11 @@ function Invoke-Install {
 }
 
 function Invoke-Run {
+    $registryManagerModule = Join-Path $ScriptsDir "RegistryManager.psm1"
+    if (Test-Path $registryManagerModule) {
+        Import-Module $registryManagerModule -Force -DisableNameChecking
+        Update-StaleRegistries -DotbotBase $DotbotBase
+    }
     $runScript = Join-Path $ScriptsDir 'workflow-run.ps1'
     $invocation = Get-WorkflowRunInvocation -RunArgs $SubArgs
     if ($invocation.WorkflowName -and (Test-Path $runScript)) {

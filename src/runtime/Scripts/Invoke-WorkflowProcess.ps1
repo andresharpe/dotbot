@@ -490,6 +490,16 @@ function Read-DotbotMcpPreflightLine {
 function Test-DotbotMcpReadiness {
     param(
         [Parameter(Mandatory)] [string]$WorktreePath,
+        # Stable main repo root, exported as DOTBOT_STATE_ROOT so the preflight
+        # MCP process resolves runtime.json against the main .control/ rather
+        # than the worktree's junction, which can be stale on task retry
+        # (teardown/re-create is not atomic) and would make the server exit
+        # before the handshake. This mirrors the real provider session, which
+        # also runs with cwd/DOTBOT_PROJECT_ROOT = worktree and
+        # DOTBOT_STATE_ROOT = main root — so preflight tests the same config the
+        # task actually runs under. Omitted → no state-root override (backward
+        # compatible). See #515.
+        [string]$ProjectRoot,
         [string[]]$RequiredTools = @('task_get_context','task_set_status','task_update','decision_create','decision_list')
     )
 
@@ -539,6 +549,7 @@ function Test-DotbotMcpReadiness {
         $psi.WorkingDirectory = $WorktreePath
         $psi.Environment['DOTBOT_HOME'] = $frameworkRoot
         $psi.Environment['DOTBOT_PROJECT_ROOT'] = $WorktreePath
+        if ($ProjectRoot) { $psi.Environment['DOTBOT_STATE_ROOT'] = $ProjectRoot }
         $psi.Environment['__DOTBOT_MANAGED'] = '1'
 
         $maxAttempts = 2
@@ -699,8 +710,32 @@ function Test-TaskOutput {
         $taskOutputsDir = if ($Task -is [System.Collections.IDictionary]) { $Task['required_outputs_dir'] } else { $Task.required_outputs_dir }
     }
     if ($taskOutputs) {
+        # Output entries may be a bare filename ("x.md"), a repo-rooted path
+        # (".bot/workspace/product/x.md" — e.g. emitted by the deep-research
+        # generator), or an absolute path. $ProductDir is already
+        # <botroot>/workspace/product, so naively Join-Path'ing a rooted entry
+        # double-joins (PowerShell only defers to the 2nd arg when it is
+        # drive-absolute) and validation always fails. Normalise first.
+        $projectRoot = Split-Path -Parent $BotRoot
         foreach ($f in $taskOutputs) {
-            if (-not (Test-Path (Join-Path $ProductDir $f))) {
+            $entry = ([string]$f -replace '\\', '/').Trim()
+            if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+            # IsPathFullyQualified is the cross-platform "truly absolute" test:
+            # on Windows "C:/x" and "//host/x" are fully qualified but a bare "/x"
+            # is only drive-relative (correctly treated as relative here); on
+            # Linux/macOS "/tmp/x" is fully qualified. This avoids [IO.Path]::
+            # IsPathRooted, which treats a bare leading "/" as rooted on Windows.
+            $target = if ([System.IO.Path]::IsPathFullyQualified($entry)) {
+                $entry
+            } elseif ($entry -match '^\.bot/') {
+                Join-Path $projectRoot $entry
+            } else {
+                Join-Path $ProductDir ($entry.TrimStart('/'))
+            }
+            # -LiteralPath: task-authored entries are untrusted; without it a
+            # filename containing [ ] would be treated as a wildcard (mis-validated),
+            # and it avoids a wildcard/existence probe on a crafted entry.
+            if (-not (Test-Path -LiteralPath $target)) {
                 return "Task output not produced: $f"
             }
         }
@@ -733,7 +768,19 @@ function Test-TaskOutput {
         if ($BaselineCount -ge 0) {
             $delta = $fileCount - $BaselineCount
             if ($delta -lt $minCount) {
-                return "Task output directory '$taskOutputsDir' produced $delta new file(s), expected at least $minCount"
+                # Resume-after-approval: on a resumed run the worktree already
+                # holds the artifact from the prior run, so the agent correctly
+                # calls task_set_status(done) without re-writing files that
+                # already exist — delta is 0 even though the required output is
+                # present and correct. For non-tasks/ outputs, fall back to the
+                # absolute file count: if the required files are already there
+                # (absolute count >= min), pass. tasks/ outputs keep strict
+                # delta enforcement because manifest pre-creation makes the
+                # absolute count always look satisfied, leaving delta the only
+                # meaningful signal.
+                if ($isTasksOutput -or $fileCount -lt $minCount) {
+                    return "Task output directory '$taskOutputsDir' produced $delta new file(s), expected at least $minCount"
+                }
             }
         } elseif ($fileCount -lt $minCount) {
             return "Task output directory '$taskOutputsDir' has $fileCount file(s), expected at least $minCount"
@@ -790,7 +837,12 @@ function Invoke-TaskClarificationLoopIfPresent {
         [string]$ModelName,
         [bool]$ShowDebug,
         [bool]$ShowVerbose,
-        [string]$PermissionMode
+        [string]$PermissionMode,
+        # Canonical project .bot root for process-registry writes (proc-*.json).
+        # Distinct from $BotRoot above, which is worktree-scoped (used for the
+        # answers-file path) — process state must never resolve through the
+        # worktree's transient .control junction (#612).
+        [string]$ProcessBotRoot
     )
     $questionsPath = Join-Path $ProductDir "clarification-questions.json"
     if (-not (Test-Path $questionsPath)) { return $null }
@@ -811,7 +863,7 @@ function Invoke-TaskClarificationLoopIfPresent {
         $PD.status = 'running'
         $PD.pending_questions = $null
         $PD.heartbeat_status = "Running task: $TaskName"
-        Write-ProcessFile -Id $Id -Data $PD
+        Write-ProcessFile -Id $Id -Data $PD -BotRoot $ProcessBotRoot
     }
 
     $questionsData = $null
@@ -852,14 +904,14 @@ function Invoke-TaskClarificationLoopIfPresent {
     $ProcessData.product_dir = $ProductDir
     $ProcessData.answers_path = $answersPath
     $ProcessData.heartbeat_status = "Waiting for answers (task: $($Task.name))"
-    Write-ProcessFile -Id $ProcId -Data $ProcessData
+    Write-ProcessFile -Id $ProcId -Data $ProcessData -BotRoot $ProcessBotRoot
 
     while (-not (Test-Path $answersPath)) {
-        if (Test-ProcessStopSignal -Id $ProcId) {
+        if (Test-ProcessStopSignal -Id $ProcId -BotRoot $ProcessBotRoot) {
             $ProcessData.status = 'stopped'
             $ProcessData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
             $ProcessData.pending_questions = $null
-            Write-ProcessFile -Id $ProcId -Data $ProcessData
+            Write-ProcessFile -Id $ProcId -Data $ProcessData -BotRoot $ProcessBotRoot
             return "Process stopped by user during clarification wait"
         }
         Start-Sleep -Seconds 2
@@ -926,15 +978,20 @@ function Invoke-TaskClarificationLoopIfPresent {
             Set-Content -Path $summaryPath -Value $newSummary -NoNewline
         }
 
-        # Forward slashes for cross-platform Join-Path safety (PostScriptRunner.psm1
-        # uses the same normalisation — Windows accepts either separator, Unix does not).
-        $adjustPromptPath = Join-Path $BotRoot "recipes/includes/adjust-after-answers.md"
-        if (-not (Test-Path $adjustPromptPath)) {
-            # Escalate via the postScriptFailed path so the worktree merge is
-            # blocked. Without the adjust prompt the answers cannot be applied
-            # to artifacts; merging would be incorrect.
+        # Resolve the adjust-after-answers recipe through the canonical content
+        # resolver (project .bot/content/recipes -> user -> $DOTBOT_HOME/content
+        # /recipes). A hardcoded "$BotRoot/recipes/..." never resolves: content
+        # install never populates a .bot/recipes tree (the worktree recipe-link is
+        # gated on that same non-existent dir), so inside a task worktree the file
+        # was always missing and the apply-answers step wrongly escalated.
+        $adjustPromptPath = Resolve-DotbotContent -BotRoot $BotRoot -Type recipes -Name 'includes/adjust-after-answers.md'
+        if (-not $adjustPromptPath) {
+            # Only reachable when the recipe is absent from every content tier —
+            # i.e. a broken framework install, which no operator "needs-input"
+            # answer can fix. Fail loud with a clear message rather than parking
+            # the task in needs-input (and never silently skip the adjust pass).
             Reset-ClarificationState -PD $ProcessData -Id $ProcId -TaskName $Task.name
-            return "Adjust prompt not found at $adjustPromptPath — cannot apply clarification answers"
+            return "Adjust-after-answers recipe not found in project or framework content (content/recipes/includes/adjust-after-answers.md) — framework install may be broken."
         }
         $adjustContent = Get-Content $adjustPromptPath -Raw
         $adjustPrompt = @"
@@ -1375,7 +1432,8 @@ try {
         # --- Multi-slot claim guard ---
         # When running with -Slot (concurrent workflow processes), another slot may
         # have claimed this task between our Get-NextWorkflowTask and this point.
-        # Only needed for prompt tasks — non-prompt tasks are guarded by the slot 0 check above.
+        # Only needed for prompt tasks — non-prompt tasks have their own claim guard
+        # before worktree creation below.
         if ($Slot -ge 0 -and $taskTypeCheck -eq 'prompt') {
             $claimOk = $false
             for ($claimAttempt = 0; $claimAttempt -lt 5; $claimAttempt++) {
@@ -1474,6 +1532,57 @@ try {
             Write-Status "Auto-dispatching $taskTypeVal task: $($task.name)" -Type Process
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Auto-dispatch $taskTypeVal task: $($task.name)"
 
+            # --- Non-prompt task claim guard (before worktree) ---
+            # Unconditional (no $Slot guard): covers standalone runners (Slot = null/0)
+            # AND multi-slot runners on slot 0. The prompt-task guard above is $Slot-gated
+            # because prompt concurrency only occurs in multi-slot mode; non-prompt races
+            # also occur between standalone processes sharing the same task pool.
+            $claimOk = $false
+            $claimAttemptsMade = 0
+            for ($claimAttempt = 0; $claimAttempt -lt 5; $claimAttempt++) {
+                $claimAttemptsMade++
+                try {
+                    $claimResult = $null
+                    if ($task.status -notin @('todo', 'needs-input', 'in-progress')) {
+                        throw "Cannot dispatch non-prompt task '$($task.id)' from status '$($task.status)'"
+                    }
+                    if ($task.status -ne 'in-progress') {
+                        $claimResult = Invoke-TaskMarkInProgress -Arguments @{ task_id = $task.id }
+                    }
+                    if ($claimResult -and -not $claimResult.success) {
+                        $errMsg = if ($claimResult.message) { $claimResult.message } else { "HTTP $($claimResult.status_code)" }
+                        throw "Claim failed: $errMsg"
+                    }
+                    if ($claimResult -and $claimResult.body -and $claimResult.body.no_op) {
+                        throw "Task already claimed"
+                    }
+                    if ($claimResult) { $task.status = 'in-progress' }
+                    $claimOk = $true
+                    break
+                } catch {
+                    $errMsg = $_.Exception.Message
+                    if ($errMsg -notmatch 'already claimed|Claim failed') {
+                        Write-Status "Fatal error claiming task $($task.id): $errMsg" -Type Error
+                        throw
+                    }
+                    Write-Diag "Task $($task.id) claimed by another runner, retrying ($taskTypeVal)..."
+                    Start-Sleep -Milliseconds 200
+                    # Break unconditionally — outer loop re-fetches and re-processes the next
+                    # task with full task_gen/prompt_template recovery. Fetching here is dead
+                    # code (result discarded on break) and opens a small race window.
+                    break
+                }
+            }
+            if (-not $claimOk) {
+                Write-Status "Could not claim a $taskTypeVal task after $claimAttemptsMade attempts" -Type Warn
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Could not claim $taskTypeVal task after $claimAttemptsMade attempts"
+                if ($Continue) { Start-Sleep -Seconds 2; continue } else { break }
+            }
+            # Task may have been replaced during claim retry; re-sync process metadata.
+            $processData.task_id = $task.id
+            $processData.task_name = $task.name
+            $env:DOTBOT_CURRENT_TASK_ID = $task.id
+
             $worktreePath = $null
             $branchName = $null
             $worktreeSetup = Initialize-DotbotTaskWorktreeForProcess -Task $task `
@@ -1484,9 +1593,6 @@ try {
             }
             $executionBotRoot = Join-Path $worktreePath ".bot"
             $executionProductDir = Join-Path (Join-Path $executionBotRoot 'workspace') 'product'
-
-            # Mark in-progress
-            Set-TaskInProgressForExecutorDispatch -Task $task
 
             $typeSuccess = $false
             $typeError = $null
@@ -1710,7 +1816,7 @@ try {
         }
 
         Write-Status "Checking dotbot MCP tools..." -Type Process
-        $mcpReady = Test-DotbotMcpReadiness -WorktreePath $worktreePath
+        $mcpReady = Test-DotbotMcpReadiness -WorktreePath $worktreePath -ProjectRoot $projectRoot
         if (-not $mcpReady.ok) {
             throw "dotbot MCP preflight failed ($($mcpReady.reason)): $($mcpReady.message)"
         }
@@ -1862,10 +1968,10 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             if ($attemptNumber -gt 1) {
                 Write-Status "Retry attempt $attemptNumber of $maxRetriesPerTask" -Type Warn
             }
-            if (Test-ProcessStopSignal -Id $procId) {
+            if (Test-ProcessStopSignal -Id $procId -BotRoot $botRoot) {
                 $processData.status = 'stopped'
                 $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
-                Write-ProcessFile -Id $procId -Data $processData
+                Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
                 break
             }
 
@@ -1914,7 +2020,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
 
             # Update heartbeat
             $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
-            Write-ProcessFile -Id $procId -Data $processData
+            Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
 
             # Check completion
             $completionCheck = Test-TaskCompletion -TaskId $task.id
@@ -1943,12 +2049,19 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             # Task not completed - log diagnostic to help distinguish failure modes.
             $stillInProgress = $false
             $nowNeedsInput   = $false
+            $doneHookBlock   = $null
             try {
                 $currentTask = Get-WorkflowTaskContent -Task $task -RunDir $runDir
                 if ($currentTask -and $currentTask.Content) {
                     $currentStatus = [string]$currentTask.Content.status
                     $stillInProgress = ($currentStatus -eq 'in-progress')
                     $nowNeedsInput = ($currentStatus -eq 'needs-input')
+                    # Breadcrumb left by the transition layer when a verify hook
+                    # aborted this task's done-transition (e.g. privacy scan).
+                    $ext = $currentTask.Content.extensions
+                    if ($ext -and $ext.runner -and $ext.runner.done_transition_block) {
+                        $doneHookBlock = $ext.runner.done_transition_block
+                    }
                 }
             } catch { Write-BotLog -Level Debug -Message "Failed to parse data" -Exception $_ }
 
@@ -1958,6 +2071,28 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             if ($nowNeedsInput) {
                 Write-Status "Task paused for human input: $($task.name)" -Type Info
                 Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' paused — waiting for human input (needs-input)"
+                $taskParked = $true
+                break
+            }
+
+            # A verify hook (e.g. privacy scan) blocked the done-transition: park to
+            # needs-input so the operator fixes the flagged content, instead of
+            # burning retries and mislabeling a done task skipped(max-retries).
+            # Checked before the harness-error classification so this definitive
+            # on-disk signal isn't pre-empted by heuristic text matching.
+            if ($doneHookBlock) {
+                $hookName = [string]$doneHookBlock.hook
+                $hookMsg  = [string]$doneHookBlock.message
+                # Defensive cap (breadcrumb is already truncated at the source) so an
+                # oversized hook message can't bloat the task record / handoff — mirrors AuthError.
+                if ($hookMsg.Length -gt 1000) { $hookMsg = $hookMsg.Substring(0, 1000) + " … [truncated, showing 1000 of $($hookMsg.Length) chars]" }
+                $blockContext = "The done-transition was blocked by verify hook '$hookName': $hookMsg`nThe task's declared work may already be complete — resolve the flagged content (e.g. redact absolute local paths from the committed artifact), then re-run or approve. The retry budget was not consumed."
+                Write-Status "Done-transition blocked by verify hook — parking for operator: $($task.name)" -Type Warn
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' parked (needs-input): verify hook '$hookName' blocked the done-transition"
+                Set-WorkflowTaskNeedsInput -Task $task -RunDir $runDir `
+                    -QuestionId "verify-hook-block-$($task.id)" `
+                    -Question "Verify hook blocked completion of '$($task.name)'" `
+                    -Context $blockContext | Out-Null
                 $taskParked = $true
                 break
             }
@@ -2040,7 +2175,8 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 -ProductDir $executionProductDir -ProcessData $processData -ProcId $procId `
                 -ProjectRoot $worktreePath `
                 -ModelName $modelTier -ShowDebug $ShowDebug `
-                -ShowVerbose $ShowVerbose -PermissionMode $permissionMode
+                -ShowVerbose $ShowVerbose -PermissionMode $permissionMode `
+                -ProcessBotRoot $botRoot
             if ($clarErr) {
                 $taskSuccess = $false
                 $postScriptFailed = $true

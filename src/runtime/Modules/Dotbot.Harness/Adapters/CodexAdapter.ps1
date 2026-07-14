@@ -209,6 +209,15 @@ function Add-CodexWorktreeArgs {
 
     $frameworkRoot = Get-DotbotInstallPath
     $mcpScript = Join-Path $frameworkRoot 'src/mcp/dotbot-mcp.ps1'
+    # Pin MCP state resolution to the stable main root so it never depends on
+    # the worktree's .control junction being valid during retry/teardown (#515).
+    $envEntries = @(
+        ('DOTBOT_HOME={0}' -f (ConvertTo-CodexTomlString $frameworkRoot))
+        ('DOTBOT_PROJECT_ROOT={0}' -f (ConvertTo-CodexTomlString $WorkingDirectory))
+    )
+    if ($global:DotbotProjectRoot) {
+        $envEntries += ('DOTBOT_STATE_ROOT={0}' -f (ConvertTo-CodexTomlString $global:DotbotProjectRoot))
+    }
     $worktreeArgs = @(
         '-C', $WorkingDirectory,
         '-c', ('mcp_servers.dotbot.command={0}' -f (ConvertTo-CodexTomlString 'pwsh')),
@@ -219,9 +228,7 @@ function Add-CodexWorktreeArgs {
             (ConvertTo-CodexTomlString '-File'),
             (ConvertTo-CodexTomlString $mcpScript)
         )),
-        '-c', ('mcp_servers.dotbot.env={{DOTBOT_HOME={0}, DOTBOT_PROJECT_ROOT={1}}}' -f `
-            (ConvertTo-CodexTomlString $frameworkRoot), `
-            (ConvertTo-CodexTomlString $WorkingDirectory))
+        '-c', ('mcp_servers.dotbot.env={{{0}}}' -f ($envEntries -join ', '))
     )
 
     if ($CliArgs.Count -gt 0 -and $CliArgs[0] -eq 'exec') {

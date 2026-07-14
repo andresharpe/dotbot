@@ -66,6 +66,11 @@ function Invoke-HarnessProcessStream {
     if ($mcpProjectRoot) {
         $psi.Environment["DOTBOT_PROJECT_ROOT"] = $mcpProjectRoot
     }
+    # Pin MCP state resolution to the stable main root, independent of the
+    # worktree junction's validity (#515).
+    if ($global:DotbotProjectRoot) {
+        $psi.Environment["DOTBOT_STATE_ROOT"] = $global:DotbotProjectRoot
+    }
 
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi

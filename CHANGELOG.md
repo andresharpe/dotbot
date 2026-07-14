@@ -5,6 +5,26 @@ All notable changes to dotbot are documented in this file. The format follows [K
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.0.2] - 2026-07-09
+
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.0.1] - 2026-07-02
+
+### Added
 - **`bootstrap.ps1`** at the repo root — the one-time install step. Drops the `bin/shim/dotbot*` PATH shim into `~/.local/bin` (Linux/macOS) or `%LOCALAPPDATA%\Microsoft\WindowsApps` (Windows). Refuses PowerShell 5.1; never sets `$env:DOTBOT_HOME` for the user (design decision D4). Honours `-ShimDir` and `-Force`.
 - **`dotbot status`** subcommand reporting resolved `DOTBOT_HOME`, framework branch + short SHA + dirty flag, version, user-settings path, and the active project's workflow / provider / stacks. `--json` emits a stable shape for CI scripts and the dashboard.
 - **UI framework banner** in the dashboard header — surfaces the active `DOTBOT_HOME` plus framework branch/SHA/dirty, with an amber warning state when the checkout is dirty or off `main`/`master`.

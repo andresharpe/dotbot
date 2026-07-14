@@ -13,14 +13,16 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   bump:
-    name: Bump version and tag
+    name: Open version-bump PR
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install PowerShell
@@ -29,8 +31,28 @@ jobs:
             sudo apt-get update && sudo apt-get install -y powershell
           fi
 
+      - name: Check for changes since last release
+        id: gate
+        shell: bash
+        run: |
+          LAST_TAG="$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+          if [ -z "$LAST_TAG" ]; then
+            echo "No prior version tag found — treating as releasable."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          COUNT="$(git rev-list "${LAST_TAG}..HEAD" --count)"
+          echo "Last tag: $LAST_TAG — $COUNT commit(s) since."
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$COUNT" -eq 0 ]; then
+            echo "Nothing merged since $LAST_TAG — nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Bump version
         id: bump
+        if: steps.gate.outputs.release == 'true'
         shell: pwsh
         run: |
           $bump = "${{ github.event.inputs.bump || 'patch' }}"
@@ -43,16 +65,94 @@ jobs:
             'patch' { $parts[2] = [int]$parts[2] + 1 }
           }
           $new = $parts -join '.'
+
+          $existingTag = git tag --list "v$new"
+          if ($existingTag) {
+            Write-Error "Tag v$new already exists — aborting to avoid a duplicate release."
+            exit 1
+          }
+          $existingBranch = git ls-remote --heads origin "release/v$new"
+          if ($existingBranch) {
+            Write-Error "Branch release/v$new already exists on origin — aborting."
+            exit 1
+          }
+
           @{ version = $new } | ConvertTo-Json | Set-Content $versionFile
           Write-Host "Bumped $current -> $new ($bump)"
           "version=$new" >> $env:GITHUB_OUTPUT
 
-      - name: Commit and tag
+      - name: Promote CHANGELOG Unreleased block
+        id: changelog
+        if: steps.gate.outputs.release == 'true'
+        shell: pwsh
         run: |
+          $version = "${{ steps.bump.outputs.version }}"
+          $date = (Get-Date).ToString('yyyy-MM-dd')
+          $path = "CHANGELOG.md"
+          $lines = Get-Content $path
+
+          $anchor = ($lines | Select-String -Pattern '^## \[Unreleased\]' -SimpleMatch:$false | Select-Object -First 1)
+          if (-not $anchor) {
+            Write-Error "No '## [Unreleased]' section found in $path"
+            exit 1
+          }
+          $idx = $anchor.LineNumber - 1
+          $bodyStart = $idx + 1
+          $next = $lines.Length
+          for ($i = $bodyStart; $i -lt $lines.Length; $i++) {
+            if ($lines[$i] -match '^## \[') { $next = $i; break }
+          }
+
+          $notes = ($lines[$bodyStart..($next - 1)] -join "`n").Trim()
+          $hasContent = $notes -split "`n" | Where-Object { $_ -notmatch '^\s*(#{2,6}\s|$)' }
+          if (-not $hasContent) {
+            $notes = "Maintenance release."
+          }
+          Set-Content -Path "release-notes.md" -Value $notes
+
+          $scaffold = @(
+            '## [Unreleased]',
+            '',
+            '### Added',
+            '',
+            '### Changed',
+            '',
+            '### Fixed',
+            '',
+            '### Removed',
+            '',
+            "## [$version] - $date"
+          )
+
+          $rebuilt = @()
+          $rebuilt += $lines[0..($idx - 1)]
+          $rebuilt += $scaffold
+          $rebuilt += $lines[$bodyStart..($lines.Length - 1)]
+          Set-Content -Path $path -Value $rebuilt
+          Write-Host "Promoted [Unreleased] -> [$version] - $date"
+
+      - name: Create branch, commit, open PR
+        if: steps.gate.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
           VERSION="${{ steps.bump.outputs.version }}"
+          BRANCH="release/v${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json
-          git commit -m "Bump version to v${VERSION}"
-          git tag "v${VERSION}"
-          git push origin main --tags
+          git checkout -b "$BRANCH"
+          git add version.json CHANGELOG.md
+          git commit -m "chore(release): bump version to v${VERSION}"
+          git push -u origin "$BRANCH"
+          {
+            cat release-notes.md
+            printf '\n\n---\n_Merging this PR cuts v%s — **Release & Publish** runs automatically on merge._\n' "$VERSION"
+          } > pr-body.md
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore(release): v${VERSION}" \
+            --body-file pr-body.md \
+            --label no-issue

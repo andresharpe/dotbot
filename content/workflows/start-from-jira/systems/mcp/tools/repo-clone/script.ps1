@@ -1,3 +1,48 @@
+# Extract a Jira/ADO work-item key from a jira-context.md document. The
+# Fetch-Jira-Context step is supposed to emit a canonical `| Jira Key | KEY |`
+# row, but agents have been observed free-forming the metadata table with other
+# labels (`Primary Jira Keys`, `Parent Epic`, ...). Try the canonical row first,
+# then known label variants, then the H1 title, then any key anywhere -- so a
+# minor table-format drift no longer kills the entire code-execution phase.
+# Matching is case-SENSITIVE (-cmatch): real keys are upper-case, and an
+# insensitive match would treat tokens like `utf-8` / `sha-1` as keys.
+function Get-RepoCloneJiraKey {
+    param([AllowEmptyString()][string]$Content)
+
+    if ([string]::IsNullOrWhiteSpace($Content)) { return $null }
+    $key = '[A-Z]{2,10}-\d+'
+
+    # (a) canonical row
+    if ($Content -cmatch "\|\s*Jira Key\s*\|\s*($key)") { return $matches[1] }
+    # (b) known label variants (first key in the cell)
+    if ($Content -cmatch "\|\s*(?:Primary Jira Keys?|Parent Epic|Programme[^|]*)\s*\|\s*($key)") { return $matches[1] }
+    # (c) the H1 title (e.g. "# Jira Context: ENHANCE-9851 ...")
+    foreach ($line in ($Content -split "`n")) {
+        if ($line -match '^\s*#\s' -and $line -cmatch "($key)") { return $matches[1] }
+    }
+    # (d) last resort: first key-shaped token anywhere
+    if ($Content -cmatch "($key)") { return $matches[1] }
+
+    return $null
+}
+
+# A directory that merely exists is not a usable clone: a leftover empty gitlink
+# (a 160000 tree entry with no working tree) or a dangling .git pointer leaves a
+# dir that must be re-cloned. Treat a clone as complete when it is a real work
+# tree with an origin remote -- which covers both populated clones and a valid
+# clone of an empty (commitless) remote, without requiring a resolvable HEAD or
+# tracked files (an empty-but-valid clone has neither yet, and must not be
+# wrongly reclaimed).
+function Test-RepoCloneComplete {
+    param([Parameter(Mandatory)][string]$ClonePath)
+
+    if (-not (Test-Path (Join-Path $ClonePath '.git'))) { return $false }
+    $null = & git -C $ClonePath rev-parse --is-inside-work-tree 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    $remote = & git -C $ClonePath config --get remote.origin.url 2>$null
+    return [bool]$remote
+}
+
 function Invoke-RepoClone {
     param([hashtable]$Arguments)
 
@@ -6,6 +51,17 @@ function Invoke-RepoClone {
 
     if (-not $project) { throw "project is required" }
     if (-not $repo)    { throw "repo is required" }
+
+    # $project/$repo are caller-supplied (MCP tool input). $repo becomes a
+    # filesystem path ($clonePath) that is later force-deleted on a re-clone, so
+    # reject anything that could escape the repos/ directory: path separators,
+    # '..' traversal, or a bare '.'/'..'. (Spaces and other chars are allowed --
+    # ADO names permit them -- only traversal is blocked.)
+    foreach ($seg in @(@{ name = 'repo'; value = $repo }, @{ name = 'project'; value = $project })) {
+        if ($seg.value -match '[\\/]' -or $seg.value -match '\.\.' -or $seg.value -in @('.', '..')) {
+            throw "Invalid $($seg.name) name (path traversal not allowed): '$($seg.value)'"
+        }
+    }
 
     # ---------------------------------------------------------------------------
     # Load .env.local for credentials
@@ -34,10 +90,7 @@ function Invoke-RepoClone {
     $initiativePath = Join-Path $global:DotbotProjectRoot ".bot/workspace/product/briefing/jira-context.md"
     $jiraKey = $null
     if (Test-Path $initiativePath) {
-        $content = Get-Content $initiativePath -Raw
-        if ($content -match '\|\s*Jira Key\s*\|\s*([A-Z]{2,10}-\d+)') {
-            $jiraKey = $matches[1]
-        }
+        $jiraKey = Get-RepoCloneJiraKey -Content (Get-Content $initiativePath -Raw)
     }
 
     # Read branch prefix from the merged settings chain (defaults + ~/dotbot + .control)
@@ -66,25 +119,60 @@ function Invoke-RepoClone {
     }
 
     if (Test-Path $clonePath) {
-        return @{
-            success        = $true
-            path           = $clonePath
-            default_branch = (git -C $clonePath symbolic-ref refs/remotes/origin/HEAD 2>$null) -replace 'refs/remotes/origin/', ''
-            working_branch = $workingBranch
-            message        = "Repository already cloned at $clonePath"
-            already_cloned = $true
+        if (Test-RepoCloneComplete -ClonePath $clonePath) {
+            return @{
+                success        = $true
+                path           = $clonePath
+                default_branch = (git -C $clonePath symbolic-ref refs/remotes/origin/HEAD 2>$null) -replace 'refs/remotes/origin/', ''
+                working_branch = $workingBranch
+                message        = "Repository already cloned at $clonePath"
+                already_cloned = $true
+            }
         }
+        # Path exists but is not a usable clone. Only reclaim it when it is
+        # genuinely empty (the observed failure: a leftover empty gitlink dir with
+        # no working tree). A non-empty directory might be a real repo that merely
+        # failed a transient git check, so refuse to force-delete it.
+        $hasContent = @(Get-ChildItem -LiteralPath $clonePath -Force -ErrorAction SilentlyContinue).Count -gt 0
+        if ($hasContent) {
+            return @{
+                success    = $false
+                error_type = "incomplete_clone"
+                message    = "Path '$clonePath' exists but is not a complete clone (no resolvable HEAD / tracked files). Remove or repair it, then retry."
+                path       = $clonePath
+            }
+        }
+        Remove-Item -LiteralPath $clonePath -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    # Build clone URL with PAT authentication
-    $orgHost = ($adoOrgUrl -replace 'https?://', '')
-    $cloneUrl = "https://$($adoPat)@$orgHost/$project/_git/$repo"
+    # Authenticate with a host-scoped http.extraHeader injected through the
+    # GIT_CONFIG_* environment (git >= 2.31). The PAT is never embedded in the
+    # clone URL, so it does not appear in process arguments and is not persisted
+    # to the cloned repo's .git/config (remote.origin.url stays credential-free).
+    $orgHost  = ($adoOrgUrl -replace 'https?://', '').TrimEnd('/')
+    $cloneUrl = "https://$orgHost/$project/_git/$repo"
+    $basicToken = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(":$adoPat"))
+
+    # Append the auth header at the next free GIT_CONFIG_* slot, not slot 0:
+    # forcing GIT_CONFIG_COUNT=1 would make git ignore caller-injected config
+    # (e.g. corporate proxy / custom-CA) during the clone. Restored in finally.
+    $priorCount = $env:GIT_CONFIG_COUNT
+    $slot       = if ($priorCount -match '^\d+$') { [int]$priorCount } else { 0 }
+    $keyVar     = "GIT_CONFIG_KEY_$slot"
+    $valVar     = "GIT_CONFIG_VALUE_$slot"
+    $priorKey   = [Environment]::GetEnvironmentVariable($keyVar, 'Process')
+    $priorVal   = [Environment]::GetEnvironmentVariable($valVar, 'Process')
+
+    $env:GIT_CONFIG_COUNT = [string]($slot + 1)
+    [Environment]::SetEnvironmentVariable($keyVar, "http.https://$orgHost/.extraHeader", 'Process')
+    [Environment]::SetEnvironmentVariable($valVar, "Authorization: Basic $basicToken", 'Process')
 
     try {
         $cloneOutput = & git clone $cloneUrl $clonePath 2>&1
         if ($LASTEXITCODE -ne 0) {
             $errorMsg = ($cloneOutput | Out-String).Trim()
             $errorMsg = $errorMsg -replace [regex]::Escape($adoPat), '***'
+            $errorMsg = $errorMsg -replace [regex]::Escape($basicToken), '***'
 
             $errorType = if ($errorMsg -match 'Authentication failed|401|403') { "authentication_failed" }
                          elseif ($errorMsg -match 'not found|does not exist|404') { "repo_not_found" }
@@ -105,6 +193,12 @@ function Invoke-RepoClone {
             message    = "Failed to clone $repo from $project`: $_"
             path       = $null
         }
+    } finally {
+        # Restore the original count + the slot we appended into, verbatim
+        # (including unset → $null, which removes the entry).
+        [Environment]::SetEnvironmentVariable('GIT_CONFIG_COUNT', $priorCount, 'Process')
+        [Environment]::SetEnvironmentVariable($keyVar, $priorKey, 'Process')
+        [Environment]::SetEnvironmentVariable($valVar, $priorVal, 'Process')
     }
 
     # Detect default branch

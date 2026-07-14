@@ -598,10 +598,21 @@ try {
     Assert-Equal -Name "TaskAPI batch answer records answered question id" `
         -Expected "q1" `
         -Actual $batchAfterFirst.extensions.runner.questions_resolved[0].id
-    $batchWorktreeAnswers = Get-Content (Join-Path $batchWorktreeProductDir "interview-answers.json") -Raw | ConvertFrom-Json
-    Assert-Equal -Name "TaskAPI batch answer writes interview answer to active task worktree" `
-        -Expected "q1" `
-        -Actual $batchWorktreeAnswers.answers[0].question_id
+    # The answer is owned by the task: questions_resolved is the canonical record
+    # and now carries the full answer detail the start-from-prompt workflow needs
+    # (issue #516). No interview-answers.json is written anywhere — per-task state
+    # travels with the task and never collides across parallel worktrees.
+    $batchResolved = $batchAfterFirst.extensions.runner.questions_resolved[0]
+    Assert-Equal -Name "TaskAPI batch answer enriches questions_resolved with answer_key" `
+        -Expected "A" `
+        -Actual $batchResolved.answer_key
+    Assert-Equal -Name "TaskAPI batch answer enriches questions_resolved with answer_label" `
+        -Expected "First answer" `
+        -Actual $batchResolved.answer_label
+    Assert-True -Name "TaskAPI batch answer writes no interview-answers.json (task-owned state)" `
+        -Condition (-not (Test-Path -LiteralPath (Join-Path $botDir "workspace/product/interview-answers.json")) -and `
+                    -not (Test-Path -LiteralPath (Join-Path $batchWorktreeProductDir "interview-answers.json"))) `
+        -Message "Expected no interview-answers.json in main checkout or worktree; answers live on the task"
 
     $secondBatchResult = Submit-TaskAnswer -TaskId $batchTaskId -QuestionId "q2" -Answer "B"
     Assert-True -Name "TaskAPI batch answer resumes after final question" `
@@ -1664,6 +1675,126 @@ finally {
     }
 }
 
+# ─── Get-NextWorkflowTask scheduling: condition-order + barrier wiring (#569) ──
+# Bug 4: a task whose manifest condition points at a file its own upstream
+# dependency produces must stay 'todo' (blocked) until the producer runs — not be
+# skipped condition-not-met at launch. Bug 5: a barrier must not fire while work
+# its dependencies spawned into tasks/todo is still outstanding.
+
+$testProject569 = $null
+$savedDotbotProjectRoot569 = $global:DotbotProjectRoot
+try {
+    $testProject569 = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject569
+    $botDir569 = Join-Path $testProject569 ".bot"
+    $runDir569 = Join-Path $botDir569 "workspace\tasks\workflow-runs\run-569"
+    New-Item -ItemType Directory -Path $runDir569 -Force | Out-Null
+    $global:DotbotProjectRoot = $testProject569
+
+    Import-Module (Join-Path $botDir569 "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1")     -Force -DisableNameChecking
+    Import-Module (Join-Path $botDir569 "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
+    Import-Module (Join-Path $botDir569 "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psd1")  -Force -DisableNameChecking
+
+    function New-SchedTaskFixture {
+        param(
+            [Parameter(Mandatory)][string]$TaskId,
+            [Parameter(Mandatory)][string]$Status,
+            [string]$Type = 'prompt',
+            [int]$Priority = 50,
+            [string[]]$Dependencies = @(),
+            [string]$Condition,
+            [string]$GeneratedBy
+        )
+        $task = [ordered]@{
+            id           = $TaskId
+            name         = "Fixture $TaskId"
+            description  = "scheduling fixture"
+            status       = $Status
+            type         = $Type
+            priority     = $Priority
+            dependencies = @($Dependencies)
+            provenance   = [ordered]@{ workflow = 'sched569-cond'; run_id = 'run-569' }
+            updated_at   = "2026-01-01T00:00:00Z"
+        }
+        $ext = [ordered]@{}
+        if ($Condition)   { $ext['workflow'] = [ordered]@{ condition = $Condition } }
+        if ($GeneratedBy) { $ext['runner']   = [ordered]@{ generated_by = $GeneratedBy } }
+        if ($ext.Count -gt 0) { $task['extensions'] = $ext }
+        $task | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $runDir569 "$TaskId.json") -Encoding UTF8
+    }
+
+    # ── Bug 4: condition gated behind dependencies ──
+    $gateRel  = ".bot/workspace/product/gate-569.md"
+    $gateFull = Join-Path $testProject569 $gateRel
+    New-Item -ItemType Directory -Path (Split-Path $gateFull -Parent) -Force | Out-Null
+    if (Test-Path $gateFull) { Remove-Item $gateFull -Force }
+
+    New-SchedTaskFixture -TaskId "prod-569"  -Status "todo" -Priority 90
+    New-SchedTaskFixture -TaskId "cond-569"  -Status "todo" -Priority 50 -Dependencies @("prod-569") -Condition $gateRel
+
+    # Pass 1: gate file absent, producer not done. The conditioned task must NOT be
+    # selected and must NOT be marked skipped — it stays todo (blocked on deps).
+    $p1 = Get-NextWorkflowTask -BotRoot $botDir569 -WorkflowName 'sched569-cond'
+    Assert-True -Name "#569 bug4: producer selected first (conditioned task blocked)" `
+        -Condition ($p1.success -and $p1.task -and $p1.task['id'] -eq 'prod-569') `
+        -Message "Expected prod-569, got: $($p1 | ConvertTo-Json -Compress)"
+    $condOnDisk1 = (Get-Content (Join-Path $runDir569 "cond-569.json") -Raw | ConvertFrom-Json)
+    Assert-Equal -Name "#569 bug4: conditioned task stays todo (not condition-not-met) while deps unmet" `
+        -Expected "todo" -Actual ([string]$condOnDisk1.status)
+
+    # Producer completes and creates the gated artifact.
+    $prodDisk = Get-Content (Join-Path $runDir569 "prod-569.json") -Raw | ConvertFrom-Json
+    $prodDisk.status = "done"
+    $prodDisk | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $runDir569 "prod-569.json") -Encoding UTF8
+    Set-Content -Path $gateFull -Value "gate" -Encoding UTF8
+
+    # Pass 2: deps met and condition now true → conditioned task becomes eligible.
+    $p2 = Get-NextWorkflowTask -BotRoot $botDir569 -WorkflowName 'sched569-cond'
+    Assert-True -Name "#569 bug4: conditioned task runs once producer done + condition met" `
+        -Condition ($p2.success -and $p2.task -and $p2.task['id'] -eq 'cond-569') `
+        -Message "Expected cond-569, got: $($p2 | ConvertTo-Json -Compress)"
+
+    # ── Bug 5: barrier waits for its dependency's spawned children ──
+    $barRun = Join-Path $botDir569 "workspace\tasks\workflow-runs\run-569b"
+    New-Item -ItemType Directory -Path $barRun -Force | Out-Null
+    function New-BarrierFixture {
+        param([string]$TaskId,[string]$Status,[string]$Type='prompt',[int]$Priority=50,[string[]]$Dependencies=@(),[string]$GeneratedBy)
+        $task = [ordered]@{
+            id=$TaskId; name="Fixture $TaskId"; description="barrier fixture"; status=$Status; type=$Type
+            priority=$Priority; dependencies=@($Dependencies)
+            provenance=[ordered]@{ workflow='sched569-barrier'; run_id='run-569b' }; updated_at="2026-01-01T00:00:00Z"
+        }
+        if ($GeneratedBy) { $task['extensions'] = [ordered]@{ runner = [ordered]@{ generated_by = $GeneratedBy } } }
+        $task | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $barRun "$TaskId.json") -Encoding UTF8
+    }
+    New-BarrierFixture -TaskId "gen-569"   -Status "done" -Type "task_gen" -Priority 90
+    New-BarrierFixture -TaskId "child-569" -Status "todo" -Type "prompt"   -Priority 10 -GeneratedBy "gen-569"
+    New-BarrierFixture -TaskId "barr-569"  -Status "todo" -Type "barrier"  -Priority 80 -Dependencies @("gen-569")
+
+    # Barrier has higher priority than the child and its explicit dep (gen) is done,
+    # so without the fix it would be selected first. It must instead stay blocked
+    # while the generated child is non-terminal → the child is selected.
+    $b1 = Get-NextWorkflowTask -BotRoot $botDir569 -WorkflowName 'sched569-barrier'
+    Assert-True -Name "#569 bug5: barrier blocked while generated child is todo (child selected)" `
+        -Condition ($b1.success -and $b1.task -and $b1.task['id'] -eq 'child-569') `
+        -Message "Expected child-569 (barrier must wait), got: $($b1 | ConvertTo-Json -Compress)"
+
+    # Child completes → barrier's generated work is done → barrier becomes eligible.
+    $childDisk = Get-Content (Join-Path $barRun "child-569.json") -Raw | ConvertFrom-Json
+    $childDisk.status = "done"
+    $childDisk | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $barRun "child-569.json") -Encoding UTF8
+
+    $b2 = Get-NextWorkflowTask -BotRoot $botDir569 -WorkflowName 'sched569-barrier'
+    Assert-True -Name "#569 bug5: barrier fires once generated children complete" `
+        -Condition ($b2.success -and $b2.task -and $b2.task['id'] -eq 'barr-569') `
+        -Message "Expected barr-569, got: $($b2 | ConvertTo-Json -Compress)"
+}
+finally {
+    $global:DotbotProjectRoot = $savedDotbotProjectRoot569
+    Pop-Location -ErrorAction SilentlyContinue
+    if ($testProject569) { Remove-TestProject -Path $testProject569 }
+}
+
 # ─── task-get-next runtime condition evaluation ──────────────────────────────
 # task-get-next is a thin HTTP wrapper around GET /tasks/next. Condition
 # evaluation is covered by handler-level runtime tests.
@@ -1903,6 +2034,36 @@ try {
         Assert-Equal -Name "Resolve-DotbotProjectRoot honors DOTBOT_PROJECT_ROOT override" `
             -Expected ([System.IO.Path]::GetFullPath($worktreePath)) `
             -Actual $envResolved
+
+        # #515 failure mode: during task retry the worktree path in
+        # DOTBOT_PROJECT_ROOT can point at a torn-down/stale junction, but the
+        # stable main root is exported as DOTBOT_STATE_ROOT. State resolution
+        # must follow DOTBOT_STATE_ROOT, never the fragile worktree value.
+        $savedStateRootEnv = $env:DOTBOT_STATE_ROOT
+        try {
+            $env:DOTBOT_STATE_ROOT = $testProject
+            $env:DOTBOT_PROJECT_ROOT = Join-Path $testProject 'does-not-exist-worktree'
+            $stateResolved = Resolve-DotbotProjectRoot -StartPath $repoRoot
+            Assert-Equal -Name "Resolve-DotbotProjectRoot prefers DOTBOT_STATE_ROOT over a stale worktree project root (#515)" `
+                -Expected ([System.IO.Path]::GetFullPath($testProject)) `
+                -Actual $stateResolved
+
+            # A blank/missing DOTBOT_STATE_ROOT must not regress the legacy
+            # DOTBOT_PROJECT_ROOT behaviour.
+            $env:DOTBOT_STATE_ROOT = ''
+            $env:DOTBOT_PROJECT_ROOT = $worktreePath
+            $fallbackResolved = Resolve-DotbotProjectRoot -StartPath $repoRoot
+            Assert-Equal -Name "Resolve-DotbotProjectRoot falls back to DOTBOT_PROJECT_ROOT when state root is unset (#515)" `
+                -Expected ([System.IO.Path]::GetFullPath($worktreePath)) `
+                -Actual $fallbackResolved
+        } finally {
+            if ($null -eq $savedStateRootEnv) {
+                Remove-Item Env:DOTBOT_STATE_ROOT -ErrorAction SilentlyContinue
+            } else {
+                $env:DOTBOT_STATE_ROOT = $savedStateRootEnv
+            }
+        }
+
         if ($null -eq $savedDotbotProjectRootEnv) {
             Remove-Item Env:DOTBOT_PROJECT_ROOT -ErrorAction SilentlyContinue
         } else {
