@@ -30,4 +30,13 @@
     <InternalsVisibleTo Include="Dotbot.Server.Tests" />
   </ItemGroup>
 
+  <!-- Shared design tokens/shell CSS: copy into wwwroot for build/publish output
+       (dev serving uses a PhysicalFileProvider straight at src/shared/css). -->
+  <ItemGroup>
+    <Content Include="..\..\..\shared\css\*.css"
+             Link="wwwroot\shared\css\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

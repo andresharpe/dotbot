@@ -8,11 +8,14 @@ line — the runtime is the sole writer, and a per-process SemaphoreSlim
 guards the writer so two listener threads on the same runtime can't
 interleave bytes.
 
-Event shape:
+Event shape (dotted type so each line is a bus event matching task.* /
+workflow.* sink globs):
 {
+  "id":          "evt_xxxxxxxx",
+  "type":        "task.created" | "task.status_changed" | "workflow.run_started" | ...
   "timestamp":   "2026-05-18T10:00:00Z",
+  "source":      "runtime",
   "project_id":  "p_AbCd1234",
-  "type":        "task_created" | "task_status_changed" | ...
   "task_id":     "t_xxxxxxxx",     // when relevant
   "run_id":      "wr_xxxxxxxx",    // when relevant
   "from":        "in-progress",    // on transitions
@@ -43,15 +46,95 @@ function _Get-ActivityLogLock {
     }
     return $lock
 }
+
+# ---------------------------------------------------------------------------
+# Event-type registry (extensible)
+#
+# Publish-DotBotEvent validates a dotted event type (e.g. 'task.completed')
+# against this registry. Entries are wildcard patterns, so a family like
+# 'task.*' registers a whole namespace. An unregistered type is LOGGED and
+# STILL DELIVERED — never rejected — so new families (e.g. 'nudge.*') need no
+# publisher change; they just append to the registry when their producer loads.
+#
+# Stored on the AppDomain (like the writer lock) so a registration made in one
+# runspace is visible to publishers in the per-request runspaces.
+# ---------------------------------------------------------------------------
+$script:DotbotEventTypeRegistryKey = 'Dotbot.Runtime.EventTypeRegistry'
+$script:DotbotDefaultEventTypes    = @(
+    'task.*'
+    'workflow.*'
+)
+
+function _Get-EventTypeRegistry {
+    $registry = [System.AppDomain]::CurrentDomain.GetData($script:DotbotEventTypeRegistryKey)
+    if ($null -eq $registry) {
+        $registry = [System.Collections.Generic.List[string]]::new()
+        foreach ($t in $script:DotbotDefaultEventTypes) { $registry.Add($t) }
+        [System.AppDomain]::CurrentDomain.SetData($script:DotbotEventTypeRegistryKey, $registry)
+    }
+    # Unary comma prevents PowerShell from unrolling the List on return, so
+    # callers get the live List object (needed for .Add / .ToArray), not its
+    # enumerated elements.
+    return ,$registry
+}
+
+function Register-DotBotEventType {
+    <#
+    .SYNOPSIS
+    Register an event type (or a wildcard family such as 'nudge.*') so that
+    Publish-DotBotEvent treats it as a known type.
+
+    .DESCRIPTION
+    Idempotent: registering the same pattern twice is a no-op. Registration is
+    process-wide (AppDomain-backed) so producers loaded in any runspace share
+    one registry.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string]$Type)
+
+    $registry = _Get-EventTypeRegistry
+    if (-not ($registry -contains $Type)) {
+        $registry.Add($Type)
+    }
+}
+
+function Get-DotBotEventTypeRegistry {
+    <#
+    .SYNOPSIS
+    Return the current event-type registry (array of patterns). For tests and
+    diagnostics.
+    #>
+    return ,@((_Get-EventTypeRegistry).ToArray())
+}
+
+function Test-DotBotEventTypeRegistered {
+    <#
+    .SYNOPSIS
+    Return $true when the given concrete type matches any registered pattern.
+
+    .DESCRIPTION
+    Registry entries are treated as wildcard patterns, so 'task.completed'
+    matches the registered family 'task.*', and an exactly-registered concrete
+    type matches itself.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string]$Type)
+
+    foreach ($pattern in (_Get-EventTypeRegistry)) {
+        if ($Type -like $pattern) { return $true }
+    }
+    return $false
+}
+
 $script:DotbotActivityLogEventTypes = @(
-    'task_created'
-    'task_updated'
-    'task_status_changed'
-    'workflow_run_started'
-    'workflow_run_completed'
-    'workflow_run_failed'
-    'workflow_run_cancelled'
-    'hook_failed'
+    'task.created'
+    'task.updated'
+    'task.status_changed'
+    'workflow.run_started'
+    'workflow.run_completed'
+    'workflow.run_failed'
+    'workflow.run_cancelled'
+    'hook.failed'
 )
 
 function Get-ActivityLogPath {
@@ -124,6 +207,114 @@ function Get-ActivityLogEventTypes {
     return ,@($script:DotbotActivityLogEventTypes)
 }
 
+function _New-DotBotEventId {
+    # Reuse the runtime's nanoid generator (imported globally via Dotbot.Task)
+    # so event ids share the house 'prefix_ + 8 chars' convention (t_, wr_, p_).
+    if (-not (Get-Command New-DotbotNanoId -ErrorAction SilentlyContinue)) {
+        throw "Publish-DotBotEvent requires New-DotbotNanoId (Dotbot.Task IdGen) — module not loaded."
+    }
+    return 'evt_' + (New-DotbotNanoId)
+}
+
+function _Append-ActivityLogLine {
+    <#
+    .SYNOPSIS
+    Append one already-serialized JSON line to <BotRoot>/.control/activity.jsonl
+    under the process-wide writer lock. Shared by Write-ActivityEvent and
+    Publish-DotBotEvent so both use the SAME SemaphoreSlim and can never
+    interleave bytes with each other.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$BotRoot,
+        [Parameter(Mandatory)] [string]$Line
+    )
+
+    $path = Get-ActivityLogPath -BotRoot $BotRoot
+    $dir  = Split-Path -Parent $path
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $lock = _Get-ActivityLogLock
+    $lock.Wait()
+    try {
+        # AppendAllText opens / appends / closes per call. On POSIX this is
+        # atomic for sub-PIPE_BUF writes (any line we produce here). On NTFS
+        # it's atomic for sub-4KB writes. The +newline keeps lines separated.
+        [System.IO.File]::AppendAllText(
+            $path,
+            $Line + [System.Environment]::NewLine,
+            [System.Text.UTF8Encoding]::new($false)
+        )
+    } finally {
+        [void]$lock.Release()
+    }
+}
+
+function Publish-DotBotEvent {
+    <#
+    .SYNOPSIS
+    Publish a typed event onto the event bus.
+
+    .DESCRIPTION
+    Stamps a well-formed envelope — id, type, timestamp, source, data, plus the
+    project id and actor — and appends it as one JSON line to
+    <BotRoot>/.control/activity.jsonl. Publishing to the activity log means the
+    /api/activity/tail byte-cursor endpoint carries bus events to the browser
+    with no new transport.
+
+    The Type is validated against the extensible event-type registry. An
+    UNREGISTERED type is logged and STILL DELIVERED (never rejected), so new
+    event families need no change to this publisher.
+
+    .PARAMETER Type
+    The dotted event type, e.g. 'task.completed' or 'workflow.run_failed'.
+
+    .PARAMETER Source
+    Where the event originated, e.g. 'runtime'.
+
+    .PARAMETER Data
+    Arbitrary event payload; serialized as the envelope's nested 'data' object.
+
+    .OUTPUTS
+    The envelope hashtable that was written (so callers/tests can inspect the id).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$BotRoot,
+        [Parameter(Mandatory)] [string]$Type,
+        [Parameter(Mandatory)] [string]$Source,
+        [hashtable]$Data,
+        [string]$Actor = 'system'
+    )
+
+    if (-not (Test-DotBotEventTypeRegistered -Type $Type)) {
+        # Logged, not rejected — the registry is extensible by design. Debug
+        # level: Write-BotLog only mirrors Info+ into activity.jsonl, so this
+        # note never pollutes the bus itself. Guarded so the module stays
+        # usable when Dotbot.Logging isn't loaded.
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "Publish-DotBotEvent: unregistered event type '$Type' — delivering anyway."
+        }
+    }
+
+    $envelope = [ordered]@{
+        id         = _New-DotBotEventId
+        type       = $Type
+        timestamp  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        source     = $Source
+        data       = if ($null -ne $Data) { $Data } else { @{} }
+        project_id = Get-DotbotProjectId -BotRoot $BotRoot
+        actor      = $Actor
+    }
+
+    $line = $envelope | ConvertTo-Json -Depth 10 -Compress
+    _Append-ActivityLogLine -BotRoot $BotRoot -Line $line
+
+    return $envelope
+}
+
 function Write-ActivityEvent {
     <#
     .SYNOPSIS
@@ -155,13 +346,16 @@ function Write-ActivityEvent {
         [string]$From,
         [string]$To,
         [string]$Actor = 'system',
-        [string]$Reason
+        [string]$Reason,
+        [string]$Source = 'runtime'
     )
 
     $event = [ordered]@{
-        timestamp  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        project_id = Get-DotbotProjectId -BotRoot $BotRoot
+        id         = _New-DotBotEventId
         type       = $Type
+        timestamp  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        source     = $Source
+        project_id = Get-DotbotProjectId -BotRoot $BotRoot
     }
     if ($TaskId) { $event['task_id'] = $TaskId }
     if ($RunId)  { $event['run_id']  = $RunId }
@@ -174,31 +368,15 @@ function Write-ActivityEvent {
     # one entry = one physical line, which is what the UI's FileWatcher
     # consumer assumes.
     $line = $event | ConvertTo-Json -Depth 6 -Compress
-
-    $path = Get-ActivityLogPath -BotRoot $BotRoot
-    $dir  = Split-Path -Parent $path
-    if (-not (Test-Path -LiteralPath $dir)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    }
-
-    $lock = _Get-ActivityLogLock
-    $lock.Wait()
-    try {
-        # AppendAllText opens / appends / closes per call. On POSIX this is
-        # atomic for sub-PIPE_BUF writes (any line we produce here). On NTFS
-        # it's atomic for sub-4KB writes. The +newline keeps lines separated.
-        [System.IO.File]::AppendAllText(
-            $path,
-            $line + [System.Environment]::NewLine,
-            [System.Text.UTF8Encoding]::new($false)
-        )
-    } finally {
-        [void]$lock.Release()
-    }
+    _Append-ActivityLogLine -BotRoot $BotRoot -Line $line
 }
 
 Export-ModuleMember -Function @(
     'Write-ActivityEvent'
+    'Publish-DotBotEvent'
+    'Register-DotBotEventType'
+    'Get-DotBotEventTypeRegistry'
+    'Test-DotBotEventTypeRegistered'
     'Get-ActivityLogPath'
     'Get-DotbotProjectId'
     'Get-ActivityLogEventTypes'

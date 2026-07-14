@@ -20,9 +20,6 @@ const Aether = (function() {
     const BOND_POLL_INTERVAL = 1000; // Poll every second during bonding
 
     // State tracking for event detection
-    let _lastTaskId = null;
-    let _lastFailures = 0;
-    let _initialized = false;
     let _linked = false;
 
     // Stats tracking
@@ -334,72 +331,71 @@ const Aether = (function() {
     }
 
     /**
-     * Process state update from polling - detect events and trigger effects
-     * Oscilloscope effects work regardless of light connection
-     */
-    function processState(state) {
-        const currentTaskId = state.tasks?.current?.id || null;
-        const failures = state.session?.consecutive_failures || 0;
-
-        // First poll establishes baseline - don't fire events
-        if (!_initialized) {
-            _lastTaskId = currentTaskId;
-            _lastFailures = failures;
-            _initialized = true;
-            return;
-        }
-
-        // Task start: new task ID appears (different from last seen)
-        if (currentTaskId && currentTaskId !== _lastTaskId) {
-            _stats.starts++;
-            _lastEvent = { type: 'START', time: new Date(), taskId: currentTaskId };
-            updateStatsUI();
-            if (_linked && _selectedNodes.length > 0) {
-                celebrateColors();  // Dramatic cycle through all theme colors
-            }
-            if (typeof activityScope !== 'undefined' && activityScope) {
-                activityScope.injectPulse(1.5, 40);
-            }
-        }
-
-        // Task complete: task ID disappears without new failures
-        if (_lastTaskId && !currentTaskId && failures <= _lastFailures) {
-            _stats.completes++;
-            _lastEvent = { type: 'COMPLETE', time: new Date(), taskId: _lastTaskId };
-            updateStatsUI();
-            if (_linked && _selectedNodes.length > 0) {
-                celebrateColors();  // Dramatic cycle through all theme colors
-            }
-            if (typeof activityScope !== 'undefined' && activityScope) {
-                activityScope.injectSweep(1.0);
-            }
-        }
-
-        // Error: failures increased
-        if (failures > _lastFailures) {
-            _stats.errors++;
-            _lastEvent = { type: 'ERROR', time: new Date(), failures };
-            updateStatsUI();
-            if (_linked && _selectedNodes.length > 0) {
-                pulse('warning');  // Warning color from theme
-            }
-            if (typeof activityScope !== 'undefined' && activityScope) {
-                activityScope.injectNoise(0.8, 40);
-            }
-        }
-
-        // Update tracking
-        _lastTaskId = currentTaskId;
-        _lastFailures = failures;
-    }
-
-    /**
-     * Process activity event - respond to tool calls, writes, errors during tasks
+     * Process an activity-tail event and trigger light / oscilloscope effects.
+     *
+     * Two families flow through here from /api/activity/tail:
+     *   - Event-bus lifecycle events (task.* / workflow.*), which replace the
+     *     old /api/state diffing: a task moving to in-progress / done / failed,
+     *     or a workflow run completing / failing.
+     *   - Harness tool activity (write / edit / bash / error / rate_limit / text).
+     *
+     * Oscilloscope effects work regardless of light connection.
      */
     function processActivity(event) {
         const type = (event.type || '').toLowerCase();
 
-        // Different effects for different activity types
+        // ── Task & workflow lifecycle (event bus) ──
+        if (type === 'task.status_changed' || type === 'workflow.run_completed' ||
+            type === 'workflow.run_failed' || type === 'workflow.run_cancelled') {
+            const to = (event.to || '').toLowerCase();
+
+            // Task moved into execution → START.
+            if (type === 'task.status_changed' && to === 'in-progress') {
+                _stats.starts++;
+                _lastEvent = { type: 'START', time: new Date(), taskId: event.task_id };
+                updateStatsUI();
+                if (_linked && _selectedNodes.length > 0) {
+                    celebrateColors();  // Dramatic cycle through all theme colors
+                }
+                if (typeof activityScope !== 'undefined' && activityScope) {
+                    activityScope.injectPulse(1.5, 40);
+                }
+                return;
+            }
+
+            // Task done, or a workflow run completed → COMPLETE.
+            if ((type === 'task.status_changed' && to === 'done') || type === 'workflow.run_completed') {
+                _stats.completes++;
+                _lastEvent = { type: 'COMPLETE', time: new Date(), taskId: event.task_id };
+                updateStatsUI();
+                if (_linked && _selectedNodes.length > 0) {
+                    celebrateColors();
+                }
+                if (typeof activityScope !== 'undefined' && activityScope) {
+                    activityScope.injectSweep(1.0);
+                }
+                return;
+            }
+
+            // Task failed, or a workflow run failed → ERROR.
+            if ((type === 'task.status_changed' && to === 'failed') || type === 'workflow.run_failed') {
+                _stats.errors++;
+                _lastEvent = { type: 'ERROR', time: new Date(), taskId: event.task_id };
+                updateStatsUI();
+                if (_linked && _selectedNodes.length > 0) {
+                    pulse('warning');  // Warning color from theme
+                }
+                if (typeof activityScope !== 'undefined' && activityScope) {
+                    activityScope.injectNoise(0.8, 40);
+                }
+                return;
+            }
+
+            // Other transitions (todo, needs-input, run_cancelled) → no effect.
+            return;
+        }
+
+        // ── Harness tool activity ──
         switch (type) {
             case 'write':
             case 'edit':
@@ -909,7 +905,6 @@ const Aether = (function() {
         startBonding,
         stopBonding,
         loadNodes,
-        processState,
         processActivity,
         pulse,
         pulseQuick,

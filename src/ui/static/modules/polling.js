@@ -33,10 +33,8 @@ async function pollState() {
         setConnectionStatus('connected');
         updateUI(state);
 
-        // Aether ambient feedback
-        if (typeof Aether !== 'undefined') {
-            Aether.processState(state);
-        }
+        // Aether ambient feedback is driven from the event bus via the activity
+        // tail (see Aether.processActivity in pollActivity), not from /api/state.
 
         // Update Overview side panel every poll (no extra fetch — uses state already in hand)
         updateOverviewWorkflowPanel(state);

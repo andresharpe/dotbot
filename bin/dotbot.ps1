@@ -667,7 +667,7 @@ function Invoke-Go {
     } finally {
         Pop-Location
         if ($runtimeStartedHere -and $runtimeStart -and $runtimeStart.listener) {
-            Stop-DotbotRuntime -BotRoot $botDir -Listener $runtimeStart.listener -ErrorAction SilentlyContinue
+            Stop-DotbotRuntime -BotRoot $botDir -Listener $runtimeStart.listener -ControlPlaneRegistration $runtimeStart.control_plane -EventConsumer $runtimeStart.events_consumer -ErrorAction SilentlyContinue
         }
     }
 }

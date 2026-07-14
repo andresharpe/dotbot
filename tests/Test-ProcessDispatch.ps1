@@ -192,6 +192,24 @@ Assert-True -Name "Task-runner finalizes WorkflowRun live status" `
     -Condition ($workflowProcessContent -match 'Set-WorkflowRunLiveStatus' -and $workflowProcessContent -match 'New-WorkflowRunStatus') `
     -Message "Workflow runner should update .control/workflow-runs/<run>.json when it exits"
 
+Assert-True -Name "Task-runner emits workflow.run terminal events on the bus" `
+    -Condition ($workflowProcessContent -match 'Write-ActivityEvent' -and $workflowProcessContent -match 'workflow\.run_\$runStatus') `
+    -Message "Invoke-WorkflowProcess should emit workflow.run_<terminal> via Write-ActivityEvent when a run ends"
+
+Assert-True -Name "Task-runner guards the terminal-event emit to terminal states" `
+    -Condition ($workflowProcessContent -match "@\('completed',\s*'failed',\s*'cancelled'\)") `
+    -Message "The workflow.run_* emit must only fire for terminal run statuses, not 'running'"
+
+$uiServerFile = Join-Path $dotbotDir "src/ui/server.ps1"
+if (Test-Path $uiServerFile) {
+    $uiServerContent = Get-Content $uiServerFile -Raw
+    Assert-True -Name "UI orphan-fail path emits workflow.run_failed on the bus" `
+        -Condition ($uiServerContent -match 'Write-ActivityEvent' -and $uiServerContent -match "workflow\.run_failed") `
+        -Message "ui/server.ps1 should emit workflow.run_failed when a run fails to launch before the runner starts"
+} else {
+    Write-TestResult -Name "UI orphan-fail path emits workflow.run_failed on the bus" -Status Skip -Message "ui/server.ps1 not found at $uiServerFile"
+}
+
 Assert-True -Name "Task-runner uses legal executor status transitions" `
     -Condition ($workflowProcessContent -match 'Invoke-TaskMarkInProgress' -and
                 $workflowProcessContent -match 'Cannot dispatch non-prompt task' -and

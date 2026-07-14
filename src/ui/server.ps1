@@ -2579,7 +2579,12 @@ $docContext
                                         @{ run_id = $run.run_id; status = 'failed'; completed_at = $failTs; last_heartbeat = $failTs; error = $_.Exception.Message }
                                     }
                                     $failStatus | ConvertTo-Json -Depth 20 | Set-Content -Path $run.live_status_path -Encoding utf8NoBOM
-                                } catch { Write-BotLog -Level Debug -Message "Failed to mark orphaned run failed" -Exception $_ }
+                                    $orphanFailReason = $_.Exception.Message
+                                    if (-not (Get-Command Write-ActivityEvent -ErrorAction SilentlyContinue)) {
+                                        Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Runtime" "Dotbot.Runtime.psd1") -DisableNameChecking -Global -ErrorAction Stop
+                                    }
+                                    Write-ActivityEvent -BotRoot $botRoot -Type 'workflow.run_failed' -RunId $run.run_id -From 'running' -To 'failed' -Actor 'system' -Reason $orphanFailReason
+                                } catch { Write-BotLog -Level Debug -Message "Failed to mark orphaned run failed or emit event" -Exception $_ }
                             }
                             $statusCode = 500
                             $content = @{ success = $false; error = "Failed to run workflow: $($_.Exception.Message)" } | ConvertTo-Json -Compress
@@ -2825,6 +2830,26 @@ $docContext
                     } else {
                         $statusCode = 404
                         $content = @{ success = $false; error = "Directory not found: $dirName" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
+
+                # Shared shell/token stylesheets live outside the static root (src/shared/css).
+                # Explicit route with a traversal guard; .css only — nothing else in that
+                # directory is servable (e.g. harness.html is dev-only).
+                { $_ -like '/shared/css/*' } {
+                    $sharedCssRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..' 'shared' 'css'))
+                    $requested = $url.Substring('/shared/css/'.Length)
+                    $candidate = [System.IO.Path]::GetFullPath((Join-Path $sharedCssRoot $requested))
+                    $rootWithSep = $sharedCssRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+                    if ($candidate.StartsWith($rootWithSep, [System.StringComparison]::OrdinalIgnoreCase) -and
+                        [System.IO.Path]::GetExtension($candidate) -eq '.css' -and
+                        (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                        $contentType = 'text/css; charset=utf-8'
+                        $content = Get-Content -LiteralPath $candidate -Raw
+                    } else {
+                        $statusCode = 404
+                        $content = "Not found: $url"
                     }
                     break
                 }

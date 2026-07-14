@@ -2,7 +2,12 @@
    DOTBOT DASHBOARD — Retro Terminal Design System
    ============================================================ */
 
-/* === CSS Variables — Amber Classic Palette === */
+/* === CSS Variables — Amber Classic Palette ===
+ * #606 migration debt: these values intentionally DIVERGE from the shared
+ * /shared/css/dotbot-tokens.css for secondary (#5FB3B3 cyan vs amber-brown),
+ * error (#D16969 red vs amber) and muted. This block loads after tokens.css
+ * and wins; dropping it without reconciling would recolor dashboard content.
+ * Reconcile when the dashboard content is restructured in #606. */
 :root {
     --color-primary: #E8A030;
     --color-primary-dim: #B87820;
@@ -65,53 +70,10 @@ body {
     background-size: 10px 10px, 10px 10px, 50px 50px, 50px 50px;
 }
 
-/* === Scanlines overlay === */
-body::after {
-    content: '';
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    pointer-events: none;
-    z-index: 9999;
-    background: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(0, 0, 0, 0.03) 2px,
-        rgba(0, 0, 0, 0.03) 4px
-    );
-}
-
-/* === Control Panel — full-height flex column === */
-.control-panel {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-}
-
-/* === Header Bar === */
-.header-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 20px;
-    background: var(--bezel-dark);
-    border-bottom: 1px solid var(--bezel-edge);
-    flex-shrink: 0;
-}
-.header-left {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-}
-.logo {
-    font-family: var(--font-mono);
-    font-size: 18px;
-    font-weight: 700;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--color-primary);
-    text-shadow: 0 0 15px var(--primary-50);
-}
+/* Page chrome (topbar/rail/ticker + its scanlines) comes from
+ * /shared/css/dotbot-shell.css since #605. The old header/footer/scanline
+ * blocks were removed; .logo-sub and .user-info stay — they render inside
+ * the shell topbar now. */
 .logo-sub {
     font-family: var(--font-ui);
     font-size: 10px;
@@ -120,15 +82,11 @@ body::after {
     text-transform: uppercase;
     color: var(--color-muted);
 }
-.header-right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
 .user-info {
     font-family: var(--font-ui);
     font-size: 12px;
     color: var(--color-muted);
+    margin-left: auto;
 }
 
 /* === Tab Bar === */
@@ -164,39 +122,18 @@ body::after {
     text-shadow: 0 0 8px var(--primary-30);
 }
 
-/* === Main Content === */
+/* === Main Content ===
+ * Inside .shell-content the page flows as a document; the shell owns
+ * scrolling. Panes no longer self-scroll. */
 .main-content {
-    flex: 1;
-    overflow: hidden;
     position: relative;
 }
 .tab-pane {
     display: none;
-    height: 100%;
-    overflow-y: auto;
-    padding: 16px 20px;
+    padding: 16px 0;
 }
 .tab-pane.active {
     display: block;
-}
-
-/* === Footer Bar === */
-.footer-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 20px;
-    background: var(--bezel-dark);
-    border-top: 1px solid var(--bezel-edge);
-    font-family: var(--font-ui);
-    font-size: 10px;
-    color: var(--color-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    flex-shrink: 0;
-}
-.footer-version {
-    color: var(--color-bezel);
 }
 
 /* === Stats Row — polished with grid backgrounds === */
@@ -289,7 +226,7 @@ body::after {
         linear-gradient(var(--grid-color-strong) 1px, transparent 1px),
         linear-gradient(90deg, var(--grid-color-strong) 1px, transparent 1px);
     background-size: 10px 10px, 10px 10px, 50px 50px, 50px 50px;
-    max-height: calc(100vh - 380px);
+    max-height: calc(100vh - 420px); /* retuned for shell chrome (#605): 44px topbar + 28px ticker + inner padding */
     overflow-y: auto;
 }
 
@@ -642,7 +579,7 @@ select.filter-input option {
 .split-view {
     display: grid;
     grid-template-columns: 300px 1fr;
-    height: calc(100vh - 150px);
+    height: calc(100vh - 210px); /* retuned for shell chrome (#605) */
     gap: 0;
     background: var(--bg-panel);
     border: 1px solid var(--bezel-edge);

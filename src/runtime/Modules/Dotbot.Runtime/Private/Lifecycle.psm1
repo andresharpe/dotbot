@@ -204,6 +204,7 @@ function Start-DotbotRuntime {
             attached   = $true
             listener   = $null
             control_plane = $null
+            events_consumer = $null
         }
     }
 
@@ -242,6 +243,7 @@ function Start-DotbotRuntime {
         attached   = $false
         listener   = $listener
         control_plane = $null
+        events_consumer = $null
     }
 
     $runtimeRegistration = @{
@@ -257,6 +259,16 @@ function Start-DotbotRuntime {
         $result.control_plane = [ordered]@{ enabled = $true; registered = $false; error = $_.Exception.Message }
     }
 
+    # Event-bus consumer — hosted here so there is exactly one per project in
+    # every mode (both `dotbot go` and `dotbot serve` launch the runtime
+    # server; the UI server never hosts it). Start-EventConsumer returns $null
+    # when the bus is disabled.
+    try {
+        $result.events_consumer = Start-EventConsumer -BotRoot $BotRoot
+    } catch {
+        $result.events_consumer = [ordered]@{ enabled = $true; started = $false; error = $_.Exception.Message }
+    }
+
     if ($Foreground) {
         # The listener loop runs on a background ThreadPool job. In foreground
         # mode we block in this caller until someone signals shutdown — that
@@ -268,7 +280,7 @@ function Start-DotbotRuntime {
                 Start-Sleep -Milliseconds 250
             }
         } finally {
-            Stop-DotbotRuntime -BotRoot $BotRoot -Listener $listener -ControlPlaneRegistration $result.control_plane -ErrorAction SilentlyContinue
+            Stop-DotbotRuntime -BotRoot $BotRoot -Listener $listener -ControlPlaneRegistration $result.control_plane -EventConsumer $result.events_consumer -ErrorAction SilentlyContinue
         }
     }
 
@@ -290,7 +302,8 @@ function Stop-DotbotRuntime {
     param(
         [Parameter(Mandatory)] [string]$BotRoot,
         [System.Net.HttpListener]$Listener,
-        [object]$ControlPlaneRegistration
+        [object]$ControlPlaneRegistration,
+        [object]$EventConsumer
     )
 
     if ($Listener) {
@@ -303,6 +316,10 @@ function Stop-DotbotRuntime {
 
     if ($ControlPlaneRegistration) {
         try { Stop-ControlPlaneRegistration -BotRoot $BotRoot -Registration $ControlPlaneRegistration } catch { $null = $_ }
+    }
+
+    if ($EventConsumer) {
+        try { Stop-EventConsumer -Consumer $EventConsumer } catch { $null = $_ }
     }
 
     Remove-RuntimeConnectionFile -BotRoot $BotRoot
