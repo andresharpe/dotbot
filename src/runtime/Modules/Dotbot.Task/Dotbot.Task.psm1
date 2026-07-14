@@ -1441,12 +1441,23 @@ function Invoke-InterviewLoop {
 
     $processData = $ProcessData
 
-    # Load interview prompt template
-    $interviewWorkflowPath = Join-Path $BotRoot "recipes/prompts/00-interview.md"
-    $interviewWorkflow = ""
-    if (Test-Path $interviewWorkflowPath) {
-        $interviewWorkflow = Get-Content $interviewWorkflowPath -Raw
+    # Load interview prompt template. Interview is a runtime task type, so its
+    # prompt lives globally under content/prompts/00-interview.md, resolved
+    # through the content hierarchy by Resolve-DotbotContentReference: project
+    # override (<BotRoot>/content/prompts) -> user -> framework/DOTBOT_HOME.
+    # A missing template is a hard failure -- the loop cannot produce a valid
+    # clarification-questions.json without the schema it carries.
+    $interviewWorkflowPath = $null
+    if (-not (Get-Command Resolve-DotbotContentReference -ErrorAction SilentlyContinue)) {
+        Import-Module (Join-Path $PSScriptRoot ".." "Dotbot.Content" "Dotbot.Content.psm1") -DisableNameChecking -Global -ErrorAction SilentlyContinue
     }
+    if (Get-Command Resolve-DotbotContentReference -ErrorAction SilentlyContinue) {
+        $interviewWorkflowPath = Resolve-DotbotContentReference -BotRoot $BotRoot -Type prompts -Reference '00-interview.md'
+    }
+    if (-not ($interviewWorkflowPath -and (Test-Path -LiteralPath $interviewWorkflowPath -PathType Leaf))) {
+        throw "Interview prompt '00-interview.md' not found in project (<BotRoot>/content/prompts/) or DOTBOT_HOME content (<DOTBOT_HOME>/content/prompts/)."
+    }
+    $interviewWorkflow = Get-Content -LiteralPath $interviewWorkflowPath -Raw
 
     # Check for briefing files
     $briefingDir = Join-Path $ProductDir "briefing"
