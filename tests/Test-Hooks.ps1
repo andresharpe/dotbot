@@ -393,9 +393,17 @@ function Invoke-EnterDoneOutOfProcess {
         "@{ run_id = $runIdLiteral }"
     }
 
+    # Load script.ps1 the same way Dispatch.psm1's Invoke-SingleTransitionHook
+    # actually does in production — build a dynamic module from a scriptblock
+    # of the file's content — rather than dot-sourcing or Import-Module on a
+    # bare .ps1 (neither gives Export-ModuleMember a real module scope, so
+    # both throw "can only be called from inside a module" as a non-terminating
+    # error that would otherwise need to be swallowed with 2>$null).
     $runner = @"
 `$env:DOTBOT_HOME = '$repoRoot'
-. '$enterDoneScript'
+`$content = Get-Content -LiteralPath '$enterDoneScript' -Raw
+`$sb = [ScriptBlock]::Create(`$content)
+`$mod = New-Module -Name 'EnterDoneUnderTest' -ScriptBlock `$sb
 `$task = @{
     id                = '$TaskId'
     category          = 'test'
@@ -403,14 +411,14 @@ function Invoke-EnterDoneOutOfProcess {
     working_directory = $workDirLiteral
 }
 `$runContext = @{ BotRoot = '$BotRootDir' }
-`$result = Invoke-Hook -Task `$task -RunContext `$runContext -FromStatus 'in-progress' -ToStatus 'done'
+`$result = & `$mod Invoke-Hook -Task `$task -RunContext `$runContext -FromStatus 'in-progress' -ToStatus 'done'
 `$result | ConvertTo-Json -Depth 5 -Compress
 "@
     Set-Content -LiteralPath $RunnerPath -Value $runner -Encoding utf8NoBOM
 
     Push-Location $LaunchCwd
     try {
-        $out = & pwsh -NoProfile -File $RunnerPath 2>$null
+        $out = & pwsh -NoProfile -File $RunnerPath
     } finally {
         Pop-Location
     }
