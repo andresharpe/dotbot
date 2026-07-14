@@ -32,6 +32,11 @@ function Invoke-Hook {
         $hasHookChain    = [bool](Get-Command Get-DotbotHookChain -ErrorAction SilentlyContinue)
         $hasWorktreeInfo = [bool](Get-Command Get-TaskWorktreeInfo -ErrorAction SilentlyContinue)
 
+        # frameworkRoot is only resolved lazily, on demand — it's mandatory for
+        # the content resolver (Get-DotbotHookChain drives the verify chain
+        # itself) but merely best-effort for the worktree lookup (a resolution
+        # failure there just means the cwd falls through to working_directory
+        # / BotRoot). Don't hard-fail the whole hook over the optional path.
         $frameworkRoot = $null
         if (-not $hasHookChain -or -not $hasWorktreeInfo) {
             $frameworkRoot = if ($env:DOTBOT_HOME) {
@@ -41,6 +46,9 @@ function Invoke-Hook {
             } else {
                 $null
             }
+        }
+
+        if (-not $hasHookChain) {
             if (-not $frameworkRoot) {
                 $sw.Stop()
                 return @{
@@ -49,9 +57,6 @@ function Invoke-Hook {
                     Duration = $sw.Elapsed
                 }
             }
-        }
-
-        if (-not $hasHookChain) {
             $contentResolverModule = Join-Path $frameworkRoot "src/runtime/Modules/Dotbot.Content/Dotbot.Content.psm1"
             Import-Module $contentResolverModule -DisableNameChecking -Global
         }
@@ -59,8 +64,10 @@ function Invoke-Hook {
         # This hook's runspace is a fresh child runspace (see Dispatch.psm1) and
         # doesn't inherit modules loaded by the parent process, so the worktree
         # lookup below needs its own explicit import — same reasoning as the
-        # Dotbot.Content import above.
-        if (-not $hasWorktreeInfo) {
+        # Dotbot.Content import above. Best-effort: if frameworkRoot couldn't be
+        # resolved, just skip it — Get-TaskWorktreeInfo simply won't be found
+        # below and cwd resolution falls through to working_directory / BotRoot.
+        if (-not $hasWorktreeInfo -and $frameworkRoot) {
             $worktreeModule = Join-Path $frameworkRoot "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psm1"
             if (Test-Path -LiteralPath $worktreeModule) {
                 Import-Module $worktreeModule -DisableNameChecking -Global
@@ -101,8 +108,17 @@ function Invoke-Hook {
             $verifyCwd = $Task['working_directory']
         }
 
-        if (-not $verifyCwd) {
+        if (-not $verifyCwd -and (Test-Path -LiteralPath $botRoot -PathType Container)) {
             $verifyCwd = $botRoot
+        }
+
+        if (-not $verifyCwd) {
+            $sw.Stop()
+            return @{
+                Success  = $false
+                Message  = "enter-done: no valid working directory could be resolved (worktree, working_directory, and BotRoot '$botRoot' are all invalid or missing)."
+                Duration = $sw.Elapsed
+            }
         }
 
         # Merged verify chain: project hooks at <BotRoot>/hooks/verify/ win
