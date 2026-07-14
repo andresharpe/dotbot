@@ -297,7 +297,14 @@ Always include a `Defer to later release` option when deferral is a coherent cho
 
 ### Phase 4: Record Decisions
 
-For every ambiguity now resolved (agent-decidable or user-answered), call `decision_create`. Skip creation only when Phase 1's `decision_list` already returned an accepted decision for the same planning item: require the same `title` and at least one scope match, either overlapping workflow tags such as `clarification` / `stage:product-docs` or `related_task_ids` containing `{{TASK_ID}}`. Do not dedupe by `title` alone.
+First, re-run `mcp__dotbot__decision_list({ status: "accepted" })`. The inbound funnel records mothership answers as accepted decisions *during* the needs-input pause, so they only show up now -- after Phase 1's earlier list.
+
+Then call `decision_create` for every ambiguity now resolved, **except** the ones already on record:
+
+- **Funnel already captured this answer.** For a user-answered question, if an accepted decision tagged `inbound:mothership` already covers it -- its title is `Inbound answer: <the question text>` and its `related_task_ids` contains `{{TASK_ID}}` -- do NOT create a second record. The funnel owns it.
+- **Re-run duplicate.** Skip when the earlier list already returned an accepted decision for the same planning item: same `title` and at least one scope match (overlapping `clarification` / `stage:product-docs` tags, or `related_task_ids` containing `{{TASK_ID}}`). Do not dedupe by `title` alone.
+
+Still `decision_create` for: (a) every **agent-decidable** ambiguity you resolved without asking -- the funnel never captures these; and (b) any **user-answered** question that has NO matching `inbound:mothership` decision (e.g. mothership is disabled, so the answer came in through the dashboard, not the funnel).
 
 ```
 mcp__dotbot__decision_create({
@@ -356,4 +363,4 @@ If, after Phase 3, no user-blocking question remained (everything was agent-deci
 - `tech-stack.md` covers the seven sections (Languages, Frameworks, Libraries, Tooling, Infrastructure, Dev Env, Rationale). Rationale references decision IDs where applicable.
 - `entity-model.md` includes at least one entity, all referenced enums, a Mermaid `erDiagram`, a Data Storage section, and a Design Decisions section that references decision IDs where applicable.
 - Every material ambiguity surfaced during planning has either a Decision record (status `accepted`) or is reflected in deliverable prose. Nothing is parked as an open question.
-- For each user-answered question in `questions_resolved`, a Decision exists with matching `title` and `tags` containing `clarification` and `stage:product-docs`.
+- For each user-answered question in `questions_resolved`, a Decision exists -- either a Phase-4 decision tagged `clarification` + `stage:product-docs`, or a funnel decision tagged `inbound:mothership` (related to `{{TASK_ID}}`) that already captured that answer.

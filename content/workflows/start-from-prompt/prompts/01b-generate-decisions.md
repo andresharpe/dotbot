@@ -33,13 +33,13 @@ Issue all ToolSearch calls above in a **single parallel batch** during Phase 0. 
 
 ### Step 0.5: List Existing Decisions
 
-Phase 1 (`01-plan-product.md`) already records decisions for clarification answers and for ambiguities the agent resolved during product-doc drafting. Load them so this stage does not duplicate:
+Phase 1 (`01-plan-product.md`) already records decisions for clarification answers and for ambiguities the agent resolved during product-doc drafting, and the inbound funnel records mothership answers as `inbound:mothership` decisions. Load them so this stage does not duplicate:
 
 ```
 mcp__dotbot__decision_list({ status: "accepted" })
 ```
 
-When iterating Step 2's candidates, skip any candidate whose `title` and relevant `tags` match a decision already returned here. Match by `title` and overlap of `tags` (especially `stage:product-docs` and `clarification`). Do not record a new decision when an existing one already covers the same choice.
+When iterating Step 2's candidates, skip any candidate whose `title` and relevant `tags` match a decision already returned here. Match by `title` and overlap of `tags` (especially `stage:product-docs`, `clarification`, and `inbound:mothership`). A candidate that just restates an answer already captured by an `inbound:mothership` decision is a duplicate -- skip it. Do not record a new decision when an existing one already covers the same choice.
 
 ### Step 1: Read Source Documents
 
@@ -74,7 +74,7 @@ Scan the source documents for decisions that meet ALL of these criteria:
 - Questions the user skipped
 - Implementation details that belong in task plans
 - Generic principles without a real trade-off
-- Items already recorded as decisions in Phase 1 (tag `stage:product-docs` or `clarification`)
+- Items already recorded as decisions in Phase 1 (tag `stage:product-docs` or `clarification`) or by the inbound funnel (tag `inbound:mothership`)
 
 Aim for **3–10 decisions** from a typical workflow run. Fewer is better than padding with non-decisions.
 
