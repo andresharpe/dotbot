@@ -2,7 +2,12 @@ function Invoke-DecisionList {
     param([hashtable]$Arguments)
 
     $filterStatus = $Arguments['status']
-    $decisionsBaseDir = Join-Path (Get-DotbotProjectBotPath) "workspace" "decisions"
+    # Decisions are dotbot state in the MAIN repo (issue #515). The MCP server
+    # resolves the main root into $global:DotbotBotRoot; prefer it so decisions read
+    # or written from a linked worktree still target main (matching the runtime-
+    # backed task tools + dashboard). Fall back to the cwd walk when it is unset.
+    $stateBotRoot = if ((Test-Path Variable:global:DotbotBotRoot) -and $global:DotbotBotRoot) { $global:DotbotBotRoot } else { Get-DotbotProjectBotPath }
+    $decisionsBaseDir = Join-Path $stateBotRoot "workspace" "decisions"
     $allStatuses = @('proposed', 'accepted', 'deprecated', 'superseded')
 
     if ($filterStatus -and $filterStatus -notin $allStatuses) {
@@ -37,6 +42,16 @@ function Invoke-DecisionList {
     }
 
     $decisions = @($decisions | Sort-Object { $_.id })
+
+    # Audit: record the decision scan a task performed during execution -- which
+    # decisions were surfaced to the agent (incl. inbound funnel ones) and the
+    # status filter used. Pairs with the per-decision decision_read log.
+    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+        $currentTaskId = $env:DOTBOT_CURRENT_TASK_ID
+        $ids = (@($decisions | ForEach-Object { $_.id })) -join ','
+        Write-BotLog -Level Info -Message "decision_list: task '$currentTaskId' status='$filterStatus' surfaced $($decisions.Count) decision(s): $ids" `
+            -Context @{ activity_type = 'decision_list'; task_id = "$currentTaskId"; count = $decisions.Count; filter = "$filterStatus" }
+    }
 
     return @{
         success = $true

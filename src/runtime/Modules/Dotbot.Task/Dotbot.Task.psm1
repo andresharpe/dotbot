@@ -1649,7 +1649,17 @@ Review all context above. Decide whether to write clarification-questions.json (
                                         }
                                         $iq = $questions | Where-Object { "$($_.id)" -eq "$qId" } | Select-Object -First 1
                                         $iqType = if ($iq -and @($iq.options).Count -gt 0) { 'singleChoice' } else { 'freeText' }
-                                        $null = New-InboundDecision -Source mothership -BotPath $BotRoot -Payload @{
+                                        # Decisions are dotbot state and live in the MAIN repo
+                                        # (issue #515), where decision_create / decision_list and
+                                        # the dashboard resolve them -- NOT the linked worktree
+                                        # ($BotRoot here), where Complete-TaskWorktree would discard
+                                        # them. The interview executor exports the main root as
+                                        # DOTBOT_STATE_ROOT; write the record there.
+                                        $stateRoot = $env:DOTBOT_STATE_ROOT
+                                        $decisionBot = if ($stateRoot -and (Test-Path -LiteralPath (Join-Path $stateRoot '.bot'))) {
+                                            Join-Path $stateRoot '.bot'
+                                        } else { $BotRoot }
+                                        $null = New-InboundDecision -Source mothership -BotPath $decisionBot -Payload @{
                                             questionType   = $iqType
                                             questionText   = if ($iq) { "$($iq.question)" } else { $null }
                                             options        = if ($iq) { $iq.options } else { $null }

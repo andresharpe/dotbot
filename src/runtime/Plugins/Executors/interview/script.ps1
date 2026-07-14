@@ -15,8 +15,38 @@ function Invoke-Executor {
         }
     }
 
+    # This executor runs in a fresh child runspace (default ISS). Invoke-InterviewLoop
+    # relies on commands the runtime normally imports globally -- Write-Status
+    # (Dotbot.Theme), Write-ProcessFile / Write-ProcessActivity / Add-JsonFrontMatter
+    # (Dotbot.Process), New-HarnessSession / Invoke-HarnessStream (Dotbot.Harness),
+    # Assert-TaskInputQuestionsData / Resolve-TaskInputAnswer (Dotbot.TaskInput).
+    # Put the runtime Modules dir on PSModulePath so PowerShell auto-loads any of
+    # them (and their transitive deps) on first use inside this runspace.
+    $modulesDir = Join-Path ([string]$RunContext['runtime_root']) 'Modules'
+    if ((Test-Path -LiteralPath $modulesDir) -and
+        (($env:PSModulePath -split [System.IO.Path]::PathSeparator) -notcontains $modulesDir)) {
+        $env:PSModulePath = $modulesDir + [System.IO.Path]::PathSeparator + $env:PSModulePath
+    }
+
     $taskModule = Join-Path ([string]$RunContext['runtime_root']) 'Modules' 'Dotbot.Task' 'Dotbot.Task.psd1'
     Import-Module $taskModule -Force -DisableNameChecking
+
+    # The child runspace does NOT inherit the parent's global variables, so the
+    # $global:DotbotProjectRoot the runner set to the worktree is absent here.
+    # The Claude harness falls back to $global:DotbotProjectRoot for Claude's cwd
+    # (ClaudeCodeAdapter), so without this the interview's Claude writes
+    # clarification-questions.json / interview-summary.md relative to the process
+    # cwd (the MAIN project) while Invoke-InterviewLoop looks under the worktree
+    # product_dir -- and reports "produced no output". Pin both globals to this
+    # task's execution roots so the harness writes where the loop reads.
+    if ($RunContext['project_root']) { $global:DotbotProjectRoot = [string]$RunContext['project_root'] }
+    if ($RunContext['bot_root'])     { $global:DotbotBotRoot     = [string]$RunContext['bot_root'] }
+    # dotbot STATE (task files, decisions) lives in the MAIN repo, not the
+    # worktree (issue #515). The child-process harness path exports this; the
+    # in-process path does not, so set it here from the run's state_root. The
+    # interview funnel hook writes inbound decisions to this main .bot so they
+    # match decision_create / decision_list and appear in the dashboard.
+    if ($RunContext['state_root']) { $env:DOTBOT_STATE_ROOT = [string]$RunContext['state_root'] }
 
     $botRoot = [string]$RunContext['bot_root']
     $productDir = [string]$RunContext['product_dir']

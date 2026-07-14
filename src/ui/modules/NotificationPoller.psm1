@@ -36,6 +36,12 @@ function Invoke-NotificationInboundDecision {
     # fails on the audit side-effect.
     param($PendingQuestion, $Notification, $Resolved, [string]$TaskId, [string]$BotRoot)
     try {
+        # Decisions are dotbot state and live in the MAIN repository (issue #515):
+        # the MCP decision tools and the dashboard resolve them via the state root
+        # (git-common-dir), never a linked worktree. The poller runs in the
+        # UI server against the main checkout, so $BotRoot already points at the
+        # main .bot. Write there so the record matches decision_create / decision_list
+        # and shows in the dashboard immediately.
         $null = New-InboundDecision -Source mothership -BotPath $BotRoot -Payload @{
             questionType   = "$(Get-NotificationObjectProp -Object $PendingQuestion -Name 'type')"
             questionText   = Get-NotificationObjectProp -Object $PendingQuestion -Name 'question'

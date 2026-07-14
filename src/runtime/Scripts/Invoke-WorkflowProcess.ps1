@@ -447,6 +447,11 @@ function New-ExecutorRunContext {
         bot_root        = $contextBotRoot
         BotRoot         = $contextBotRoot
         project_root    = $contextProjectRoot
+        # Stable MAIN repo root (issue #515). project_root/bot_root point at the
+        # linked worktree during execution, but dotbot state (task files,
+        # decisions) lives in the main repo. In-process executors (interview) that
+        # write state must target this, not the worktree.
+        state_root      = $projectRoot
         runtime_root    = $runtimeRoot
         process_id      = $procId
         process_data    = $processData
@@ -1603,14 +1608,28 @@ try {
                 }
                 $typeSuccess = [bool]$executorResult['Success']
                 if (-not $typeSuccess) {
-                    $typeError = if ($executorResult.ContainsKey('Message')) { $executorResult['Message'] } else { "Executor returned Success=false" }
-                } elseif ($executorResult.ContainsKey('Message') -and $executorResult['Message']) {
+                    $typeError = if ($executorResult.Contains('Message')) { $executorResult['Message'] } else { "Executor returned Success=false" }
+                    # Persist the reason. Previously an executor that RETURNED
+                    # Success=false (rather than throwing) only surfaced via the
+                    # console Write-Status, so the failure reason never reached the
+                    # activity log / dotbot log -- leaving "Task failed" with no cause.
+                    Write-Status "Task type execution failed: $typeError" -Type Error
+                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
+                    if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                        Write-BotLog -Level Error -Message "Executor returned failure for task $($task.name): $typeError" -ProcessId $procId
+                    }
+                } elseif ($executorResult.Contains('Message') -and $executorResult['Message']) {
                     Write-Diag "Executor result: $($executorResult['Message'])"
                 }
             } catch {
                 $typeError = $_.Exception.Message
                 Write-Status "Task type execution failed: $typeError" -Type Error
                 Write-ProcessActivity -Id $procId -ActivityType "error" -Message "$($task.name): $typeError"
+                # Preserve the stack so an executor crash is diagnosable (the
+                # message alone hides where in the executor chain it threw).
+                if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                    Write-BotLog -Level Error -Message "Executor threw for task $($task.name): $typeError" -ProcessId $procId -Context @{ script_stack = "$($_.ScriptStackTrace)" }
+                }
             }
 
             # Post-script hook: run after successful executor work, before the

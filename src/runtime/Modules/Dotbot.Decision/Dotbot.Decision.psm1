@@ -93,7 +93,12 @@ function New-DecisionRecord {
     $slug = ($title -replace '[^\w\s-]', '' -replace '\s+', '-').ToLowerInvariant()
     if ($slug.Length -gt 60) { $slug = $slug.Substring(0, 60).TrimEnd('-') }
 
-    $botPathResolved = if ($BotPath) { $BotPath } else { Get-DotbotProjectBotPath }
+    # Decisions are dotbot state and live in the MAIN repo (issue #515). The MCP
+    # server resolves that main root into $global:DotbotBotRoot; prefer it so a
+    # decision written from a linked worktree still lands in main (matching the
+    # runtime-backed task tools and the dashboard). Fall back to the cwd walk when
+    # the global is unset (e.g. tests). An explicit -BotPath always wins.
+    $botPathResolved = if ($BotPath) { $BotPath } elseif ($global:DotbotBotRoot) { $global:DotbotBotRoot } else { Get-DotbotProjectBotPath }
     $decisionsBaseDir = Join-Path $botPathResolved "workspace" "decisions"
     $targetDir = Join-Path $decisionsBaseDir $status
     if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Force -Path $targetDir | Out-Null }
@@ -425,7 +430,12 @@ function New-InboundDecision {
     )
 
     try {
-        $botPathResolved = if ($BotPath) { $BotPath } else { Get-DotbotProjectBotPath }
+        # Decisions are dotbot state and live in the MAIN repo (issue #515). The MCP
+    # server resolves that main root into $global:DotbotBotRoot; prefer it so a
+    # decision written from a linked worktree still lands in main (matching the
+    # runtime-backed task tools and the dashboard). Fall back to the cwd walk when
+    # the global is unset (e.g. tests). An explicit -BotPath always wins.
+    $botPathResolved = if ($BotPath) { $BotPath } elseif ($global:DotbotBotRoot) { $global:DotbotBotRoot } else { Get-DotbotProjectBotPath }
 
         $fields =
             switch ($Source) {
