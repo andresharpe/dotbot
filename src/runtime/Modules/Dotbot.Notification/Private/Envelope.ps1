@@ -147,7 +147,7 @@ function Get-NotificationEnvelopeAnswer {
     $answerString =
         switch ($type) {
             'approval'        { if ($approvalDecision) { "$approvalDecision" } else { $null } }
-            'singleChoice'    { if ($selectedKey)      { "$selectedKey" }      else { $null } }
+            'singleChoice'    { if ($selectedKey)      { "$selectedKey" }      elseif ($freeText) { "$freeText" } else { $null } }
             'freeText'        { if ($freeText)         { "$freeText" }         else { $null } }
             'priorityRanking' { if ($rankedItems.Count -gt 0) { (@($rankedItems) | Sort-Object rank | ForEach-Object { "$($_.optionId)" }) -join ', ' } else { $null } }
             default {
