@@ -51,7 +51,10 @@
     "model": "best",
     "max_concurrent": 1,
     "provider_completion_grace_seconds": 10,
-    "provider_stop_check_interval_seconds": 2
+    "provider_stop_check_interval_seconds": 2,
+    "max_retries_per_task": 2,
+    "rate_limit_max_wait_minutes": 240,
+    "rate_limit_max_deferrals": 3
   },
   "git": {
     "base_branch": null

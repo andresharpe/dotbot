@@ -705,6 +705,18 @@ function Get-NextWorkflowTask {
     # claiming. Answered human-input tasks are requeued as todo with
     # resume_context attached.
     $blockedCount = 0
+    # Names of tasks blocked on an unmet dependency specifically (#623) — a
+    # framework-error skip (e.g. max-retries) never joins doneSet, so a
+    # dependent can stay in this state forever with no indication of which
+    # task or why. Scoped to the dependency-gate below only; the barrier and
+    # condition-mark-failure blocked-paths are unrelated to that failure mode
+    # and already have their own Write-BotLog diagnostics.
+    $blockedNames = [System.Collections.Generic.List[string]]::new()
+    function _NoteBlocked { param($TaskContent)
+        $label = Get-DotbotTaskProp -Object $TaskContent -Name 'name'
+        if (-not $label) { $label = Get-DotbotTaskProp -Object $TaskContent -Name 'id' }
+        if ($label) { $blockedNames.Add([string]$label) }
+    }
     $candidates = @($allTasks | Where-Object { [string]$_.Content.status -eq 'todo' })
     $eligible = @()
     foreach ($cand in $candidates) {
@@ -718,7 +730,7 @@ function Get-NextWorkflowTask {
         # dependents). Checking deps first keeps such a task 'todo' (blocked); the
         # condition is re-evaluated on a later selection pass once the producer has
         # completed (Get-NextWorkflowTask reloads task state from disk each call).
-        if (-not (_AreDepsMet -Task $c -Set $doneSet)) { $blockedCount++; continue }
+        if (-not (_AreDepsMet -Task $c -Set $doneSet)) { $blockedCount++; _NoteBlocked -TaskContent $c; continue }
         if (-not (_IsManifestConditionMet -Task $c)) {
             # Deps are satisfied but the condition is genuinely unmet, so the
             # producing task has already had its turn — a real condition-skip.
@@ -757,7 +769,15 @@ function Get-NextWorkflowTask {
     }
 
     $msg = "No pending tasks available in $scopeLabel."
-    if ($blockedCount -gt 0) { $msg += " $blockedCount task(s) blocked by unmet dependencies." }
+    if ($blockedCount -gt 0) {
+        $msg += " $blockedCount task(s) blocked by unmet dependencies"
+        if ($blockedNames.Count -gt 0) {
+            $preview = @($blockedNames | Select-Object -First 3) -join "', '"
+            $overflow = if ($blockedNames.Count -gt 3) { ", +$($blockedNames.Count - 3) more" } else { "" }
+            $msg += ": '$preview'$overflow"
+        }
+        $msg += "."
+    }
     return @{ success = $true; task = $null; message = $msg }
 }
 

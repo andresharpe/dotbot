@@ -177,4 +177,5 @@ Export-ModuleMember -Function @(
     'Get-RegisteredHarnessAdapters'
     'Write-ActivityLog'
     'Get-FailureReason'
+    'Get-RateLimitResetTime'
 )

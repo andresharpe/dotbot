@@ -40,6 +40,17 @@ $providerStopCheckIntervalSeconds = 2
 if ($settings.execution -and $settings.execution.PSObject.Properties['provider_stop_check_interval_seconds']) {
     try { $providerStopCheckIntervalSeconds = [Math]::Max(1, [int]$settings.execution.provider_stop_check_interval_seconds) } catch { $providerStopCheckIntervalSeconds = 2 }
 }
+# Rate-limit handling (#623): how long a slot may sleep waiting for an
+# advertised usage-limit reset (0 = never sleep, always park), and how many
+# such deferrals a single task gets before it is parked to needs-input.
+$rateLimitMaxWaitMinutes = 240
+if ($settings.execution -and $settings.execution.PSObject.Properties['rate_limit_max_wait_minutes']) {
+    try { $rateLimitMaxWaitMinutes = [Math]::Max(0, [int]$settings.execution.rate_limit_max_wait_minutes) } catch { $rateLimitMaxWaitMinutes = 240 }
+}
+$rateLimitMaxDeferrals = 3
+if ($settings.execution -and $settings.execution.PSObject.Properties['rate_limit_max_deferrals']) {
+    try { $rateLimitMaxDeferrals = [Math]::Max(0, [int]$settings.execution.rate_limit_max_deferrals) } catch { $rateLimitMaxDeferrals = 3 }
+}
 
 $tasksBaseDir = Join-Path (Join-Path $botRoot "workspace") "tasks"
 $WorkflowName = if ($processData -is [hashtable] -and $processData['workflow_name']) { [string]$processData['workflow_name'] } else { $null }
@@ -1222,6 +1233,9 @@ try {
 
 $tasksProcessed = 0
 $maxRetriesPerTask = 2
+if ($settings.execution -and $settings.execution.PSObject.Properties['max_retries_per_task']) {
+    try { $maxRetriesPerTask = [Math]::Max(0, [int]$settings.execution.max_retries_per_task) } catch { $maxRetriesPerTask = 2 }
+}
 $consecutiveFailureThreshold = 3
 
 # Workflows require a git repo. Repositories with no commits are valid:
@@ -1392,6 +1406,11 @@ try {
                 }
             } else {
                 Write-Status "No tasks available" -Type Info
+                # Distinguish "queue drained" from "queue starved by a
+                # framework-error skip" before exiting silently (#623).
+                if ($RunId) {
+                    try { Test-DependencyDeadlock -ProcessId $procId -BotRoot $botRoot -RunId $RunId | Out-Null } catch { Write-BotLog -Level Debug -Message "Deadlock check failed" -Exception $_ }
+                }
                 Write-Diag "EXIT: No tasks and Continue not set"
                 break
             }
@@ -1960,6 +1979,11 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         # so escalation messaging accurately names the failure source.
         $postScriptFailureSource = 'post_script'
         $attemptNumber = 0
+        # Rate-limit deferrals granted to this task (#623). Tracked separately
+        # from attemptNumber: a transient provider limit must not consume the
+        # retry budget, but still needs its own cap so a never-clearing limit
+        # cannot spin this loop forever.
+        $rateLimitDeferrals = 0
 
         if ($worktreePath) { Push-Location $worktreePath }
         try {
@@ -2110,6 +2134,62 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             $harnessErrText = @($streamResult.ErrorText, $execErrorText | Where-Object { $_ }) -join "`n"
             $failureReason = Get-FailureReason -ExitCode $exitCode -Stdout $harnessErrText -Stderr $harnessErrText -TimedOut $false
 
+            # Usage/rate limit mid-run (#623): a transient provider condition is
+            # not the task's fault — never charge the retry budget for it, and
+            # never let it decay into a max-retries skip that poisons the
+            # dependency graph. If the provider advertised a reset time within
+            # the configured wait budget, sleep until it (heartbeating, honoring
+            # stop signals) and retry in the same worktree. Otherwise park the
+            # task to needs-input (same pattern as AuthError below): dependents
+            # stay pending-but-recoverable instead of permanently starved.
+            if ($failureReason.type -eq 'RateLimitError') {
+                $attemptNumber--   # this attempt does not count against the budget
+                $rateLimitDeferrals++
+                $resetAt = Get-RateLimitResetTime -ErrorText $harnessErrText
+                $withinWaitBudget = $resetAt -and (($resetAt - (Get-Date)) -le [TimeSpan]::FromMinutes($rateLimitMaxWaitMinutes))
+                if ($withinWaitBudget -and $rateLimitDeferrals -le $rateLimitMaxDeferrals) {
+                    $resumeLabel = $resetAt.ToString('HH:mm')
+                    Write-Status "Usage limit reached — waiting until $resumeLabel, then retrying (deferral $rateLimitDeferrals of $rateLimitMaxDeferrals): $($task.name)" -Type Warn
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' rate-limited — waiting until $resumeLabel before retrying (deferral $rateLimitDeferrals/$rateLimitMaxDeferrals)"
+                    $processData.heartbeat_status = "Rate limited - resumes at $resumeLabel"
+                    Write-ProcessFile -Id $procId -Data $processData
+                    $stoppedWhileWaiting = $false
+                    while ((Get-Date) -lt $resetAt) {
+                        Start-Sleep -Seconds 15
+                        if (Test-ProcessStopSignal -Id $procId -BotRoot $botRoot) { $stoppedWhileWaiting = $true; break }
+                        $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
+                        Write-ProcessFile -Id $procId -Data $processData
+                    }
+                    if ($stoppedWhileWaiting) {
+                        $processData.status = 'stopped'
+                        $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
+                        Write-ProcessFile -Id $procId -Data $processData
+                        break
+                    }
+                    Write-Status "Usage limit window elapsed — retrying: $($task.name)" -Type Info
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Rate-limit wait elapsed — retrying task '$($task.name)'"
+                    continue
+                }
+
+                $parkCause = if (-not $resetAt) {
+                    "no parseable reset time in the provider error"
+                } elseif (-not $withinWaitBudget) {
+                    "reset is beyond the ${rateLimitMaxWaitMinutes}-minute wait budget"
+                } else {
+                    "deferral budget exhausted ($rateLimitMaxDeferrals)"
+                }
+                $limitDetail = if ($harnessErrText.Length -gt 1000) { $harnessErrText.Substring(0, 1000) + " … [truncated, showing 1000 of $($harnessErrText.Length) chars]" } else { $harnessErrText }
+                $limitContext = "$($failureReason.description) — $parkCause. The task was parked instead of skipped so dependent tasks stay blocked-but-recoverable. Wait for the limit to reset, then choose 'Investigate logs and retry'. Detail: $limitDetail"
+                Write-Status "Usage limit reached ($parkCause) — parking for operator: $($task.name)" -Type Warn
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' parked (needs-input): provider usage limit — $parkCause"
+                Set-WorkflowTaskNeedsInput -Task $task -RunDir $runDir `
+                    -QuestionId "rate-limit-$($task.id)" `
+                    -Question "Provider usage limit reached for task '$($task.name)'" `
+                    -Context $limitContext | Out-Null
+                $taskParked = $true
+                break
+            }
+
             # Auth expiry mid-run: park to needs-input (worktree retained, no
             # merge, retry budget not consumed) and prompt the operator to
             # re-authenticate, instead of burning retries against the same wall.
@@ -2140,6 +2220,11 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 try {
                     Invoke-TaskMarkSkipped -Arguments @{ task_id = $task.id; skip_reason = 'max-retries'; skip_detail = "Retry budget exhausted after $attemptNumber attempt(s)" } | Out-Null
                 } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                # A max-retries skip can strand dependents (#623) — surface the
+                # deadlock at the moment it is created, not only at queue drain.
+                if ($RunId) {
+                    try { Test-DependencyDeadlock -ProcessId $procId -BotRoot $botRoot -RunId $RunId | Out-Null } catch { Write-BotLog -Level Debug -Message "Deadlock check failed" -Exception $_ }
+                }
                 break
             }
         }
