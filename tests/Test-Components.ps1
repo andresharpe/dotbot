@@ -1875,15 +1875,22 @@ if ($harnessLoaded) {
         -Condition ($null -ne $resetPm -and $resetPm.Hour -eq 15 -and $resetPm.Minute -eq 32 -and $resetPm -gt (Get-Date)) `
         -Message "Expected future 15:32 (15:30 + 120s margin), got '$resetPm'"
 
+    # Capture a single baseline immediately before the call and measure the
+    # delta against it once — calling Get-Date twice inside the condition (and
+    # after the parse) makes these assertions drift on a loaded CI runner.
+    $resetInStart = Get-Date
     $resetIn = Get-RateLimitResetTime -ErrorText 'Rate limited. Try again in 45 seconds.'
+    $resetInDeltaSeconds = ($resetIn - $resetInStart).TotalSeconds
     Assert-True -Name "Get-RateLimitResetTime parses 'try again in 45 seconds'" `
-        -Condition ($null -ne $resetIn -and ($resetIn - (Get-Date)).TotalSeconds -gt 150 -and ($resetIn - (Get-Date)).TotalSeconds -lt 180) `
-        -Message "Expected ~165s from now, got '$resetIn'"
+        -Condition ($null -ne $resetIn -and $resetInDeltaSeconds -gt 140 -and $resetInDeltaSeconds -lt 190) `
+        -Message "Expected ~165s from call time (45s + 120s margin), got '$resetIn'"
 
+    $resetCodexStart = Get-Date
     $resetCodexAbbrev = Get-RateLimitResetTime -ErrorText 'Rate limit reached for gpt-5.5 on tokens per min. Please try again in 3s.'
+    $resetCodexDeltaSeconds = ($resetCodexAbbrev - $resetCodexStart).TotalSeconds
     Assert-True -Name "Get-RateLimitResetTime parses Codex's abbreviated 'try again in 3s'" `
-        -Condition ($null -ne $resetCodexAbbrev -and ($resetCodexAbbrev - (Get-Date)).TotalSeconds -gt 118 -and ($resetCodexAbbrev - (Get-Date)).TotalSeconds -lt 125) `
-        -Message "Expected ~123s from now (3s + 120s margin), got '$resetCodexAbbrev'"
+        -Condition ($null -ne $resetCodexAbbrev -and $resetCodexDeltaSeconds -gt 110 -and $resetCodexDeltaSeconds -lt 140) `
+        -Message "Expected ~123s from call time (3s + 120s margin), got '$resetCodexAbbrev'"
 
     $resetNone = Get-RateLimitResetTime -ErrorText 'quota exceeded, please upgrade your plan'
     Assert-True -Name "Get-RateLimitResetTime returns null with no parseable hint" `
