@@ -43,6 +43,7 @@ Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Task/Dotbot.Task.
 Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking -Global
 Import-Module (Join-Path $repoRoot "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1") -Force -DisableNameChecking -Global
 Import-Module (Join-Path $repoRoot "src/ui/modules/FleetAPI.psm1") -Force -DisableNameChecking -Global
+Import-Module (Join-Path $repoRoot "src/ui/modules/WorkQueueService.psm1") -Force -DisableNameChecking -Global
 
 # Small helper: assert a scriptblock throws and (optionally) message matches a pattern.
 function Assert-Throws {
@@ -529,6 +530,74 @@ try {
     Assert-True -Name "FleetAPI lists registered runtime" -Condition (@($fleet.runtimes | Where-Object { $_.runtime_id -eq 'rt-test-runtime' }).Count -eq 1)
     $proxy = Invoke-FleetRuntimeProxy -RuntimeId 'rt-test-runtime' -Method GET -ApiPath '/api/info'
     Assert-Equal -Name "FleetAPI proxies /api/info to runtime" -Expected 200 -Actual $proxy.status_code
+
+    # ───── WorkQueueService ─────
+    $wqControlDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-wqs-$(Get-Random)"
+    New-Item -Path $wqControlDir -ItemType Directory -Force | Out-Null
+
+    Initialize-WorkQueueService -ControlDir $wqControlDir
+    $queueRoot = Join-Path $wqControlDir 'fleet' 'queue'
+    Assert-True -Name "WorkQueueService creates fleet/queue directory on init" `
+        -Condition (Test-Path -LiteralPath $queueRoot)
+
+    # Empty queue returns null and depth 0
+    Assert-True -Name "WorkQueueService Dequeue-WorkItem returns null on empty queue" `
+        -Condition ($null -eq (Dequeue-WorkItem -RuntimeId 'drone-1'))
+    Assert-Equal -Name "WorkQueueService Get-WorkQueueDepth returns 0 on empty queue" `
+        -Expected 0 -Actual (Get-WorkQueueDepth -RuntimeId 'drone-1')
+
+    # Enqueue two items
+    $item1 = Enqueue-WorkItem -RuntimeId 'drone-1' -TaskId 't_aaa00001' -Payload @{ run_id = 'run-001' }
+    $item2 = Enqueue-WorkItem -RuntimeId 'drone-1' -TaskId 't_bbb00002'
+    Assert-True -Name "WorkQueueService Enqueue-WorkItem returns an id" `
+        -Condition ($item1.id -match '^wqi-')
+    Assert-Equal -Name "WorkQueueService Get-WorkQueueDepth reflects enqueued items" `
+        -Expected 2 -Actual (Get-WorkQueueDepth -RuntimeId 'drone-1')
+
+    # Dequeue respects FIFO order
+    $dequeued1 = Dequeue-WorkItem -RuntimeId 'drone-1'
+    Assert-Equal -Name "WorkQueueService Dequeue-WorkItem returns first item (FIFO)" `
+        -Expected $item1.id -Actual $dequeued1.id
+    Assert-Equal -Name "WorkQueueService dequeued item has correct task_id" `
+        -Expected 't_aaa00001' -Actual $dequeued1.task_id
+    Assert-Equal -Name "WorkQueueService dequeued item status is leased" `
+        -Expected 'leased' -Actual (
+            (Get-Content -LiteralPath (Join-Path $queueRoot "drone-1/$($item1.id).json") -Raw | ConvertFrom-Json).status
+        )
+
+    # Depth drops by 1 after lease (leased item no longer pending)
+    Assert-Equal -Name "WorkQueueService depth decreases after dequeue" `
+        -Expected 1 -Actual (Get-WorkQueueDepth -RuntimeId 'drone-1')
+
+    # Complete the first item
+    $completeResult = Complete-WorkItem -RuntimeId 'drone-1' -ItemId $item1.id
+    Assert-True -Name "WorkQueueService Complete-WorkItem returns success" `
+        -Condition ([bool]$completeResult.success)
+    Assert-Equal -Name "WorkQueueService completed item has status completed" `
+        -Expected 'completed' -Actual (
+            (Get-Content -LiteralPath (Join-Path $queueRoot "drone-1/$($item1.id).json") -Raw | ConvertFrom-Json).status
+        )
+
+    # Dequeue second item, then queue is empty
+    $dequeued2 = Dequeue-WorkItem -RuntimeId 'drone-1'
+    Assert-Equal -Name "WorkQueueService second dequeue returns second item" `
+        -Expected $item2.id -Actual $dequeued2.id
+    Assert-True -Name "WorkQueueService third dequeue on empty queue returns null" `
+        -Condition ($null -eq (Dequeue-WorkItem -RuntimeId 'drone-1'))
+
+    # Complete-WorkItem returns error for unknown item
+    $badComplete = Complete-WorkItem -RuntimeId 'drone-1' -ItemId 'wqi-doesnotexist'
+    Assert-True -Name "WorkQueueService Complete-WorkItem returns error for unknown item" `
+        -Condition (-not $badComplete.success)
+
+    # Multiple runtimes are isolated
+    $null = Enqueue-WorkItem -RuntimeId 'drone-2' -TaskId 't_ccc00003'
+    Assert-Equal -Name "WorkQueueService queues are isolated per runtime" `
+        -Expected 1 -Actual (Get-WorkQueueDepth -RuntimeId 'drone-2')
+    Assert-Equal -Name "WorkQueueService drone-1 unaffected by drone-2 enqueue" `
+        -Expected 0 -Actual (Get-WorkQueueDepth -RuntimeId 'drone-1')
+
+    Remove-Item $wqControlDir -Recurse -Force -ErrorAction SilentlyContinue
 
     # ───── Activity log ─────
     $logPath = Get-ActivityLogPath -BotRoot $bot
