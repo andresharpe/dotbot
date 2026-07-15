@@ -2177,8 +2177,12 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                     $processData.heartbeat_status = "Rate limited - resumes at $resumeLabel"
                     Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
                     $stoppedWhileWaiting = $false
-                    while ((Get-Date) -lt $resumeAt) {
-                        Start-Sleep -Seconds 15
+                    while ($true) {
+                        $now = Get-Date
+                        if ($now -ge $resumeAt) { break }
+                        $remainingSeconds = [Math]::Ceiling(($resumeAt - $now).TotalSeconds)
+                        $sleepSeconds = [Math]::Max(1, [Math]::Min(5, [int]$remainingSeconds))
+                        Start-Sleep -Seconds $sleepSeconds
                         if (Test-ProcessStopSignal -Id $procId -BotRoot $botRoot) { $stoppedWhileWaiting = $true; break }
                         $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
                         Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
