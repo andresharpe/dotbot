@@ -1795,6 +1795,73 @@ finally {
     if ($testProject569) { Remove-TestProject -Path $testProject569 }
 }
 
+# ─── Deadlock visibility on framework-error skips (issue #623) ───────────────
+# A task skipped with max-retries must not silently starve its dependents:
+# the scheduler's no-task message must name the blocked task, and
+# Test-DependencyDeadlock must detect the poisoned subtree in the run scope.
+
+$testProject623 = $null
+$savedDotbotProjectRoot623 = $global:DotbotProjectRoot
+try {
+    $testProject623 = New-SourceBackedTestProject -RepoRoot $repoRoot
+    Push-Location $testProject623
+    $botDir623 = Join-Path $testProject623 ".bot"
+    # Dir name must end in -<short> where short = first 4 chars of the run id
+    # body, and run.json must echo the id (Find-WorkflowRunDir contract).
+    $runId623  = "wr_dl623abc"
+    $runDir623 = Join-Path $botDir623 "workspace\tasks\workflow-runs\run-dl62"
+    New-Item -ItemType Directory -Path $runDir623 -Force | Out-Null
+    $global:DotbotProjectRoot = $testProject623
+
+    Import-Module (Join-Path $botDir623 "src/runtime/Modules/Dotbot.Task/Dotbot.Task.psd1")     -Force -DisableNameChecking
+    Import-Module (Join-Path $botDir623 "src/runtime/Modules/Dotbot.Workflow/Dotbot.Workflow.psd1") -Force -DisableNameChecking
+    Import-Module (Join-Path $botDir623 "src/runtime/Modules/Dotbot.Process/Dotbot.Process.psd1")  -Force -DisableNameChecking
+
+    [ordered]@{ run_id = $runId623; workflow = 'sched623'; status = 'running' } |
+        ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $runDir623 "run.json") -Encoding UTF8
+
+    function New-DeadlockFixture623 {
+        param([string]$TaskId,[string]$Status,[string[]]$Dependencies=@(),[string]$SkipReason)
+        $task = [ordered]@{
+            id=$TaskId; name="Fixture $TaskId"; description="deadlock fixture"; status=$Status; type='prompt'
+            priority=50; dependencies=@($Dependencies)
+            provenance=[ordered]@{ workflow='sched623'; run_id=$runId623 }; updated_at="2026-01-01T00:00:00Z"
+        }
+        if ($SkipReason) { $task['extensions'] = [ordered]@{ runner = [ordered]@{ skip_reason = $SkipReason; skip_detail = 'fixture' } } }
+        $task | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $runDir623 "$TaskId.json") -Encoding UTF8
+    }
+
+    New-DeadlockFixture623 -TaskId "blocker-623"   -Status "skipped" -SkipReason "max-retries"
+    New-DeadlockFixture623 -TaskId "dependent-623" -Status "todo"    -Dependencies @("blocker-623")
+
+    # Scheduler: dependent must not be selected, and the message must name it.
+    $nx = Get-NextWorkflowTask -BotRoot $botDir623 -RunId $runId623
+    Assert-True -Name "#623: max-retries skip does not satisfy dependents (no task selected)" `
+        -Condition ($nx.success -and $null -eq $nx.task) `
+        -Message "Expected no eligible task, got: $($nx | ConvertTo-Json -Compress)"
+    Assert-True -Name "#623: blocked-task message names the starved task" `
+        -Condition ($nx.message -like "*Fixture dependent-623*") `
+        -Message "Expected message to name 'Fixture dependent-623', got: '$($nx.message)'"
+
+    # Deadlock detector: poisoned subtree must be detected in the run scope.
+    $dl = Test-DependencyDeadlock -ProcessId "test-proc-623" -BotRoot $botDir623 -RunId $runId623
+    Assert-True -Name "#623: Test-DependencyDeadlock detects framework-error-skip starvation" `
+        -Condition ($dl -eq $true) `
+        -Message "Expected deadlock=true, got '$dl'"
+
+    # Control: an INTENTIONAL skip must satisfy dependents — no deadlock.
+    New-DeadlockFixture623 -TaskId "blocker-623" -Status "skipped" -SkipReason "not-applicable"
+    $dl2 = Test-DependencyDeadlock -ProcessId "test-proc-623" -BotRoot $botDir623 -RunId $runId623
+    Assert-True -Name "#623: intentional skip does not register as deadlock" `
+        -Condition ($dl2 -eq $false) `
+        -Message "Expected deadlock=false, got '$dl2'"
+}
+finally {
+    $global:DotbotProjectRoot = $savedDotbotProjectRoot623
+    Pop-Location -ErrorAction SilentlyContinue
+    if ($testProject623) { Remove-TestProject -Path $testProject623 }
+}
+
 # ─── task-get-next runtime condition evaluation ──────────────────────────────
 # task-get-next is a thin HTTP wrapper around GET /tasks/next. Condition
 # evaluation is covered by handler-level runtime tests.

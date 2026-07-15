@@ -1834,6 +1834,74 @@ if ($harnessLoaded) {
         -Condition ($timeoutReason.type -eq 'Timeout') `
         -Message "Expected Timeout, got '$($timeoutReason.type)'"
 
+    # Failure classifier (#623): usage/rate-limit text must classify as
+    # RateLimitError so the consumer defers or parks instead of burning the
+    # retry budget against a limit that will not clear for hours.
+    $usageLimitReason = Get-FailureReason -ExitCode 1 -Stdout "You've hit your limit $([char]0xB7) resets 3:30pm" -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason classifies usage-limit text as RateLimitError (#623)" `
+        -Condition ($usageLimitReason.type -eq 'RateLimitError') `
+        -Message "Expected RateLimitError, got '$($usageLimitReason.type)'"
+
+    $http429Reason = Get-FailureReason -ExitCode 1 -Stdout 'Request failed: HTTP 429 Too Many Requests' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason classifies HTTP 429 as RateLimitError" `
+        -Condition ($http429Reason.type -eq 'RateLimitError') `
+        -Message "Expected RateLimitError, got '$($http429Reason.type)'"
+
+    $not429Reason = Get-FailureReason -ExitCode 1 -Stdout 'request returned 429 items from the index' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason does not treat a bare 429 count as rate limit" `
+        -Condition ($not429Reason.type -ne 'RateLimitError') `
+        -Message "Expected non-RateLimitError, got '$($not429Reason.type)'"
+
+    # Provider-specific wording (#623) — Codex (OpenAI) and Antigravity
+    # (Gemini) phrase their rate/quota limits differently from Claude.
+    $codexReason = Get-FailureReason -ExitCode 1 -Stdout 'Rate limit reached for gpt-5.5 on tokens per min. Please try again in 3s.' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason classifies Codex 'Rate limit reached...' as RateLimitError" `
+        -Condition ($codexReason.type -eq 'RateLimitError') `
+        -Message "Expected RateLimitError, got '$($codexReason.type)'"
+
+    $codexQuotaReason = Get-FailureReason -ExitCode 1 -Stdout 'Quota exceeded. Check your plan and billing details.' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason classifies Codex 'Quota exceeded' as RateLimitError" `
+        -Condition ($codexQuotaReason.type -eq 'RateLimitError') `
+        -Message "Expected RateLimitError, got '$($codexQuotaReason.type)'"
+
+    $geminiReason = Get-FailureReason -ExitCode 1 -Stdout 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.' -Stderr '' -TimedOut $false
+    Assert-True -Name "Get-FailureReason classifies Antigravity/Gemini 'Resource exhausted' as RateLimitError" `
+        -Condition ($geminiReason.type -eq 'RateLimitError') `
+        -Message "Expected RateLimitError, got '$($geminiReason.type)'"
+
+    # Get-RateLimitResetTime (#623): best-effort reset-hint parser.
+    $resetPm = Get-RateLimitResetTime -ErrorText "You've hit your limit $([char]0xB7) resets 3:30pm"
+    Assert-True -Name "Get-RateLimitResetTime parses 'resets 3:30pm' to future 15:32 local (+2min margin)" `
+        -Condition ($null -ne $resetPm -and $resetPm.Hour -eq 15 -and $resetPm.Minute -eq 32 -and $resetPm -gt (Get-Date)) `
+        -Message "Expected future 15:32 (15:30 + 120s margin), got '$resetPm'"
+
+    # Capture a single baseline immediately before the call and measure the
+    # delta against it once — calling Get-Date twice inside the condition (and
+    # after the parse) makes these assertions drift on a loaded CI runner.
+    $resetInStart = Get-Date
+    $resetIn = Get-RateLimitResetTime -ErrorText 'Rate limited. Try again in 45 seconds.'
+    $resetInDeltaSeconds = ($resetIn - $resetInStart).TotalSeconds
+    Assert-True -Name "Get-RateLimitResetTime parses 'try again in 45 seconds'" `
+        -Condition ($null -ne $resetIn -and $resetInDeltaSeconds -gt 140 -and $resetInDeltaSeconds -lt 190) `
+        -Message "Expected ~165s from call time (45s + 120s margin), got '$resetIn'"
+
+    $resetCodexStart = Get-Date
+    $resetCodexAbbrev = Get-RateLimitResetTime -ErrorText 'Rate limit reached for gpt-5.5 on tokens per min. Please try again in 3s.'
+    $resetCodexDeltaSeconds = ($resetCodexAbbrev - $resetCodexStart).TotalSeconds
+    Assert-True -Name "Get-RateLimitResetTime parses Codex's abbreviated 'try again in 3s'" `
+        -Condition ($null -ne $resetCodexAbbrev -and $resetCodexDeltaSeconds -gt 110 -and $resetCodexDeltaSeconds -lt 140) `
+        -Message "Expected ~123s from call time (3s + 120s margin), got '$resetCodexAbbrev'"
+
+    $resetNone = Get-RateLimitResetTime -ErrorText 'quota exceeded, please upgrade your plan'
+    Assert-True -Name "Get-RateLimitResetTime returns null with no parseable hint" `
+        -Condition ($null -eq $resetNone) `
+        -Message "Expected null, got '$resetNone'"
+
+    $resetAmbiguous = Get-RateLimitResetTime -ErrorText 'limit resets 2026'
+    Assert-True -Name "Get-RateLimitResetTime refuses bare-hour ambiguity ('resets 2026')" `
+        -Condition ($null -eq $resetAmbiguous) `
+        -Message "Expected null, got '$resetAmbiguous'"
+
     # Test Get-HarnessConfig for Claude (default)
     $claudeConfig = $null
     try { $claudeConfig = Get-HarnessConfig -Name "claude" } catch { Write-Verbose "Settings operation failed: $_" }

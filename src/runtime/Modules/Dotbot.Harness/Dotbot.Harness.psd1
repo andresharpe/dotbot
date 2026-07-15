@@ -28,6 +28,7 @@
         # Cross-cutting utilities
         'Write-ActivityLog'
         'Get-FailureReason'
+        'Get-RateLimitResetTime'
     )
 
     CmdletsToExport   = @()
