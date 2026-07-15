@@ -51,6 +51,14 @@ $rateLimitMaxDeferrals = 3
 if ($settings.execution -and $settings.execution.PSObject.Properties['rate_limit_max_deferrals']) {
     try { $rateLimitMaxDeferrals = [Math]::Max(0, [int]$settings.execution.rate_limit_max_deferrals) } catch { $rateLimitMaxDeferrals = 3 }
 }
+# Transient rate/overload errors that advertise no reset time (a plain 429, an
+# Anthropic 529 "overloaded") self-heal in seconds, so give them a short
+# bounded backoff-and-retry before parking to needs-input. 0 = disable the
+# backoff and park at once (restores the earlier always-park behavior).
+$rateLimitNoResetBackoffSeconds = 60
+if ($settings.execution -and $settings.execution.PSObject.Properties['rate_limit_no_reset_backoff_seconds']) {
+    try { $rateLimitNoResetBackoffSeconds = [Math]::Max(0, [int]$settings.execution.rate_limit_no_reset_backoff_seconds) } catch { $rateLimitNoResetBackoffSeconds = 60 }
+}
 
 $tasksBaseDir = Join-Path (Join-Path $botRoot "workspace") "tasks"
 $WorkflowName = if ($processData -is [hashtable] -and $processData['workflow_name']) { [string]$processData['workflow_name'] } else { $null }
@@ -2137,33 +2145,48 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             # Usage/rate limit mid-run (#623): a transient provider condition is
             # not the task's fault — never charge the retry budget for it, and
             # never let it decay into a max-retries skip that poisons the
-            # dependency graph. If the provider advertised a reset time within
-            # the configured wait budget, sleep until it (heartbeating, honoring
-            # stop signals) and retry in the same worktree. Otherwise park the
-            # task to needs-input (same pattern as AuthError below): dependents
-            # stay pending-but-recoverable instead of permanently starved.
+            # dependency graph. Resume strategy, in order: (1) if the provider
+            # advertised a reset time within the wait budget, sleep until it;
+            # (2) else if it is a transient limit with no reset hint, sleep a
+            # short backoff; then retry in the same worktree. All waits
+            # heartbeat and honor stop signals. If nothing is safe to wait on
+            # (hard quota/billing, reset beyond budget, or deferrals exhausted)
+            # park the task to needs-input (same pattern as AuthError below):
+            # dependents stay pending-but-recoverable instead of starved.
             if ($failureReason.type -eq 'RateLimitError') {
                 $attemptNumber--   # this attempt does not count against the budget
                 $rateLimitDeferrals++
                 $resetAt = Get-RateLimitResetTime -ErrorText $harnessErrText
                 $withinWaitBudget = $resetAt -and (($resetAt - (Get-Date)) -le [TimeSpan]::FromMinutes($rateLimitMaxWaitMinutes))
-                if ($withinWaitBudget -and $rateLimitDeferrals -le $rateLimitMaxDeferrals) {
-                    $resumeLabel = $resetAt.ToString('HH:mm')
-                    Write-Status "Usage limit reached — waiting until $resumeLabel, then retrying (deferral $rateLimitDeferrals of $rateLimitMaxDeferrals): $($task.name)" -Type Warn
+                # A hard quota/billing exhaustion will not clear on its own — it
+                # needs an operator to add credit or upgrade — so it must never
+                # spend a short-backoff retry; it goes straight to park.
+                $looksLikeBilling = [bool]($harnessErrText -match '(?i)insufficient_quota|quota\s+exceeded|billing|upgrade\s+your\s+plan|insufficient\s+(?:funds|credit)')
+                # When to resume: the advertised reset if within budget; else a
+                # short backoff for a transient (non-billing) limit with no
+                # reset hint. $null => nothing safe to wait on, fall through to park.
+                $resumeAt = if ($withinWaitBudget) { $resetAt }
+                            elseif ((-not $resetAt) -and (-not $looksLikeBilling) -and ($rateLimitNoResetBackoffSeconds -gt 0)) {
+                                (Get-Date).AddSeconds($rateLimitNoResetBackoffSeconds)
+                            } else { $null }
+                if ($resumeAt -and $rateLimitDeferrals -le $rateLimitMaxDeferrals) {
+                    $resumeLabel = $resumeAt.ToString('HH:mm')
+                    $waitKind = if ($withinWaitBudget) { "advertised reset" } else { "${rateLimitNoResetBackoffSeconds}s backoff" }
+                    Write-Status "Usage limit reached — waiting until $resumeLabel ($waitKind), then retrying (deferral $rateLimitDeferrals of $rateLimitMaxDeferrals): $($task.name)" -Type Warn
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' rate-limited — waiting until $resumeLabel before retrying (deferral $rateLimitDeferrals/$rateLimitMaxDeferrals)"
                     $processData.heartbeat_status = "Rate limited - resumes at $resumeLabel"
-                    Write-ProcessFile -Id $procId -Data $processData
+                    Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
                     $stoppedWhileWaiting = $false
-                    while ((Get-Date) -lt $resetAt) {
+                    while ((Get-Date) -lt $resumeAt) {
                         Start-Sleep -Seconds 15
                         if (Test-ProcessStopSignal -Id $procId -BotRoot $botRoot) { $stoppedWhileWaiting = $true; break }
                         $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
-                        Write-ProcessFile -Id $procId -Data $processData
+                        Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
                     }
                     if ($stoppedWhileWaiting) {
                         $processData.status = 'stopped'
                         $processData.failed_at = (Get-Date).ToUniversalTime().ToString("o")
-                        Write-ProcessFile -Id $procId -Data $processData
+                        Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
                         break
                     }
                     Write-Status "Usage limit window elapsed — retrying: $($task.name)" -Type Info
@@ -2171,12 +2194,14 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                     continue
                 }
 
-                $parkCause = if (-not $resetAt) {
-                    "no parseable reset time in the provider error"
-                } elseif (-not $withinWaitBudget) {
+                $parkCause = if ($looksLikeBilling -and -not $withinWaitBudget) {
+                    "provider reports a quota/billing limit that will not reset automatically"
+                } elseif ($resetAt -and -not $withinWaitBudget) {
                     "reset is beyond the ${rateLimitMaxWaitMinutes}-minute wait budget"
+                } elseif ($rateLimitDeferrals -gt $rateLimitMaxDeferrals) {
+                    "retry/deferral budget exhausted ($rateLimitMaxDeferrals)"
                 } else {
-                    "deferral budget exhausted ($rateLimitMaxDeferrals)"
+                    "no parseable reset time in the provider error"
                 }
                 $limitDetail = if ($harnessErrText.Length -gt 1000) { $harnessErrText.Substring(0, 1000) + " … [truncated, showing 1000 of $($harnessErrText.Length) chars]" } else { $harnessErrText }
                 $limitContext = "$($failureReason.description) — $parkCause. The task was parked instead of skipped so dependent tasks stay blocked-but-recoverable. Wait for the limit to reset, then choose 'Investigate logs and retry'. Detail: $limitDetail"
