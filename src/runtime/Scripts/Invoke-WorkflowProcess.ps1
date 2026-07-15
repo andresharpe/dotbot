@@ -41,8 +41,9 @@ if ($settings.execution -and $settings.execution.PSObject.Properties['provider_s
     try { $providerStopCheckIntervalSeconds = [Math]::Max(1, [int]$settings.execution.provider_stop_check_interval_seconds) } catch { $providerStopCheckIntervalSeconds = 2 }
 }
 # Rate-limit handling (#623): how long a slot may sleep waiting for an
-# advertised usage-limit reset (0 = never sleep, always park), and how many
-# such deferrals a single task gets before it is parked to needs-input.
+# advertised usage-limit reset (0 = never wait for an advertised reset; a
+# no-reset transient limit is still subject to the backoff configured below),
+# and how many such deferrals a single task gets before it is parked.
 $rateLimitMaxWaitMinutes = 240
 if ($settings.execution -and $settings.execution.PSObject.Properties['rate_limit_max_wait_minutes']) {
     try { $rateLimitMaxWaitMinutes = [Math]::Max(0, [int]$settings.execution.rate_limit_max_wait_minutes) } catch { $rateLimitMaxWaitMinutes = 240 }
@@ -1406,7 +1407,10 @@ try {
                         break
                     }
 
-                    if ($RunId -and (Test-DependencyDeadlock -ProcessId $procId -BotRoot $botRoot -RunId $RunId)) { break }
+                    if ($RunId) {
+                        try { if (Test-DependencyDeadlock -ProcessId $procId -BotRoot $botRoot -RunId $RunId) { break } }
+                        catch { Write-BotLog -Level Debug -Message "Deadlock check failed" -Exception $_ }
+                    }
                 }
                 if (-not $foundTask) {
                     Write-Diag "EXIT: No task found after wait loop (foundTask=$foundTask)"
@@ -2157,11 +2161,14 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 $attemptNumber--   # this attempt does not count against the budget
                 $rateLimitDeferrals++
                 $resetAt = Get-RateLimitResetTime -ErrorText $harnessErrText
-                $withinWaitBudget = $resetAt -and (($resetAt - (Get-Date)) -le [TimeSpan]::FromMinutes($rateLimitMaxWaitMinutes))
                 # A hard quota/billing exhaustion will not clear on its own — it
                 # needs an operator to add credit or upgrade — so it must never
-                # spend a short-backoff retry; it goes straight to park.
+                # wait, on an advertised reset OR a short backoff; it goes
+                # straight to park. Compute it before the wait decision and fold
+                # it into $withinWaitBudget so a billing error that happens to
+                # also carry a reset hint still parks immediately.
                 $looksLikeBilling = [bool]($harnessErrText -match '(?i)insufficient_quota|quota\s+exceeded|billing|upgrade\s+your\s+plan|insufficient\s+(?:funds|credit)')
+                $withinWaitBudget = (-not $looksLikeBilling) -and $resetAt -and (($resetAt - (Get-Date)) -le [TimeSpan]::FromMinutes($rateLimitMaxWaitMinutes))
                 # When to resume: the advertised reset if within budget; else a
                 # short backoff for a transient (non-billing) limit with no
                 # reset hint. $null => nothing safe to wait on, fall through to park.
@@ -2170,18 +2177,27 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                                 (Get-Date).AddSeconds($rateLimitNoResetBackoffSeconds)
                             } else { $null }
                 if ($resumeAt -and $rateLimitDeferrals -le $rateLimitMaxDeferrals) {
-                    $resumeLabel = $resumeAt.ToString('HH:mm')
+                    # The reset parser maps a clock time already in the past to
+                    # tomorrow, and a custom wait budget can span days — a bare
+                    # HH:mm for a non-today resume would read as a moment
+                    # already gone, so include the day when it isn't today.
+                    $resumeLabel = if ($resumeAt.Date -eq (Get-Date).Date) { $resumeAt.ToString('HH:mm') } else { $resumeAt.ToString('ddd HH:mm') }
                     $waitKind = if ($withinWaitBudget) { "advertised reset" } else { "${rateLimitNoResetBackoffSeconds}s backoff" }
                     Write-Status "Usage limit reached — waiting until $resumeLabel ($waitKind), then retrying (deferral $rateLimitDeferrals of $rateLimitMaxDeferrals): $($task.name)" -Type Warn
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task '$($task.name)' rate-limited — waiting until $resumeLabel before retrying (deferral $rateLimitDeferrals/$rateLimitMaxDeferrals)"
                     $processData.heartbeat_status = "Rate limited - resumes at $resumeLabel"
                     Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
                     $stoppedWhileWaiting = $false
+                    # Poll in short slices (5s, matching the runner's other idle
+                    # wait loops) rather than one long sleep: a fixed 15s sleep
+                    # delays stop-signal response by up to its full interval and
+                    # overshoots a small backoff or an imminent reset. Clamp the
+                    # last slice to the remaining time so we never sleep past
+                    # $resumeAt, and never below 1s.
                     while ($true) {
                         $now = Get-Date
                         if ($now -ge $resumeAt) { break }
-                        $remainingSeconds = [Math]::Ceiling(($resumeAt - $now).TotalSeconds)
-                        $sleepSeconds = [Math]::Max(1, [Math]::Min(5, [int]$remainingSeconds))
+                        $sleepSeconds = [int][Math]::Max(1, [Math]::Min(5, [Math]::Ceiling(($resumeAt - $now).TotalSeconds)))
                         Start-Sleep -Seconds $sleepSeconds
                         if (Test-ProcessStopSignal -Id $procId -BotRoot $botRoot) { $stoppedWhileWaiting = $true; break }
                         $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")

@@ -162,12 +162,19 @@ function Get-RateLimitResetTime {
     # "try again in N seconds/minutes/hours" / "retry after N ..." — accepts
     # both spelled-out units and OpenAI's abbreviated form ("try again in 3s").
     if ($ErrorText -match '(?:try\s+again|retry)\s+(?:in|after)\s+(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)\b') {
-        $n = [int]$Matches[1]
+        # A pathologically large count ("try again in 99999999999 hours") would
+        # overflow the numeric cast or the TimeSpan/DateTime arithmetic. This is
+        # a best-effort parser with a documented $null contract, and the caller
+        # invokes it without a try/catch, so treat any such overflow as "no
+        # parseable hint" rather than letting the exception crash the workflow.
+        try { $n = [long]$Matches[1] } catch { return $null }
         $unit = $Matches[2].ToLowerInvariant()
-        $span = if ($unit.StartsWith('s')) { [TimeSpan]::FromSeconds($n) }
-                elseif ($unit.StartsWith('m')) { [TimeSpan]::FromMinutes($n) }
-                else { [TimeSpan]::FromHours($n) }
-        return $now.Add($span).Add($safetyMargin)
+        try {
+            $span = if ($unit.StartsWith('s')) { [TimeSpan]::FromSeconds($n) }
+                    elseif ($unit.StartsWith('m')) { [TimeSpan]::FromMinutes($n) }
+                    else { [TimeSpan]::FromHours($n) }
+            return $now.Add($span).Add($safetyMargin)
+        } catch { return $null }
     }
 
     # "resets 3:30pm" / "resets at 15:30" / "resets 4pm" — interpreted in the
