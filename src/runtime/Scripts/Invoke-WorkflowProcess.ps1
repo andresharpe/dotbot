@@ -2191,6 +2191,14 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                     }
                     Write-Status "Usage limit window elapsed — retrying: $($task.name)" -Type Info
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Rate-limit wait elapsed — retrying task '$($task.name)'"
+                    # Clear the "Rate limited" heartbeat before re-entering the
+                    # retry loop. The "Executing" status is set once above the
+                    # loop (not per-attempt), so a bare continue would leave the
+                    # stale rate-limit label on the dashboard through the whole
+                    # re-execution. Pin -BotRoot for the same reason the waits do.
+                    $processData.heartbeat_status = "Executing: $($task.name)"
+                    $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
+                    Write-ProcessFile -Id $procId -Data $processData -BotRoot $botRoot
                     continue
                 }
 
