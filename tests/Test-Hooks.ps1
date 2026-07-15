@@ -308,6 +308,19 @@ Write-Host "  ──────────────────────
 
 $enterDoneScript = Join-Path $repoRoot "src/runtime/Plugins/Hooks/Transitions/enter-done/script.ps1"
 
+function ConvertTo-PSSingleQuoteLiteral {
+    # Escapes a value for safe embedding inside a single-quoted PowerShell
+    # string literal in generated source (the stub bodies and out-of-process
+    # runner scripts below build .ps1 source as text). PowerShell's escape
+    # for a literal ' inside '...' is '' — without this, any temp/worktree
+    # path containing an apostrophe (rare but valid on Windows/macOS/Linux,
+    # e.g. a user profile folder) would terminate the string early and make
+    # the generated script syntactically invalid, failing the test for
+    # reasons unrelated to cwd resolution.
+    param([Parameter(Mandatory)] [AllowEmptyString()] [string]$Value)
+    return $Value.Replace("'", "''")
+}
+
 function New-Issue628FixtureDir {
     $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-628-" + [guid]::NewGuid().ToString('N').Substring(0,8))
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -333,7 +346,7 @@ function New-VerifyCwdStubBotRoot {
 param([string]$TaskId, [string]$Category)
 Add-Content -LiteralPath '__MARKER__' -Value (Get-Location).Path
 @{ success = $true; script = 'stub'; message = 'stub ok' } | ConvertTo-Json
-'@.Replace('__MARKER__', $MarkerFile)
+'@.Replace('__MARKER__', (ConvertTo-PSSingleQuoteLiteral $MarkerFile))
 
     foreach ($name in @('00-privacy-scan.ps1','01-git-clean.ps1','02-git-pushed.ps1','03-check-md-refs.ps1','04-framework-integrity.ps1')) {
         Set-Content -LiteralPath (Join-Path $hooksVerifyDir $name) -Value $stubBody -Encoding utf8NoBOM
@@ -385,13 +398,18 @@ function Invoke-EnterDoneOutOfProcess {
         [string]$LaunchCwd = ([System.IO.Path]::GetTempPath())
     )
 
-    $runIdLiteral   = if ($RunId)            { "'$RunId'" }            else { '$null' }
-    $workDirLiteral = if ($WorkingDirectory) { "'$WorkingDirectory'" } else { '$null' }
+    $runIdLiteral   = if ($RunId)            { "'$(ConvertTo-PSSingleQuoteLiteral $RunId)'" }            else { '$null' }
+    $workDirLiteral = if ($WorkingDirectory) { "'$(ConvertTo-PSSingleQuoteLiteral $WorkingDirectory)'" } else { '$null' }
     $provenanceLiteral = if ($ProvenanceAsPSObject) {
         "[pscustomobject]@{ run_id = $runIdLiteral }"
     } else {
         "@{ run_id = $runIdLiteral }"
     }
+
+    $repoRootLiteral       = ConvertTo-PSSingleQuoteLiteral $repoRoot
+    $enterDoneScriptLiteral = ConvertTo-PSSingleQuoteLiteral $enterDoneScript
+    $taskIdLiteral         = ConvertTo-PSSingleQuoteLiteral $TaskId
+    $botRootDirLiteral     = ConvertTo-PSSingleQuoteLiteral $BotRootDir
 
     # Load script.ps1 the same way Dispatch.psm1's Invoke-SingleTransitionHook
     # actually does in production — build a dynamic module from a scriptblock
@@ -400,17 +418,17 @@ function Invoke-EnterDoneOutOfProcess {
     # both throw "can only be called from inside a module" as a non-terminating
     # error that would otherwise need to be swallowed with 2>$null).
     $runner = @"
-`$env:DOTBOT_HOME = '$repoRoot'
-`$content = Get-Content -LiteralPath '$enterDoneScript' -Raw
+`$env:DOTBOT_HOME = '$repoRootLiteral'
+`$content = Get-Content -LiteralPath '$enterDoneScriptLiteral' -Raw
 `$sb = [ScriptBlock]::Create(`$content)
 `$mod = New-Module -Name 'EnterDoneUnderTest' -ScriptBlock `$sb
 `$task = @{
-    id                = '$TaskId'
+    id                = '$taskIdLiteral'
     category          = 'test'
     provenance        = $provenanceLiteral
     working_directory = $workDirLiteral
 }
-`$runContext = @{ BotRoot = '$BotRootDir' }
+`$runContext = @{ BotRoot = '$botRootDirLiteral' }
 `$result = & `$mod Invoke-Hook -Task `$task -RunContext `$runContext -FromStatus 'in-progress' -ToStatus 'done'
 `$result | ConvertTo-Json -Depth 5 -Compress
 "@
