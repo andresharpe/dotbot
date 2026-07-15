@@ -80,28 +80,38 @@ function Dequeue-WorkItem {
     )
 
     $dir   = _Get-RuntimeQueueDir -RuntimeId $RuntimeId
-    $files = @(Get-ChildItem -LiteralPath $dir -Filter '*.json' -File -ErrorAction SilentlyContinue |
-               Sort-Object Name)
+    $files = @(Get-ChildItem -LiteralPath $dir -Filter '*.json' -File -ErrorAction SilentlyContinue)
+
+    $nextFile = $null
+    $nextItem = $null
+    $nextQueuedAt = [DateTime]::MaxValue
 
     foreach ($file in $files) {
         $item = _Read-QueueJson -Path $file.FullName
         if (-not $item -or $item['status'] -ne 'pending') { continue }
 
-        $item['status']    = 'leased'
-        $item['leased_at'] = (Get-Date).ToUniversalTime().ToString('o')
-        _Write-QueueJson -Path $file.FullName -Value $item
-
-        return [ordered]@{
-            id         = $item['id']
-            runtime_id = $item['runtime_id']
-            task_id    = $item['task_id']
-            payload    = $item['payload']
-            queued_at  = $item['queued_at']
-            leased_at  = $item['leased_at']
+        try { $queuedAt = [DateTime]::Parse([string]$item['queued_at']).ToUniversalTime() } catch { $queuedAt = [DateTime]::MaxValue }
+        if ($queuedAt -lt $nextQueuedAt) {
+            $nextQueuedAt = $queuedAt
+            $nextFile = $file
+            $nextItem = $item
         }
     }
 
-    return $null
+    if (-not $nextItem) { return $null }
+
+    $nextItem['status']    = 'leased'
+    $nextItem['leased_at'] = (Get-Date).ToUniversalTime().ToString('o')
+    _Write-QueueJson -Path $nextFile.FullName -Value $nextItem
+
+    return [ordered]@{
+        id         = $nextItem['id']
+        runtime_id = $nextItem['runtime_id']
+        task_id    = $nextItem['task_id']
+        payload    = $nextItem['payload']
+        queued_at  = $nextItem['queued_at']
+        leased_at  = $nextItem['leased_at']
+    }
 }
 
 function Get-WorkQueueDepth {
@@ -135,6 +145,9 @@ function Complete-WorkItem {
     $path = Join-Path (_Get-RuntimeQueueDir -RuntimeId $RuntimeId) "$ItemId.json"
     $item = _Read-QueueJson -Path $path
     if (-not $item) { return @{ success = $false; error = 'item not found' } }
+    if ($item['status'] -ne 'leased') {
+        return @{ success = $false; error = "item is not leased (status=$($item['status']))" }
+    }
 
     $item['status']       = 'completed'
     $item['completed_at'] = (Get-Date).ToUniversalTime().ToString('o')
