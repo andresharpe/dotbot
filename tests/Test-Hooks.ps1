@@ -434,7 +434,7 @@ function Invoke-EnterDoneOutOfProcess {
 "@
     Set-Content -LiteralPath $RunnerPath -Value $runner -Encoding utf8NoBOM
 
-    Push-Location $LaunchCwd
+    Push-Location -LiteralPath $LaunchCwd
     try {
         $out = & pwsh -NoProfile -File $RunnerPath
     } finally {
@@ -565,7 +565,7 @@ function New-RuntimeTestBot {
     New-Item -ItemType Directory -Path $bot | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $bot '.control') | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $bot 'workspace/tasks') -Force | Out-Null
-    Push-Location $base
+    Push-Location -LiteralPath $base
     try {
         & git init -q | Out-Null
         & git config user.email "t@example.com" | Out-Null
