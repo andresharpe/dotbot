@@ -68,9 +68,16 @@ function Invoke-Hook {
         # resolved, just skip it — Get-TaskWorktreeInfo simply won't be found
         # below and cwd resolution falls through to working_directory / BotRoot.
         if (-not $hasWorktreeInfo -and $frameworkRoot) {
-            $worktreeModule = Join-Path $frameworkRoot "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psm1"
-            if (Test-Path -LiteralPath $worktreeModule) {
-                Import-Module $worktreeModule -DisableNameChecking -Global
+            # Import via the .psd1 manifest, not the bare .psm1 — matches the
+            # established pattern elsewhere (Invoke-DotbotProcess.ps1,
+            # Dotbot.TaskInput.psm1). The manifest's ScriptsToProcess pulls in
+            # Dotbot.Core / Dotbot.TaskFile first, which Dotbot.Worktree's
+            # functions depend on (e.g. Write-BotLog); importing the .psm1
+            # directly skips that and risks a confusing secondary failure the
+            # first time one of those dependencies is actually needed.
+            $worktreeManifest = Join-Path $frameworkRoot "src/runtime/Modules/Dotbot.Worktree/Dotbot.Worktree.psd1"
+            if (Test-Path -LiteralPath $worktreeManifest) {
+                Import-Module $worktreeManifest -DisableNameChecking -Global
             }
         }
 
