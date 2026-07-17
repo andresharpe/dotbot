@@ -313,9 +313,16 @@ function Start-McpServerLoop {
     
     while ($true) {
         try {
+            $id = $null
             $line = [Console]::ReadLine()
-            
-            if ([string]::IsNullOrEmpty($line)) {
+
+            # $null means stdin EOF (parent closed the pipe) - shut down cleanly
+            if ($null -eq $line) {
+                [Console]::Error.WriteLine("stdin closed (EOF) - shutting down")
+                return
+            }
+
+            if ([string]::IsNullOrWhiteSpace($line)) {
                 continue
             }
             
