@@ -47,6 +47,7 @@ Write-BlankLine
 Write-DotbotSection -Title "TEAM MEMBER"
 Write-DotbotLabel -Label 'name       ' -Value ([string]$member.name) -ValueType Success
 Write-DotbotLabel -Label 'id         ' -Value ([string]$member.id)
+Write-DotbotLabel -Label 'email      ' -Value ([string]$member.email)
 $role = if ([string]::IsNullOrWhiteSpace($member.role)) { '<none>' } else { [string]$member.role }
 Write-DotbotLabel -Label 'role       ' -Value $role
 # ConvertFrom-Json -AsHashtable auto-parses ISO strings to [DateTime].

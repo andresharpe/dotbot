@@ -46,6 +46,7 @@ foreach ($m in $members) {
         [string]$m.created_at
     }
     Write-DotbotLabel -Label $([string]$m.name).PadRight(24) -Value $role -ValueType Info
+    Write-DotbotCommand "$(' ' * 24)$([string]$m.email)"
     Write-DotbotCommand "$(' ' * 24)id: $($m.id) · added: $addedAt"
 }
 

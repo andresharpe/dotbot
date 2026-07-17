@@ -1,31 +1,44 @@
 <#
 .SYNOPSIS
-Dotbot team registry — sole writer of .bot/workspace/team-registry.json.
+Dotbot team registry — sole writer of .bot/team-registry.json.
 
 Registry shape (schema_version = 1):
     {
       "schema_version": 1,
       "members": [
-        { "id": "tm_XXXXXXXX", "name": "...", "role": "...",
+        { "id": "tm_XXXXXXXX", "name": "...", "email": "...",
+          "role": "developer|lead|reviewer|qa",
           "created_at": "RFC3339-Z", "created_by": "cli|api|..." }
       ]
     }
 
-Writers use atomic temp-file rename so concurrent readers never see a
-half-written file. All CLI + future MCP surfaces should go through this
-module rather than touching the JSON directly.
+Writers hold a named-mutex lock around the full read-modify-write cycle so
+concurrent `dotbot team add` invocations can't lose each other's writes.
+Atomic temp-file rename on top prevents readers from seeing a torn file.
+
+`id` generation contract: `tm_` + 8 characters uniform-drawn from the
+62-char alphabet [0-9a-zA-Z] via System.Security.Cryptography.RandomNumberGenerator
+with rejection sampling. Collision domain is 62**8 ≈ 2.18e14 — safe for any
+plausible team size. See _New-TeamMemberId + the collision retry in
+Add-DotbotTeamMember for the belt-and-suspenders check.
+
+All CLI + future MCP surfaces should go through this module rather than
+touching the JSON directly.
 #>
 
 $script:SCHEMA_VERSION = 1
 $script:NAME_REGEX     = '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'
+$script:EMAIL_REGEX    = '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+$script:VALID_ROLES    = @('developer', 'lead', 'reviewer', 'qa')
 $script:ID_ALPHABET    = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 $script:ID_LENGTH      = 8
 $script:ID_PREFIX      = 'tm_'
+$script:LOCK_TIMEOUT_MS = 5000
 
 function Get-DotbotTeamRegistryPath {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$BotRoot)
-    return (Join-Path (Join-Path $BotRoot 'workspace') 'team-registry.json')
+    return (Join-Path $BotRoot 'team-registry.json')
 }
 
 function _New-TeamMemberId {
@@ -66,6 +79,58 @@ function _New-EmptyRegistry {
         schema_version = $script:SCHEMA_VERSION
         members        = @()
     }
+}
+
+function _Acquire-TeamRegistryLock {
+    <#
+    .SYNOPSIS
+    Acquire a cross-process lock keyed on the registry file's absolute path.
+
+    .DESCRIPTION
+    Uses a named System.Threading.Mutex so two concurrent dotbot processes on
+    the same machine serialize their read-modify-write cycles. Returns the
+    mutex; caller must release with _Release-TeamRegistryLock.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$BotRoot,
+        [int]$TimeoutMs = $script:LOCK_TIMEOUT_MS
+    )
+    $path = Get-DotbotTeamRegistryPath -BotRoot $BotRoot
+    try {
+        $abs = [System.IO.Path]::GetFullPath($path)
+    } catch {
+        $abs = $path
+    }
+    # Hash the path so the mutex name is stable, safe (no path chars),
+    # and short enough for Global\ namespace.
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($abs.ToLowerInvariant()))
+        $hashHex   = -join ($hashBytes | ForEach-Object { $_.ToString('x2') })
+    } finally {
+        $hasher.Dispose()
+    }
+    $mutexName = "Global\dotbot-team-registry-$($hashHex.Substring(0, 16))"
+
+    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+    try {
+        if (-not $mutex.WaitOne($TimeoutMs)) {
+            $mutex.Dispose()
+            throw "Timed out waiting for team registry lock ($TimeoutMs ms). Another dotbot process may be adding a member."
+        }
+    } catch [System.Threading.AbandonedMutexException] {
+        # Prior owner crashed without releasing. WaitOne throws but we now
+        # hold the mutex — safe to proceed since we're about to overwrite
+        # the file atomically anyway.
+        $null = $_
+    }
+    return $mutex
+}
+
+function _Release-TeamRegistryLock {
+    param([Parameter(Mandatory)]$Lock)
+    try { $Lock.ReleaseMutex() } catch { $null = $_ }
+    try { $Lock.Dispose() }      catch { $null = $_ }
 }
 
 function Read-DotbotTeamRegistry {
@@ -122,7 +187,7 @@ function Assert-DotbotTeamMember {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Member)
 
-    foreach ($required in @('id', 'name', 'created_at', 'created_by')) {
+    foreach ($required in @('id', 'name', 'email', 'created_at', 'created_by')) {
         if (-not $Member.Contains($required) -or [string]::IsNullOrWhiteSpace([string]$Member[$required])) {
             throw "Team member is missing required field '$required'."
         }
@@ -132,8 +197,14 @@ function Assert-DotbotTeamMember {
         throw "Team member name '$($Member.name)' is invalid. Names must match: $($script:NAME_REGEX) (start with alphanumeric; 1-64 chars; letters, digits, dot, dash, underscore)."
     }
 
-    if ($Member.Contains('role') -and $null -ne $Member.role -and $Member.role -isnot [string]) {
-        throw "Team member 'role' must be a string or null; got: $($Member.role.GetType().Name)."
+    if ([string]$Member.email -notmatch $script:EMAIL_REGEX) {
+        throw "Team member email '$($Member.email)' is invalid. Expected a basic 'user@domain.tld' shape."
+    }
+
+    if ($Member.Contains('role') -and $null -ne $Member.role -and -not [string]::IsNullOrWhiteSpace([string]$Member.role)) {
+        if ([string]$Member.role -notin $script:VALID_ROLES) {
+            throw "Invalid role '$($Member.role)'. Must be one of: $($script:VALID_ROLES -join ', ')."
+        }
     }
 }
 
@@ -158,9 +229,12 @@ function Add-DotbotTeamMember {
     Persist a new team member to the workspace registry.
 
     .DESCRIPTION
-    Reads the registry, rejects duplicate names (case-insensitive),
-    validates the new member, and writes atomically. Returns the newly
-    created member on success.
+    Read-modify-write is serialized under a named mutex keyed to the registry
+    path so concurrent `dotbot team add` calls can't clobber each other. The
+    write itself is a temp-file rename so readers never see a torn file.
+
+    Rejects duplicate names (case-insensitive) and invalid role / email
+    values. Returns the newly created member on success.
 
     .PARAMETER BotRoot
     Path to the project's .bot directory.
@@ -168,8 +242,11 @@ function Add-DotbotTeamMember {
     .PARAMETER Name
     Case-preserving unique identifier for the member.
 
+    .PARAMETER Email
+    Contact address for downstream Q&A routing (#632/#600/#609). Required.
+
     .PARAMETER Role
-    Optional role string.
+    Optional role — must be one of: developer, lead, reviewer, qa.
 
     .PARAMETER CreatedBy
     Origin of the request. Defaults to 'cli'.
@@ -178,6 +255,7 @@ function Add-DotbotTeamMember {
     param(
         [Parameter(Mandatory)][string]$BotRoot,
         [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Email,
         [string]$Role,
         [string]$CreatedBy = 'cli'
     )
@@ -185,30 +263,48 @@ function Add-DotbotTeamMember {
     if ($Name -notmatch $script:NAME_REGEX) {
         throw "Invalid name '$Name'. Names must match: $($script:NAME_REGEX) (start with alphanumeric; 1-64 chars; letters, digits, dot, dash, underscore)."
     }
-
-    $registry = Read-DotbotTeamRegistry -BotRoot $BotRoot
-    $existingIdx = _Find-TeamMemberIndex -Registry $registry -Name $Name
-    if ($existingIdx -ge 0) {
-        $existing = $registry.members[$existingIdx]
-        throw "Team member '$Name' already exists (id: $($existing.id)). Names are case-insensitive; a follow-up ticket will add 'dotbot team update'."
+    if ($Email -notmatch $script:EMAIL_REGEX) {
+        throw "Invalid email '$Email'. Expected 'user@domain.tld' shape."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Role) -and $Role -notin $script:VALID_ROLES) {
+        throw "Invalid role '$Role'. Must be one of: $($script:VALID_ROLES -join ', ')."
     }
 
-    $member = [ordered]@{
-        id         = _New-TeamMemberId
-        name       = $Name
-        role       = if ([string]::IsNullOrWhiteSpace($Role)) { $null } else { $Role }
-        created_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-        created_by = $CreatedBy
+    $lock = _Acquire-TeamRegistryLock -BotRoot $BotRoot
+    try {
+        $registry = Read-DotbotTeamRegistry -BotRoot $BotRoot
+        $existingIdx = _Find-TeamMemberIndex -Registry $registry -Name $Name
+        if ($existingIdx -ge 0) {
+            $existing = $registry.members[$existingIdx]
+            throw "Team member '$Name' already exists (id: $($existing.id)). Names are case-insensitive; a follow-up ticket will add 'dotbot team update'."
+        }
+
+        # Belt-and-suspenders: re-draw id on the astronomically unlikely
+        # collision with an existing member. Collision domain is 62^8 ≈ 2e14.
+        $existingIds = @{}
+        foreach ($m in $registry.members) { if ($m.id) { $existingIds[$m.id] = $true } }
+        do { $newId = _New-TeamMemberId } while ($existingIds.Contains($newId))
+
+        $member = [ordered]@{
+            id         = $newId
+            name       = $Name
+            email      = $Email
+            role       = if ([string]::IsNullOrWhiteSpace($Role)) { $null } else { $Role }
+            created_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+            created_by = $CreatedBy
+        }
+
+        Assert-DotbotTeamMember -Member $member
+
+        $registry.members = @($registry.members) + @($member)
+
+        $path = Get-DotbotTeamRegistryPath -BotRoot $BotRoot
+        _Write-TeamRegistryJsonAtomic -Path $path -Object $registry
+
+        return $member
+    } finally {
+        _Release-TeamRegistryLock -Lock $lock
     }
-
-    Assert-DotbotTeamMember -Member $member
-
-    $registry.members = @($registry.members) + @($member)
-
-    $path = Get-DotbotTeamRegistryPath -BotRoot $BotRoot
-    _Write-TeamRegistryJsonAtomic -Path $path -Object $registry
-
-    return $member
 }
 
 function Get-DotbotTeamMembers {

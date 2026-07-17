@@ -1,24 +1,32 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Add a team member to the project's workspace team registry.
+    Add a team member to the project's team registry.
 
 .DESCRIPTION
-    Persists a new entry to .bot/workspace/team-registry.json. Names must be
-    unique (case-insensitive) — a follow-up ticket adds team update / remove.
+    Persists a new entry to .bot/team-registry.json. Names must be unique
+    (case-insensitive). Email is required — it's the contact address the
+    downstream Q&A routing (#632/#600/#609) delivers questions to.
+    A follow-up ticket (#631) adds team update / remove.
 
 .PARAMETER Name
     Case-preserving unique identifier for the member.
 
+.PARAMETER Email
+    Contact address. Required. Basic 'user@domain.tld' shape enforced.
+
 .PARAMETER Role
-    Optional role string (e.g. developer, reviewer, product).
+    Optional role. Must be one of: developer, lead, reviewer, qa.
 
 .EXAMPLE
-    dotbot team add ana-smith --role developer
+    dotbot team add ana-smith ana@example.com --role developer
+    dotbot team add ana-smith --email ana@example.com --role developer
 #>
 param(
     [Parameter(Position = 0)]
     [string]$Name,
+
+    [string]$Email,
 
     [string]$Role
 )
@@ -38,18 +46,19 @@ if (-not (Test-Path $BotDir)) {
     exit 1
 }
 
-if (-not $Name) {
-    Write-DotbotWarning "Usage: dotbot team add <name> [--role <role>]"
-    Write-DotbotCommand "Example: dotbot team add ana-smith --role developer"
+if (-not $Name -or -not $Email) {
+    Write-DotbotWarning "Usage: dotbot team add <name> <email> [--role <role>]"
+    Write-DotbotCommand "Example: dotbot team add ana-smith ana@example.com --role developer"
+    Write-DotbotCommand "Roles:   developer | lead | reviewer | qa"
     exit 1
 }
 
 try {
-    $member = Add-DotbotTeamMember -BotRoot $BotDir -Name $Name -Role $Role
+    $member = Add-DotbotTeamMember -BotRoot $BotDir -Name $Name -Email $Email -Role $Role
 } catch {
     Write-DotbotError $_.Exception.Message
     exit 1
 }
 
 $roleDisplay = if ([string]::IsNullOrWhiteSpace($member.role)) { '<none>' } else { $member.role }
-Write-Success "Added $($member.name) ($($member.id)) — role: $roleDisplay"
+Write-Success "Added $($member.name) <$($member.email)> ($($member.id)) — role: $roleDisplay"
