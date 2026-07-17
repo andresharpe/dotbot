@@ -40,8 +40,12 @@
             </div>
         </main>
 
-        <footer class="shell-ticker">
+        @* Ticker starts mode-less (static) — dashboard.js switches to the feed once
+           lines exist; pages without the ticker script keep a working footer. *@
+        <footer class="shell-ticker" id="shell-ticker" role="button" tabindex="0"
+                aria-label="Dispatch ticker — click to toggle between summary and event feed">
             <span class="shell-ticker-line" id="last-refresh">Loading...</span>
+            <div class="shell-ticker-feed" aria-live="off"><div class="shell-ticker-feed-track" id="ticker-feed-track"></div></div>
             <span class="shell-ticker-byline">Dotbot Dashboard v1.0</span>
         </footer>
     </div>
