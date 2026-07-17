@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize UI components
     initTabs();
     initShell();
+    Ticker.init();
     initLogoClick();
     initSidebarCollapse();
     await initSidebar();

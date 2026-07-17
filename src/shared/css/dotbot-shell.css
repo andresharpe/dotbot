@@ -281,8 +281,9 @@ body:has(.shell)::after {
 }
 
 /* === Dispatch ticker (28px) ============================================
- * Geometry + typography only. Scroll animation, pause-on-hover, collapse
- * behaviour and event wiring land with #607. */
+ * Two modes (#607): static (default when no data-mode attribute — harness
+ * and JS-free consumers keep rendering the summary line) and feed (the
+ * scrolling dispatch log). Click toggles; app JS owns feed content. */
 
 .shell-ticker {
     grid-area: ticker;
@@ -297,12 +298,48 @@ body:has(.shell)::after {
     font-size: 11px;
     letter-spacing: 0.05em;
     color: var(--color-muted);
+    cursor: pointer;
+}
+
+.shell-ticker[data-mode="feed"] .shell-ticker-line {
+    display: none;
+}
+
+.shell-ticker:not([data-mode="feed"]) .shell-ticker-feed {
+    display: none;
 }
 
 .shell-ticker-line {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+.shell-ticker-feed {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.shell-ticker-feed-track {
+    display: inline-flex;
+    gap: 64px;
+    padding-right: 64px;
+    will-change: transform;
+    animation: ticker-scroll var(--ticker-duration, 30s) linear infinite;
+}
+
+/* Pause in place — never reset position on hover/focus (spec: "stops on
+ * focus" read as stops moving; animation:none would snap to the start) */
+.shell-ticker:hover .shell-ticker-feed-track,
+.shell-ticker:focus-within .shell-ticker-feed-track {
+    animation-play-state: paused;
+}
+
+@keyframes ticker-scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
 }
 
 .shell-ticker-byline {
@@ -313,7 +350,9 @@ body:has(.shell)::after {
 
 /* === Reduced motion ====================================================
  * First prefers-reduced-motion implementation in the codebase (#551
- * Decision #7): keep color and shape, drop the movement. */
+ * Decision #7): keep color and shape, drop the movement. The body
+ * attribute variant is the in-app "Reduce motion" settings override —
+ * identical scope to the OS flag, zero exceptions. */
 
 @media (prefers-reduced-motion: reduce) {
     .shell *,
@@ -322,6 +361,13 @@ body:has(.shell)::after {
         transition: none !important;
         animation: none !important;
     }
+}
+
+body[data-motion="reduced"] .shell *,
+body[data-motion="reduced"] .shell *::before,
+body[data-motion="reduced"] .shell *::after {
+    transition: none !important;
+    animation: none !important;
 }
 
 /* === Responsive ========================================================

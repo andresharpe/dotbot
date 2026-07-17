@@ -1059,9 +1059,11 @@
             </main>
         </div><!-- /shell-content -->
 
-        <!-- Dispatch ticker slot (static line; scroll behaviour lands with #607) -->
-        <footer class="shell-ticker">
+        <!-- Dispatch ticker (#607): static summary by default; click toggles the scrolling feed (modules/ticker.js) -->
+        <footer class="shell-ticker" id="shell-ticker" role="button" tabindex="0"
+                aria-label="Dispatch ticker — click to toggle between summary and event feed">
             <span class="shell-ticker-line">INSTANCE <span id="instance-id">--</span> · LAST UPDATE <span id="last-update">--:--:--</span> · <span id="footer-mission">◈ .bot autonomous development system</span></span>
+            <div class="shell-ticker-feed" aria-live="off"><div class="shell-ticker-feed-track" id="ticker-feed-track"></div></div>
             <span class="shell-ticker-byline">v4.0.0</span>
         </footer>
     </div>
@@ -1392,6 +1394,7 @@
     <script src="modules/layout.js"></script>
     <script src="modules/fleet.js"></script>
     <script src="modules/utils.js"></script>
+    <script src="modules/ticker.js"></script>
     <script src="modules/icons.js"></script>
     <script src="modules/theme.js"></script>
     <script src="modules/markdown.js"></script>
