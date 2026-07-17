@@ -80,44 +80,86 @@ function getCurrentThemeName() {
     return currentTheme?.name || 'Unknown';
 }
 
+// Preset grouping (#607, PRD 5.8): Amber = canonical default, Cyan = the
+// "calm" alternate, the rest live behind a collapsed Classics section.
+// Display labels are client-side only — active-detection and the API keep
+// using the original preset names from theme-config.json.
+const THEME_FEATURED = [
+    { key: 'amber', label: 'Default' },
+    { key: 'cyan', label: 'Calm' },
+];
+const THEME_CLASSICS = ['green', 'blue', 'purple', 'white'];
+
 /**
- * Initialize the theme selector UI in settings
+ * Initialize the theme selector UI in settings. Re-runs on every settings
+ * visit, so it fully rebuilds the grids + Classics toggle (idempotent).
  */
 function initThemeSelector() {
     const themeGrid = document.getElementById('theme-grid');
-
     if (!themeGrid || !currentTheme) return;
 
-    // Clear existing content
-    themeGrid.innerHTML = '';
-
-    // Get presets from theme config
     const presets = currentTheme.presets || {};
 
-    // Create theme options
-    for (const [key, preset] of Object.entries(presets)) {
+    // Rebuild everything this function owns (featured grid + classics UI)
+    themeGrid.innerHTML = '';
+    document.getElementById('theme-classics-toggle')?.remove();
+    document.getElementById('theme-classics-grid')?.remove();
+
+    const buildOption = (key, preset, label) => {
         const option = document.createElement('div');
         option.className = 'theme-option';
         option.dataset.theme = key;
-
-        // Check if this is the active theme
         if (currentTheme.name === preset.name) {
             option.classList.add('active');
         }
-
-        // Get the primary color for preview
         const [r, g, b] = preset.primary;
-
+        option.title = preset.name;
         option.innerHTML = `
             <div class="theme-preview" style="background: rgba(${r}, ${g}, ${b}, 0.1);">
                 <div class="theme-preview-wave" style="background: rgb(${r}, ${g}, ${b}); color: rgb(${r}, ${g}, ${b});"></div>
             </div>
-            <div class="theme-option-name">${preset.name}</div>
+            <div class="theme-option-name">${escapeHtml(label || preset.name)}</div>
         `;
-
         option.addEventListener('click', () => selectTheme(key));
-        themeGrid.appendChild(option);
+        return option;
+    };
+
+    // Featured row: Default (amber) + Calm (cyan) + any unknown future keys
+    const classicsKeys = THEME_CLASSICS.filter(k => presets[k]);
+    for (const { key, label } of THEME_FEATURED) {
+        if (presets[key]) themeGrid.appendChild(buildOption(key, presets[key], label));
     }
+    for (const [key, preset] of Object.entries(presets)) {
+        if (THEME_FEATURED.some(f => f.key === key) || classicsKeys.includes(key)) continue;
+        themeGrid.appendChild(buildOption(key, preset));
+    }
+
+    if (classicsKeys.length === 0) return;
+
+    // Collapsed Classics section (repo .collapsed convention)
+    const activeIsClassic = classicsKeys.some(k => presets[k].name === currentTheme.name);
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.id = 'theme-classics-toggle';
+    toggle.className = 'theme-classics-toggle';
+    toggle.setAttribute('aria-expanded', String(activeIsClassic));
+    toggle.innerHTML = `<span class="theme-classics-chevron">▸</span> Classics`;
+
+    const classicsGrid = document.createElement('div');
+    classicsGrid.id = 'theme-classics-grid';
+    classicsGrid.className = 'theme-grid theme-classics-grid' + (activeIsClassic ? '' : ' collapsed');
+    for (const key of classicsKeys) {
+        classicsGrid.appendChild(buildOption(key, presets[key]));
+    }
+
+    toggle.addEventListener('click', () => {
+        const expanded = toggle.getAttribute('aria-expanded') === 'true';
+        toggle.setAttribute('aria-expanded', String(!expanded));
+        classicsGrid.classList.toggle('collapsed', expanded);
+    });
+
+    themeGrid.after(toggle, classicsGrid);
 }
 
 /**
@@ -127,15 +169,10 @@ function initThemeSelector() {
 async function selectTheme(themeKey) {
     await setThemePreset(themeKey);
 
-    // Update UI to reflect selection
-    const themeGrid = document.getElementById('theme-grid');
-
-    if (themeGrid) {
-        // Update active state
-        themeGrid.querySelectorAll('.theme-option').forEach(opt => {
-            opt.classList.toggle('active', opt.dataset.theme === themeKey);
-        });
-    }
+    // Update active state across BOTH grids (featured + classics)
+    document.querySelectorAll('#settings-theme .theme-option').forEach(opt => {
+        opt.classList.toggle('active', opt.dataset.theme === themeKey);
+    });
 
     // Pulse Aether lights to preview new theme color
     if (typeof Aether !== 'undefined' && Aether.isLinked()) {

@@ -2293,6 +2293,53 @@
     margin-bottom: 20px;
 }
 
+/* Collapsed Classics group (#607, PRD 5.8) */
+.theme-classics-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    /* Separate the classics zone from the featured grid above and the
+     * Reduce Motion group below, so the button reads as part of themes */
+    margin: 16px 0 24px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-muted);
+    cursor: pointer;
+}
+
+.theme-classics-toggle:hover {
+    color: var(--color-primary);
+    border-color: var(--primary-30);
+}
+
+.theme-classics-chevron {
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+
+.theme-classics-toggle[aria-expanded="true"] .theme-classics-chevron {
+    transform: rotate(90deg);
+}
+
+/* When expanded the grid carries the bottom separation instead */
+.theme-classics-toggle[aria-expanded="true"] {
+    margin-bottom: 0;
+}
+
+.theme-classics-grid {
+    margin: 12px 0 24px;
+}
+
+.theme-classics-grid.collapsed {
+    display: none;
+}
+
 .theme-option {
     position: relative;
     background: var(--bg-module);
