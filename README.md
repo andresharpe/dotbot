@@ -182,6 +182,9 @@ dotbot workflow list           # List active + available workflows
 dotbot registry add <n> <src>  # Add an enterprise extension registry
 dotbot registry update [name]  # Update registry (all or named)
 dotbot registry list           # List registries and available content
+dotbot team add <name> <email> [role]   # Register a team member (role: developer|lead|reviewer|qa)
+dotbot team list               # List all team members
+dotbot team get <name>         # Show a single team member record
 dotbot doctor                  # Run project health checks
 dotbot go                      # Launch runtime + dashboard for an initialized project
 dotbot serve                   # Launch only the low-level runtime

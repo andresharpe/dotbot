@@ -136,6 +136,9 @@ function Show-Help {
     Write-DotbotLabel "    registry add      " "Add an enterprise extension registry"
     Write-DotbotLabel "    registry list     " "List registered extension registries"
     Write-DotbotLabel "    registry remove   " "Remove an extension registry"
+    Write-DotbotLabel "    team add          " "Register a team member (name email [role])"
+    Write-DotbotLabel "    team list         " "List all team members"
+    Write-DotbotLabel "    team get          " "Show a single team member record"
     Write-DotbotLabel "    update            " "Update global installation"
     Write-DotbotLabel "    studio            " "Launch visual configuration studio"
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
@@ -423,6 +426,69 @@ function Invoke-Registry {
     }
 }
 
+function Invoke-Team {
+    # Parse: team add <name> <email> [--role <role>] | team list | team get <name>
+    $teamSubCmd = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { '' }
+    # [array] cast is load-bearing: without it, a single-element range slice
+    # like $SubArgs[1..1] returned from an `if` expression inside a function
+    # unwraps to the scalar element (e.g. the string 'ana'), and later
+    # indexing into it (`$teamRest[0]`) yields the first character instead
+    # of the whole argument.
+    [array]$teamRest = if ($SubArgs.Count -gt 1) { $SubArgs[1..($SubArgs.Count-1)] } else { @() }
+
+    $teamScript = switch ($teamSubCmd) {
+        'add'  { Join-Path $ScriptsDir 'team-add.ps1' }
+        'list' { Join-Path $ScriptsDir 'team-list.ps1' }
+        'get'  { Join-Path $ScriptsDir 'team-get.ps1' }
+        default { $null }
+    }
+
+    if ($teamScript -and (Test-Path $teamScript)) {
+        $teamSplat = @{}
+        [array]$positional = @()
+        $ti = 0
+        while ($ti -lt $teamRest.Count) {
+            if ($teamRest[$ti] -match '^--?(.+)$') {
+                $pname = $Matches[1]
+                if (($ti + 1) -lt $teamRest.Count -and $teamRest[$ti + 1] -notmatch '^--?') {
+                    $teamSplat[$pname] = $teamRest[$ti + 1]
+                    $ti += 2
+                } else {
+                    $teamSplat[$pname] = $true
+                    $ti++
+                }
+            } else {
+                $positional += $teamRest[$ti]
+                $ti++
+            }
+        }
+
+        # Positional mapping:
+        #   team add  <name> [<email>] [<role>]
+        #   team get  <name>
+        # Named --email / --role flags always win over their positional slot.
+        if ($teamSubCmd -eq 'add') {
+            if ($positional.Count -ge 1) { $teamSplat['Name'] = $positional[0] }
+            if ($positional.Count -ge 2 -and -not $teamSplat.Contains('email') -and -not $teamSplat.Contains('Email')) {
+                $teamSplat['Email'] = $positional[1]
+            }
+            if ($positional.Count -ge 3 -and -not $teamSplat.Contains('role') -and -not $teamSplat.Contains('Role')) {
+                $teamSplat['Role'] = $positional[2]
+            }
+        } elseif ($teamSubCmd -eq 'get') {
+            if ($positional.Count -ge 1) { $teamSplat['Name'] = $positional[0] }
+        }
+
+        & $teamScript @teamSplat
+    } else {
+        Write-DotbotWarning "Usage: dotbot team [add|list|get] ..."
+        Write-DotbotCommand "  add   <name> <email> [role] | add <name> --email <email> [--role <role>]"
+        Write-DotbotCommand "  list"
+        Write-DotbotCommand "  get   <name>"
+        Write-DotbotCommand "  Roles: developer | lead | reviewer | qa"
+    }
+}
+
 function Invoke-Install {
     $installSubCmd = ''
     $contentSplat = @{}
@@ -666,6 +732,7 @@ switch ($Command) {
     "init" { Invoke-Init }
     "workflow" { Invoke-Workflow }
     "registry" { Invoke-Registry }
+    "team"     { Invoke-Team }
     "install" { Invoke-Install }
     "run" { Invoke-Run }
     "tasks" { Invoke-Tasks }
