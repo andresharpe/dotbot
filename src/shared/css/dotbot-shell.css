@@ -4,14 +4,14 @@
  * to 200px labelled mode) · 28px dispatch ticker · content capped at 1280px.
  *
  * Consumption order: dotbot-tokens.css → dotbot-crt.css → dotbot-shell.css
- * Shell chrome only — no page-content components live here.
+ * Shell chrome only — no page-content components live here. One deliberate
+ * exception: the persona type base rule (#607), scoped under .shell so it
+ * cannot leak into non-shell consumers (studio-ui imports this file).
  * Pure token consumer: zero raw colors, so all theme presets work via the
  * runtime --color-*-rgb injection (src/ui/static/modules/theme.js).
  *
  * Deferred hooks:
- *   Ticker scroll animation + pause/expand behaviour  → #607
  *   Command palette overlay                           → #553
- *   Persona type split (data-persona)                 → #607
  *   Responsive/mobile pass below 1200px               → #552 (content cap goes
  *   fluid via minmax below; rail/topbar geometry intentionally unchanged)
  */
@@ -368,6 +368,16 @@ body[data-motion="reduced"] .shell *::before,
 body[data-motion="reduced"] .shell *::after {
     transition: none !important;
     animation: none !important;
+}
+
+/* === Persona type split (#607, PRD 5.7) ================================
+ * Stakeholder surfaces read in the UI face at 14px; data values re-mono
+ * per app (each app's own stylesheet lists its data classes). Operator
+ * surfaces keep the 13px mono base — no attribute, no rules. */
+
+.shell [data-persona="stakeholder"] {
+    font-family: var(--font-ui);
+    font-size: 14px;
 }
 
 /* === Responsive ========================================================

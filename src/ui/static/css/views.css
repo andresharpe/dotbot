@@ -2,6 +2,29 @@
  * Tab content views: pipeline, workflow, product, settings
  */
 
+/* ========== PERSONA DATA RE-MONO (#607, PRD 5.7) ========== */
+/* Inside stakeholder panes prose inherits Inter 14px from the shell rule;
+ * these data elements inherit too and must stay mono 12px. Elements with
+ * explicit font-family rules (badges, chips, doc-viewer, buttons) are
+ * unaffected by inheritance and are deliberately absent here. */
+[data-persona="stakeholder"] code,
+[data-persona="stakeholder"] .chip-count,
+[data-persona="stakeholder"] .task-status-word,
+[data-persona="stakeholder"] .task-list-item-meta,
+[data-persona="stakeholder"] .tasks-progress-label,
+[data-persona="stakeholder"] .tasks-processes-counts,
+[data-persona="stakeholder"] .chips-extra,
+[data-persona="stakeholder"] .decision-row-date,
+[data-persona="stakeholder"] .decision-meta-item,
+[data-persona="stakeholder"] .task-meta-value,
+[data-persona="stakeholder"] .task-badge,
+[data-persona="stakeholder"] .process-name,
+[data-persona="stakeholder"] .process-time,
+[data-persona="stakeholder"] .process-meta-item {
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
 /* ========== PANE NAV (#606 — former sidebar context panels) ========== */
 .pane-with-nav {
     display: grid;
