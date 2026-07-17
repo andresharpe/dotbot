@@ -306,6 +306,7 @@ function Get-Settings {
     $defaultSettings = @{
         showDebug = $false
         showVerbose = $false
+        reduceMotion = $false
         analysisModel = $defaultModelTier
         executionModel = $defaultModelTier
         permissionMode = $null
@@ -337,6 +338,7 @@ function Set-Settings {
     $defaultSettings = @{
         showDebug = $false
         showVerbose = $false
+        reduceMotion = $false
         analysisModel = $defaultModelTier
         executionModel = $defaultModelTier
         permissionMode = $null
@@ -359,6 +361,9 @@ function Set-Settings {
     }
     if ($null -ne $Body.showVerbose) {
         $settings.showVerbose = [bool]$Body.showVerbose
+    }
+    if ($null -ne $Body.reduceMotion) {
+        $settings.reduceMotion = [bool]$Body.reduceMotion
     }
     if ($null -ne $Body.analysisModel) {
         try {
@@ -391,7 +396,7 @@ function Set-Settings {
 
     # Save settings
     $settings | ConvertTo-Json | Set-Content $settingsFile -Force
-    Write-Status "Settings updated: Debug=$($settings.showDebug), Verbose=$($settings.showVerbose)" -Type Success
+    Write-Status "Settings updated: Debug=$($settings.showDebug), Verbose=$($settings.showVerbose), ReduceMotion=$($settings.reduceMotion)" -Type Success
 
     return @{
         success = $true
