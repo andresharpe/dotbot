@@ -20,24 +20,7 @@ function initSidebarCollapse() {
     });
 }
 
-/**
- * Initialize collapse for dynamically created sections
- * @param {HTMLElement} container - Container element
- */
-function initSidebarCollapseForContainer(container) {
-    container.querySelectorAll('.sidebar-header').forEach(header => {
-        header.addEventListener('click', () => {
-            const section = header.closest('.sidebar-section');
-            const content = section.querySelector('.sidebar-content');
-            const isCollapsed = section.classList.toggle('collapsed');
-            content.style.display = isCollapsed ? 'none' : 'block';
-            const toggle = header.querySelector('.sidebar-toggle');
-            if (toggle) {
-                toggle.innerHTML = getIcon(isCollapsed ? 'chevronRight' : 'expandMore', 16);
-            }
-        });
-    });
-}
+
 
 /**
  * Initialize the sidebar with dynamic content
@@ -199,18 +182,4 @@ function renderFlatItems(container, items, type, shortType) {
     });
 }
 
-/**
- * Initialize sidebar item click handlers
- */
-function initSidebarItemClicks() {
-    document.querySelectorAll('.sidebar-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const type = item.dataset.type;
-            const file = item.dataset.file;
-            if (type && file) {
-                showWorkflowItem(type, file);
-            }
-        });
-    });
-}
+

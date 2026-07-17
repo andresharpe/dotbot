@@ -202,6 +202,7 @@ async function loadSettings() {
         // Update toggle states
         const showDebugToggle = document.getElementById('setting-show-debug');
         const showVerboseToggle = document.getElementById('setting-show-verbose');
+        const reduceMotionToggle = document.getElementById('setting-reduce-motion');
 
         if (showDebugToggle) {
             showDebugToggle.checked = settings.showDebug || false;
@@ -209,6 +210,10 @@ async function loadSettings() {
         if (showVerboseToggle) {
             showVerboseToggle.checked = settings.showVerbose || false;
         }
+        if (reduceMotionToggle) {
+            reduceMotionToggle.checked = settings.reduceMotion || false;
+        }
+        applyReduceMotion(settings.reduceMotion || false);
 
         // Restore permission mode selection (before models, since it filters them)
         if (settings.permissionMode && providerData?.permission_modes?.[settings.permissionMode]) {
@@ -225,6 +230,23 @@ async function loadSettings() {
         selectExecutionModel(savedExecutionModel, false);
     } catch (error) {
         console.error('Failed to load settings:', error);
+    }
+}
+
+/**
+ * Apply the reduce-motion override (#607, Decision #7). The body attribute
+ * drives a CSS block identical in scope to the OS prefers-reduced-motion
+ * flag; the ticker re-renders to its static latest-entry form.
+ * @param {boolean} on
+ */
+function applyReduceMotion(on) {
+    if (on) {
+        document.body.dataset.motion = 'reduced';
+    } else {
+        delete document.body.dataset.motion;
+    }
+    if (typeof Ticker !== 'undefined') {
+        Ticker.render();
     }
 }
 
@@ -259,6 +281,7 @@ async function saveSetting(key, value) {
 function initSettingsToggles() {
     const showDebugToggle = document.getElementById('setting-show-debug');
     const showVerboseToggle = document.getElementById('setting-show-verbose');
+    const reduceMotionToggle = document.getElementById('setting-reduce-motion');
 
     if (showDebugToggle) {
         showDebugToggle.addEventListener('change', (e) => {
@@ -269,6 +292,13 @@ function initSettingsToggles() {
     if (showVerboseToggle) {
         showVerboseToggle.addEventListener('change', (e) => {
             saveSetting('showVerbose', e.target.checked);
+        });
+    }
+
+    if (reduceMotionToggle) {
+        reduceMotionToggle.addEventListener('change', (e) => {
+            saveSetting('reduceMotion', e.target.checked);
+            applyReduceMotion(e.target.checked);
         });
     }
 

@@ -172,6 +172,11 @@ async function pollActivity() {
                 if (typeof Aether !== 'undefined') {
                     Aether.processActivity(event);
                 }
+
+                // Send to the dispatch ticker (#607)
+                if (typeof Ticker !== 'undefined') {
+                    Ticker.ingest(event);
+                }
             }
 
             // Update displays with latest of each type

@@ -23,13 +23,9 @@
     </style>
 </head>
 <body>
-    <div class="mobile-overlay" id="mobile-overlay"></div>
     <div class="shell" id="shell">
         <!-- Top bar (v4 shell, #551/#605) -->
         <header class="shell-topbar">
-            <button class="hamburger-menu" id="hamburger-menu" aria-label="Toggle menu">
-                <!-- Menu icon loaded dynamically -->
-            </button>
             <div class="shell-logo">
                 <span class="logo">◈ DOTBOT</span>
             </div>
@@ -42,7 +38,6 @@
                     </select>
                 </label>
                 <span class="workflow-badge" id="workflow-badge"></span>
-                <span class="workflow-pills" id="workflow-pills"></span>
             </div>
             <button class="shell-search" type="button" disabled title="Command palette — coming with #553">
                 <span>search…</span>
@@ -75,9 +70,8 @@
         <!-- Icon rail (replaces tab bar; destinations mirror pre-shell tabs 1:1 — restructure in #606) -->
         <nav class="shell-rail" id="shell-rail" aria-label="Primary">
             <a class="shell-rail-item" href="#" data-tab="overview" aria-current="page"><span class="shell-rail-icon">□</span><span class="shell-rail-label">Overview</span></a>
+            <a class="shell-rail-item" href="#" data-tab="tasks"><span class="shell-rail-icon">▣</span><span class="shell-rail-label">Tasks</span></a>
             <a class="shell-rail-item" href="#" data-tab="product"><span class="shell-rail-icon">◆</span><span class="shell-rail-label">Product</span></a>
-            <a class="shell-rail-item" href="#" data-tab="pipeline"><span class="shell-rail-icon">▣</span><span class="shell-rail-label">Roadmap</span></a>
-            <a class="shell-rail-item" href="#" data-tab="processes"><span class="shell-rail-icon">◎</span><span class="shell-rail-label">Processes</span></a>
             <a class="shell-rail-item" href="#" data-tab="decisions"><span class="shell-rail-icon">◇</span><span class="shell-rail-label">Decisions</span></a>
             <a class="shell-rail-item" href="#" data-tab="workflow"><span class="shell-rail-icon">○</span><span class="shell-rail-label">Workflows</span></a>
             <div class="shell-rail-divider"></div>
@@ -87,13 +81,16 @@
             </button>
         </nav>
 
-        <!-- Content -->
+        <!-- Content (contextual sidebar removed in #606 — content lives in the panes) -->
         <div class="shell-content">
-        <div class="main-layout" id="main-layout">
-            <!-- Left Sidebar (Context-Aware) -->
-            <aside class="sidebar-left">
-                <!-- Overview Context: Control, Session, Verification (mirrors right sidebar) -->
-                <div class="context-panel" data-context="overview">
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Tab Content -->
+                <div class="tab-content">
+                    <!-- Overview Tab -->
+                    <div class="tab-pane active" id="tab-overview">
+                      <div class="overview-cockpit">
+                        <aside class="cockpit-col">
                     <!-- Agent Control -->
                     <div class="left-module">
                         <div class="module-header">
@@ -203,243 +200,13 @@
                         </button>
                         <div class="panic-hint">Clear stale locks &amp; signals</div>
                     </div>
-                </div>
-
-                <!-- Product Context: Project Info + File Navigator -->
-                <div class="context-panel hidden" data-context="product">
-                    <div class="sidebar-section" id="project-info-card">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Project</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="project-info">
-                                <div class="project-info-name" id="project-info-name">--</div>
-                                <div class="project-info-workflow" id="project-info-workflow"></div>
-                                <div class="project-info-summary" id="project-info-summary"></div>
-                                <div class="project-info-path" id="project-info-path"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Product Docs</span>
-                        </div>
-                        <div class="sidebar-content" id="product-file-nav">
-                            <div class="loading-state">Loading...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Pipeline/Roadmap Context: Task Summary -->
-                <div class="context-panel hidden" data-context="pipeline">
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Task Summary</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="task-summary">
-                                <div class="summary-item todo">
-                                    <span class="summary-label">Todo</span>
-                                    <span class="count-badge" data-status="todo" id="context-todo-count">-</span>
-                                </div>
-                                <div class="summary-item analysing">
-                                    <span class="summary-label">Analysing</span>
-                                    <span class="count-badge" id="context-analysing-count">-</span>
-                                </div>
-                                <div class="summary-item needs-input">
-                                    <span class="summary-label">Needs Input</span>
-                                    <span class="count-badge" id="context-needs-input-count">-</span>
-                                </div>
-                                <div class="summary-item analysed">
-                                    <span class="summary-label">Analysed</span>
-                                    <span class="count-badge" id="context-analysed-count">-</span>
-                                </div>
-                                <div class="summary-item in-progress">
-                                    <span class="summary-label">In Progress</span>
-                                    <span class="count-badge" data-status="in-progress" id="context-progress-count">-</span>
-                                </div>
-                                <div class="summary-item done">
-                                    <span class="summary-label">Done</span>
-                                    <span class="count-badge" data-status="done" id="context-done-count">-</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Progress</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="progress-bar-container">
-                                <div class="progress-bar" id="context-progress-bar"></div>
-                            </div>
-                            <div class="progress-label" id="context-progress-label">0%</div>
-                        </div>
-                    </div>
-
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Other</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="task-summary secondary">
-                                <div class="summary-item skipped">
-                                    <span class="summary-label">Skipped</span>
-                                    <span class="count-badge muted" id="context-skipped-count">-</span>
-                                </div>
-                                <div class="summary-item cancelled">
-                                    <span class="summary-label">Cancelled</span>
-                                    <span class="count-badge muted" id="context-cancelled-count">-</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Processes Context: Process Summary -->
-                <div class="context-panel hidden" data-context="processes">
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Processes</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="process-summary">
-                                <div class="summary-item">
-                                    <span class="summary-label">Running</span>
-                                    <span class="summary-value active" id="proc-running-count">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Completed</span>
-                                    <span class="summary-value" id="proc-completed-count">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Failed</span>
-                                    <span class="summary-value" id="proc-failed-count">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Total Tasks</span>
-                                    <span class="summary-value" id="proc-total-tasks">0</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Decisions Context: Decision Summary -->
-                <div class="context-panel hidden" data-context="decisions">
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Decisions</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="decision-summary">
-                                <div class="summary-item">
-                                    <span class="summary-label">Proposed</span>
-                                    <span class="summary-value" id="decision-count-proposed">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Accepted</span>
-                                    <span class="summary-value active" id="decision-count-accepted">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Deprecated</span>
-                                    <span class="summary-value" id="decision-count-deprecated">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Superseded</span>
-                                    <span class="summary-value" id="decision-count-superseded">0</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="summary-label">Total</span>
-                                    <span class="summary-value" id="decision-count-total">0</span>
-                                </div>
-                            </div>
-                            <div style="margin-top: 10px;">
-                                <button class="ctrl-btn-sm primary" id="decision-create-btn" style="width:100%;">+ New Decision</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Workflow Context: Nav Tree -->
-                <div class="context-panel hidden" data-context="workflow">
-                    <div class="sidebar-section">
-                        <div class="sidebar-content" id="wf-nav-tree">
-                            <div class="loading-state">Loading workflows...</div>
-                        </div>
-                    </div>
-                    <div id="prompts-sidebar" style="display:none"></div>
-                </div>
-
-                <!-- Settings Context -->
-                <div class="context-panel hidden" data-context="settings">
-                    <div class="sidebar-section">
-                        <div class="sidebar-header">
-                            <span class="sidebar-title">◈ Settings</span>
-                        </div>
-                        <div class="sidebar-content">
-                            <div class="settings-nav">
-                                <div class="settings-nav-item active" data-settings-section="theme">Theme</div>
-                                <div class="settings-nav-item" data-settings-section="provider">Coding Agent</div>
-                                <div class="settings-nav-item" data-settings-section="analysis">Analysis Phase</div>
-                                <div class="settings-nav-item" data-settings-section="execution">Execution Phase</div>
-                                <div class="settings-nav-item" data-settings-section="verification">Verification</div>
-                                <div class="settings-nav-item" data-settings-section="costs">Costs</div>
-                                <div class="settings-nav-item" data-settings-section="editor">Editor</div>
-                                <div class="settings-nav-item" data-settings-section="mothership">Mothership</div>
-                                <div class="settings-nav-item" data-settings-section="aether" id="aetherNavItem" style="display:none">Aether</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- Panel Splitter -->
-            <div class="panel-splitter" id="panel-splitter" title="Drag to resize · Double-click to reset"></div>
-
-            <!-- Main Content -->
-            <main class="main-content">
-                <!-- Tab Content -->
-                <div class="tab-content">
-                    <!-- Overview Tab -->
-                    <div class="tab-pane active" id="tab-overview">
-                      <div class="overview-layout">
+                
+                        </aside>
                         <div class="overview-content">
                         <!-- Executive Summary -->
                         <div class="executive-summary" id="executive-summary" style="display: none;"></div>
 
-                        <!-- Stats Row -->
-                        <div class="stats-row">
-                            <div class="stat-card">
-                                <div class="stat-label">TODO</div>
-                                <div class="stat-value" data-status="todo" id="todo-count">-</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">ANALYSING</div>
-                                <div class="stat-value" data-status="in-progress" id="analysing-count">0</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">AWAITING INPUT</div>
-                                <div class="stat-value" data-status="todo" id="needs-input-count">0</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">READY</div>
-                                <div class="stat-value" data-status="todo" id="analysed-count">0</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">IN PROGRESS</div>
-                                <div class="stat-value" data-status="in-progress" id="progress-count">-</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">DONE</div>
-                                <div class="stat-value" data-status="done" id="done-count">-</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">PROGRESS</div>
-                                <div class="stat-value" id="progress-percent">-</div>
-                            </div>
-                        </div>
+                        <!-- Stats row removed in #606 — counts live on the Tasks filter chips -->
 
                         <!-- Activity Oscilloscope -->
                         <div id="activity-scope" class="crt-monitor">
@@ -473,7 +240,7 @@
                                     <div class="empty-state">No running processes</div>
                                 </div>
                                 <div class="view-all-link" id="view-all-processes" style="display: none;">
-                                    <a href="#" onclick="switchToTab('processes'); return false;">View All Processes &rarr;</a>
+                                    <a href="#" onclick="switchToTab('tasks'); return false;">View All Processes &rarr;</a>
                                 </div>
                             </div>
                         </div>
@@ -526,89 +293,75 @@
                                 <div id="overview-workflow-phases"></div>
                             </div>
                         </div>
-                      </div><!-- /.overview-layout -->
+                      </div><!-- /.overview-cockpit -->
                     </div>
 
-                    <!-- Pipeline Tab -->
-                    <div class="tab-pane" id="tab-pipeline">
-                        <div class="pipeline-wrapper">
-                            <!-- Unified Task Pipeline -->
-                            <div class="pipeline-stage">
-                                <div class="pipeline-stage-header">
-                                    <span class="pipeline-stage-title">◈ Task Pipeline</span>
+                    <!-- Tasks Tab (unified surface: pipeline board + Processes list + stat counts, #606/#551) -->
+                    <div class="tab-pane" id="tab-tasks" data-persona="stakeholder">
+                        <div class="tasks-surface">
+                            <div class="tasks-toolbar">
+                                <div class="filter-chips" id="task-filter-chips">
+                                    <button class="filter-chip active" data-task-filter="all">All</button>
+                                    <button class="filter-chip" data-task-filter="todo">Todo <span class="chip-count" id="todo-count">-</span></button>
+                                    <button class="filter-chip" data-task-filter="analysing">Analysing <span class="chip-count" id="analysing-count">0</span></button>
+                                    <button class="filter-chip" data-task-filter="needs-input">Needs input <span class="chip-count" id="needs-input-count">0</span></button>
+                                    <button class="filter-chip" data-task-filter="analysed">Analysed <span class="chip-count" id="analysed-count">0</span></button>
+                                    <button class="filter-chip" data-task-filter="in-progress">In progress <span class="chip-count" id="progress-count">-</span></button>
+                                    <button class="filter-chip" data-task-filter="done">Done <span class="chip-count" id="done-count">-</span></button>
+                                    <button class="filter-chip" data-task-filter="skipped">Skipped <span class="chip-count" id="skipped-count">0</span></button>
+                                    <!-- Count only: /api/state carries no cancelled_list, so there is nothing to filter -->
+                                    <span class="chips-extra" title="Count only — the server does not return cancelled tasks"><span id="cancelled-count">0</span> cancelled</span>
+                                </div>
+                                <div class="tasks-toolbar-actions">
                                     <select class="pipeline-workflow-filter" id="pipeline-workflow-filter" title="Filter tasks by workflow">
                                         <option value="">All Workflows</option>
                                     </select>
+                                    <button class="ctrl-btn-sm roadmap-header-action" id="roadmap-deleted-btn" title="View deleted task archive">Deleted</button>
+                                    <button class="ctrl-btn-sm primary add-task-btn roadmap-header-action" id="add-task-btn-pipeline" title="Add new task">New Task</button>
                                 </div>
-                                <div class="pipeline-container">
-                                    <!-- Todo Column -->
-                                    <div class="pipeline-column">
-                                        <div class="column-header roadmap-column-header">
-                                            <span class="column-label">◇ Todo</span>
-                                            <div class="roadmap-column-actions">
-                                                <span class="column-count" id="pipeline-todo-count">0</span>
-                                                <button class="ctrl-btn-sm roadmap-header-action" id="roadmap-deleted-btn" title="View deleted task archive">Deleted</button>
-                                                <button class="ctrl-btn-sm primary add-task-btn roadmap-header-action" id="add-task-btn-pipeline" title="Add new task">New Task</button>
-                                            </div>
-                                        </div>
-                                        <div class="column-items" id="pipeline-todo">
-                                            <div class="loading-state">Loading...</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="flow-arrow">→</div>
-
-                                    <!-- Working Column (Analysing + In Progress) -->
-                                    <div class="pipeline-column highlight">
-                                        <div class="column-header">
-                                            <span class="column-label">◈ Working</span>
-                                            <span class="column-count" id="pipeline-working-count">0</span>
-                                        </div>
-                                        <div class="column-items" id="pipeline-working">
-                                            <div class="empty-state">No active tasks</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="flow-arrow">→</div>
-
-                                    <!-- Needs Input Column -->
-                                    <div class="pipeline-column">
-                                        <div class="column-header">
-                                            <span class="column-label">⚡ Needs Input</span>
-                                            <span class="column-count" id="pipeline-needs-input-count">0</span>
-                                        </div>
-                                        <div class="column-items" id="pipeline-needs-input">
-                                            <div class="empty-state">No tasks</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="flow-arrow">→</div>
-
-                                    <!-- Done Column -->
-                                    <div class="pipeline-column">
-                                        <div class="column-header">
-                                            <span class="column-label">✓ Done</span>
-                                            <span class="column-count" id="pipeline-done-count">0</span>
-                                        </div>
-                                        <div class="column-items" id="pipeline-done">
-                                            <div class="loading-state">Loading...</div>
-                                        </div>
-                                    </div>
+                            </div>
+                            <div class="tasks-progress-strip">
+                                <div class="tasks-progress-track"><div class="tasks-progress-bar" id="tasks-progress-bar"></div></div>
+                                <span class="tasks-progress-label"><span id="progress-percent">-</span> complete</span>
+                            </div>
+                            <div class="tasks-main">
+                                <div class="task-list tasks-list" id="tasks-list">
+                                    <div class="loading-state">Loading...</div>
+                                </div>
+                                <aside class="task-detail-panel" id="task-detail-panel">
+                                    <div class="empty-state">Select a task to see details</div>
+                                </aside>
+                            </div>
+                            <!-- Running processes share the surface (Q3/Q6); list rendering reused verbatim -->
+                            <div class="tasks-processes-section">
+                                <div class="tasks-processes-header">
+                                    <span class="tasks-processes-title">◈ Processes</span>
+                                    <span class="tasks-processes-counts">
+                                        Running <span id="proc-running-count">0</span> ·
+                                        Completed <span id="proc-completed-count">0</span> ·
+                                        Failed <span id="proc-failed-count">0</span> ·
+                                        Tasks <span id="proc-total-tasks">0</span>
+                                    </span>
+                                </div>
+                                <div id="process-list">
+                                    <div class="empty-state">No processes</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Processes Tab -->
-                    <div class="tab-pane" id="tab-processes">
-                        <!-- Process List -->
-                        <div id="process-list">
-                            <div class="empty-state">No processes</div>
-                        </div>
-                    </div>
-
                     <!-- Decisions Tab -->
-                    <div class="tab-pane" id="tab-decisions">
+                    <div class="tab-pane" id="tab-decisions" data-persona="stakeholder">
+                        <div class="decisions-header-strip">
+                            <div class="filter-chips" id="decision-filter-chips">
+                                <button class="filter-chip active" data-decision-filter="all">All <span class="chip-count" id="decision-count-total">0</span></button>
+                                <button class="filter-chip" data-decision-filter="proposed">Proposed <span class="chip-count" id="decision-count-proposed">0</span></button>
+                                <button class="filter-chip" data-decision-filter="accepted">Accepted <span class="chip-count" id="decision-count-accepted">0</span></button>
+                                <button class="filter-chip" data-decision-filter="deprecated">Deprecated <span class="chip-count" id="decision-count-deprecated">0</span></button>
+                                <button class="filter-chip" data-decision-filter="superseded">Superseded <span class="chip-count" id="decision-count-superseded">0</span></button>
+                            </div>
+                            <button class="ctrl-btn-sm primary" id="decision-create-btn">+ New Decision</button>
+                        </div>
                         <!-- Decision List (expandable rows grouped by status) -->
                         <div id="decision-list">
                             <div class="empty-state">No decisions yet. Create one or run the interview workflow to generate them automatically.</div>
@@ -692,6 +445,16 @@
 
                     <!-- Workflow Tab -->
                     <div class="tab-pane" id="tab-workflow">
+                      <div class="pane-with-nav">
+                        <div class="pane-nav">
+                            <div class="sidebar-section">
+                                <div class="sidebar-content" id="wf-nav-tree">
+                                    <div class="loading-state">Loading workflows...</div>
+                                </div>
+                            </div>
+                            <div id="prompts-sidebar" style="display:none"></div>
+                        </div>
+                        <div class="pane-body">
                         <!-- All workflow runs (concurrent runs + repeat instances), grouped by run -->
                         <div class="module workflow-runs-panel" id="workflow-runs-panel">
                             <div class="module-header">
@@ -724,14 +487,41 @@
                                 </div>
                             </div>
                         </div>
+                        </div><!-- /pane-body -->
+                      </div><!-- /pane-with-nav -->
                     </div>
 
                     <!-- Product Tab -->
-                    <div class="tab-pane" id="tab-product">
-                        <div class="product-viewer">
-                            <div class="product-content full-width">
-                                <div class="doc-viewer" id="doc-viewer">
-                                    <div class="doc-placeholder">Select a document from the left panel</div>
+                    <div class="tab-pane" id="tab-product" data-persona="stakeholder">
+                        <div class="pane-with-nav">
+                            <div class="pane-nav">
+                                <div class="sidebar-section" id="project-info-card">
+                                    <div class="sidebar-header">
+                                        <span class="sidebar-title">◈ Project</span>
+                                    </div>
+                                    <div class="sidebar-content">
+                                        <div class="project-info">
+                                            <div class="project-info-name" id="project-info-name">--</div>
+                                            <div class="project-info-workflow" id="project-info-workflow"></div>
+                                            <div class="project-info-summary" id="project-info-summary"></div>
+                                            <div class="project-info-path" id="project-info-path"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-header">
+                                        <span class="sidebar-title">◈ Product Docs</span>
+                                    </div>
+                                    <div class="sidebar-content" id="product-file-nav">
+                                        <div class="loading-state">Loading...</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="product-viewer">
+                                <div class="product-content full-width">
+                                    <div class="doc-viewer" id="doc-viewer">
+                                        <div class="doc-placeholder">Select a document from the left panel</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -739,6 +529,27 @@
 
                     <!-- Settings Tab -->
                     <div class="tab-pane" id="tab-settings">
+                      <div class="pane-with-nav">
+                        <div class="pane-nav">
+                            <div class="sidebar-section">
+                                <div class="sidebar-header">
+                                    <span class="sidebar-title">◈ Settings</span>
+                                </div>
+                                <div class="sidebar-content">
+                                    <div class="settings-nav">
+                                        <div class="settings-nav-item active" data-settings-section="theme">Theme</div>
+                                        <div class="settings-nav-item" data-settings-section="provider">Coding Agent</div>
+                                        <div class="settings-nav-item" data-settings-section="analysis">Analysis Phase</div>
+                                        <div class="settings-nav-item" data-settings-section="execution">Execution Phase</div>
+                                        <div class="settings-nav-item" data-settings-section="verification">Verification</div>
+                                        <div class="settings-nav-item" data-settings-section="costs">Costs</div>
+                                        <div class="settings-nav-item" data-settings-section="editor">Editor</div>
+                                        <div class="settings-nav-item" data-settings-section="mothership">Mothership</div>
+                                        <div class="settings-nav-item" data-settings-section="aether" id="aetherNavItem" style="display:none">Aether</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="settings-container">
                             <!-- Theme Section -->
                             <div class="settings-section" id="settings-theme">
@@ -751,7 +562,19 @@
                                             Choose a color theme for the control panel. Changes are saved automatically.
                                         </div>
                                         <div class="theme-grid" id="theme-grid">
-                                            <!-- Theme options populated by JS -->
+                                            <!-- Theme options populated by JS (Classics toggle + grid appended after) -->
+                                        </div>
+                                        <div class="settings-group">
+                                            <div class="setting-row">
+                                                <div class="setting-info">
+                                                    <span class="setting-label">Reduce Motion</span>
+                                                    <span class="setting-description">Stop the dispatch ticker scroll and ambient animation. Your OS reduce-motion preference is always respected regardless.</span>
+                                                </div>
+                                                <label class="toggle-switch">
+                                                    <input type="checkbox" id="setting-reduce-motion">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1085,7 +908,7 @@
                                                     <span class="setting-label">Test Connection</span>
                                                     <span class="setting-description" id="notif-test-status"></span>
                                                 </div>
-                                                <button class="btn btn-small" id="notif-test-btn">Test</button>
+                                                <button class="ctrl-btn-sm" id="notif-test-btn">Test</button>
                                             </div>
                                         </div>
 
@@ -1242,16 +1065,17 @@
                                 </div>
                             </div>
                         </div>
+                      </div><!-- /pane-with-nav -->
                     </div>
                 </div>
             </main>
-        </div>
-
         </div><!-- /shell-content -->
 
-        <!-- Dispatch ticker slot (static line; scroll behaviour lands with #607) -->
-        <footer class="shell-ticker">
+        <!-- Dispatch ticker (#607): static summary by default; click toggles the scrolling feed (modules/ticker.js) -->
+        <footer class="shell-ticker" id="shell-ticker" role="button" tabindex="0"
+                aria-label="Dispatch ticker — click to toggle between summary and event feed">
             <span class="shell-ticker-line">INSTANCE <span id="instance-id">--</span> · LAST UPDATE <span id="last-update">--:--:--</span> · <span id="footer-mission">◈ .bot autonomous development system</span></span>
+            <div class="shell-ticker-feed" aria-live="off"><div class="shell-ticker-feed-track" id="ticker-feed-track"></div></div>
             <span class="shell-ticker-byline">v4.0.0</span>
         </footer>
     </div>
@@ -1582,6 +1406,7 @@
     <script src="modules/layout.js"></script>
     <script src="modules/fleet.js"></script>
     <script src="modules/utils.js"></script>
+    <script src="modules/ticker.js"></script>
     <script src="modules/icons.js"></script>
     <script src="modules/theme.js"></script>
     <script src="modules/markdown.js"></script>
@@ -1594,6 +1419,7 @@
     <script src="modules/workflow-launch.js"></script>
     <script src="modules/tasks.js"></script>
     <script src="modules/roadmap-task-actions.js"></script>
+    <script src="modules/tasks-surface.js"></script>
     <script src="modules/processes.js"></script>
     <script src="modules/editor.js"></script>
     <script src="modules/controls.js"></script>

@@ -35,13 +35,13 @@ test.describe("Task list rendering (Roadmap tab)", () => {
       timeout: 10_000,
     });
 
-    await page.locator('.shell-rail-item[data-tab="pipeline"]').click();
-    await expect(page.locator("#tab-pipeline")).toHaveClass(/active/);
+    await page.locator('.shell-rail-item[data-tab="tasks"]').click();
+    await expect(page.locator("#tab-tasks")).toHaveClass(/active/);
 
-    const rows = page.locator("#upcoming-tasks .task-list-item");
+    const rows = page.locator("#tasks-list .task-list-item");
     await expect(rows).toHaveCount(3, { timeout: 10_000 });
 
-    const names = page.locator("#upcoming-tasks .task-list-item-name");
+    const names = page.locator("#tasks-list .task-list-item-name");
     await expect(names).toContainText([
       "list-spec-alpha",
       "list-spec-bravo",
@@ -54,10 +54,8 @@ test.describe("Task list rendering (Roadmap tab)", () => {
     await expect(page.locator("#todo-count")).toHaveText("0", {
       timeout: 10_000,
     });
-    await page.locator('.shell-rail-item[data-tab="pipeline"]').click();
-    await expect(page.locator("#upcoming-tasks .task-list-item")).toHaveCount(
-      0,
-    );
+    await page.locator('.shell-rail-item[data-tab="tasks"]').click();
+    await expect(page.locator("#tasks-list .task-list-item")).toHaveCount(0);
   });
 });
 
@@ -89,8 +87,8 @@ test.describe("Process list rendering (Processes tab)", () => {
     // Cannot use overview-active as a guard because index.html hardcodes
     // `class="tab active"` on the overview button.
     await expect(page.locator("body")).toHaveAttribute("data-app-ready", "1");
-    await page.locator('.shell-rail-item[data-tab="processes"]').click();
-    await expect(page.locator("#tab-processes")).toHaveClass(/active/);
+    await page.locator('.shell-rail-item[data-tab="tasks"]').click();
+    await expect(page.locator("#tab-tasks")).toHaveClass(/active/);
 
     const row = page.locator(
       `#process-list .process-row[data-process-id="${proc.id}"]`,
@@ -102,8 +100,8 @@ test.describe("Process list rendering (Processes tab)", () => {
   test("renders empty state when no process JSONs exist", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("body")).toHaveAttribute("data-app-ready", "1");
-    await page.locator('.shell-rail-item[data-tab="processes"]').click();
-    await expect(page.locator("#tab-processes")).toHaveClass(/active/);
+    await page.locator('.shell-rail-item[data-tab="tasks"]').click();
+    await expect(page.locator("#tab-tasks")).toHaveClass(/active/);
 
     await expect(page.locator("#process-list .empty-state")).toBeVisible({
       timeout: 10_000,
