@@ -255,6 +255,16 @@ $env:DOTBOT_MODEL_TIER = $modelTier
 # Callers may pass -BotRoot to override.
 Import-Module "$PSScriptRoot\..\Modules\Dotbot.Process\Dotbot.Process.psd1" -Force
 
+# Bind this worker's whole child subtree (claude.exe -> MCP server -> tool
+# children, plus git/preflight helpers) to the worker's lifetime via a Windows
+# kill-on-close Job Object (#645). The harness adapters clean up their process
+# tree in a 'finally' block, but that is skipped on an abrupt worker death
+# (console close, Stop-Process -Force, crash), leaking orphans that keep running
+# and consuming tokens. The job guarantees the kernel reaps the subtree however
+# the worker dies. Best-effort: a $false return means the OS wouldn't bind the
+# job, and the existing finally cleanup remains the graceful-exit path.
+$null = Register-DotbotKillOnCloseJob
+
 # InterviewLoop is imported from Invoke-WorkflowProcess.ps1 (the only consumer
 # after the legacy execution engine was removed), so it does not need to be loaded here.
 

@@ -246,6 +246,118 @@ Assert-True -Name "Add-JsonFrontMatter prepends JSON block" `
     -Message "Front matter not correctly prepended"
 
 # ===================================================================
+# Register-DotbotKillOnCloseJob (#645)
+# ===================================================================
+
+Write-Host "  REGISTER-DOTBOTKILLONCLOSEJOB" -ForegroundColor Cyan
+Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
+
+Assert-True -Name "Register-DotbotKillOnCloseJob is exported" `
+    -Condition ([bool](Get-Command Register-DotbotKillOnCloseJob -Module Dotbot.Process -ErrorAction SilentlyContinue)) `
+    -Message "Register-DotbotKillOnCloseJob should be exported from Dotbot.Process"
+
+if (-not $IsWindows) {
+    # Job Objects are Windows-only; the helper is a documented no-op elsewhere.
+    Assert-Equal -Name "Register-DotbotKillOnCloseJob returns false on non-Windows" `
+        -Expected $false -Actual (Register-DotbotKillOnCloseJob)
+} else {
+    # End-to-end: a worker binds itself to a kill-on-close job, spawns a
+    # child subtree (mid -> leaf, modelling claude.exe -> MCP server), then is
+    # force-killed WITHOUT running any cleanup. The kernel must reap the subtree.
+    $jobTestDir = Join-Path $testRoot "killjob"
+    New-Item -Path $jobTestDir -ItemType Directory -Force | Out-Null
+
+    $leafScript = Join-Path $jobTestDir "leaf.ps1"
+    $midScript = Join-Path $jobTestDir "mid.ps1"
+    $workerScript = Join-Path $jobTestDir "worker.ps1"
+    $pidFile = Join-Path $jobTestDir "pids.txt"
+    $bindResultFile = Join-Path $jobTestDir "bind.txt"
+
+    Set-Content -LiteralPath $leafScript -Encoding utf8NoBOM -Value 'Start-Sleep -Seconds 300'
+
+    Set-Content -LiteralPath $midScript -Encoding utf8NoBOM -Value @'
+param([string]$LeafScript, [string]$PidFile)
+$leaf = Start-Process pwsh -ArgumentList '-NoProfile', '-File', $LeafScript -WindowStyle Hidden -PassThru
+Set-Content -LiteralPath $PidFile -Value @("$PID", "$($leaf.Id)")
+Start-Sleep -Seconds 300
+'@
+
+    Set-Content -LiteralPath $workerScript -Encoding utf8NoBOM -Value @'
+param([string]$LoggingPsd1, [string]$ProcessPsd1, [string]$MidScript, [string]$LeafScript, [string]$PidFile, [string]$BindResultFile)
+Import-Module $LoggingPsd1 -Force -DisableNameChecking
+Import-Module $ProcessPsd1 -Force
+$bound = Register-DotbotKillOnCloseJob
+Set-Content -LiteralPath $BindResultFile -Value ([string]$bound)
+Start-Process pwsh -ArgumentList '-NoProfile', '-File', $MidScript, '-LeafScript', $LeafScript, '-PidFile', $PidFile -WindowStyle Hidden
+Start-Sleep -Seconds 300
+'@
+
+    $worker = $null
+    try {
+        $worker = Start-Process pwsh -PassThru -WindowStyle Hidden -ArgumentList @(
+            '-NoProfile', '-File', $workerScript,
+            '-LoggingPsd1', $dotBotLogPath,
+            '-ProcessPsd1', $modulePath,
+            '-MidScript', $midScript,
+            '-LeafScript', $leafScript,
+            '-PidFile', $pidFile,
+            '-BindResultFile', $bindResultFile
+        )
+
+        # Wait until the subtree records its PIDs (module compile + 3x pwsh spawn).
+        $descendants = $null
+        $readyDeadline = (Get-Date).AddSeconds(45)
+        while ((Get-Date) -lt $readyDeadline) {
+            if (Test-Path $pidFile) {
+                $lines = @(Get-Content $pidFile -ErrorAction SilentlyContinue | Where-Object { $_ -match '^\d+$' })
+                if ($lines.Count -ge 2) { $descendants = $lines | ForEach-Object { [int]$_ }; break }
+            }
+            Start-Sleep -Milliseconds 250
+        }
+
+        $bindResult = if (Test-Path $bindResultFile) { (Get-Content $bindResultFile -Raw).Trim() } else { "" }
+        Assert-Equal -Name "Register-DotbotKillOnCloseJob binds the worker (returns true)" `
+            -Expected "True" -Actual $bindResult
+
+        Assert-True -Name "Worker subtree started (descendant PIDs recorded)" `
+            -Condition ($null -ne $descendants) `
+            -Message "Worker never recorded its descendant PIDs within the timeout"
+
+        if ($descendants) {
+            $midPid, $leafPid = $descendants[0], $descendants[1]
+
+            # Abrupt kill -- the worker's in-process cleanup never runs.
+            Stop-Process -Id $worker.Id -Force
+
+            # Poll for the subtree to be reaped by the kernel.
+            $reapDeadline = (Get-Date).AddSeconds(20)
+            do {
+                $midAlive = [bool](Get-Process -Id $midPid -ErrorAction SilentlyContinue)
+                $leafAlive = [bool](Get-Process -Id $leafPid -ErrorAction SilentlyContinue)
+                if (-not $midAlive -and -not $leafAlive) { break }
+                Start-Sleep -Milliseconds 250
+            } while ((Get-Date) -lt $reapDeadline)
+
+            Assert-True -Name "Force-killing worker reaps child (claude.exe stand-in)" `
+                -Condition (-not $midAlive) `
+                -Message "Child PID $midPid survived as an orphan after worker was force-killed"
+            Assert-True -Name "Force-killing worker reaps grandchild (MCP stand-in)" `
+                -Condition (-not $leafAlive) `
+                -Message "Grandchild PID $leafPid survived as an orphan after worker was force-killed"
+
+            # Belt-and-braces cleanup in case an assertion above failed.
+            # Stop-Process -ErrorAction SilentlyContinue does not throw on an
+            # already-dead PID, so no try/catch is needed.
+            foreach ($p in @($midPid, $leafPid)) {
+                Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
+            }
+        }
+    } finally {
+        if ($worker) { Stop-Process -Id $worker.Id -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+# ===================================================================
 # CLEANUP
 # ===================================================================
 
