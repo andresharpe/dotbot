@@ -989,6 +989,7 @@ function Register-DotbotKillOnCloseJob {
     # parent's children re-parent to init and are reachable via pkill at teardown,
     # so this returns $false there and the existing cleanup path stands.
     if (-not $IsWindows) { return $false }
+    # Fast path: already bound in this module instance.
     if ($script:DotbotKillJobHandle -ne [IntPtr]::Zero) { return $true }
 
     try {
@@ -1033,6 +1034,15 @@ public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
 private const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
 private const int JobObjectExtendedLimitInformation = 9;
 
+// Win32 error captured at the point a P/Invoke below failed, so the
+// best-effort PowerShell caller can log *why* the OS declined to bind.
+public static int LastError;
+
+// Set once the current process is bound. Lives on the type, so it survives an
+// Import-Module -Force (which recreates the module's $script: scope but leaves
+// the compiled type in the AppDomain), keeping the bind truly idempotent.
+public static bool Bound;
+
 [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
 private static extern IntPtr CreateJobObjectW(IntPtr lpJobAttributes, string lpName);
 
@@ -1049,8 +1059,9 @@ private static extern IntPtr GetCurrentProcess();
 public static extern bool CloseHandle(IntPtr hObject);
 
 public static IntPtr CreateKillOnCloseJob() {
+    LastError = 0;
     IntPtr job = CreateJobObjectW(IntPtr.Zero, null);
-    if (job == IntPtr.Zero) { return IntPtr.Zero; }
+    if (job == IntPtr.Zero) { LastError = Marshal.GetLastWin32Error(); return IntPtr.Zero; }
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
     info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     int length = Marshal.SizeOf(info);
@@ -1058,6 +1069,8 @@ public static IntPtr CreateKillOnCloseJob() {
     try {
         Marshal.StructureToPtr(info, ptr, false);
         if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, ptr, (uint)length)) {
+            // Capture the failure code before CloseHandle overwrites it.
+            LastError = Marshal.GetLastWin32Error();
             CloseHandle(job);
             return IntPtr.Zero;
         }
@@ -1068,15 +1081,22 @@ public static IntPtr CreateKillOnCloseJob() {
 }
 
 public static bool AssignCurrentProcess(IntPtr job) {
-    return AssignProcessToJobObject(job, GetCurrentProcess());
+    LastError = 0;
+    bool ok = AssignProcessToJobObject(job, GetCurrentProcess());
+    if (!ok) { LastError = Marshal.GetLastWin32Error(); }
+    return ok;
 }
 '@
         }
 
+        # Survives Import-Module -Force: the flag lives on the type, which stays in
+        # the AppDomain even though the fast-path $script: var above was reset.
+        if ([Dotbot.JobObjectNative]::Bound) { return $true }
+
         $job = [Dotbot.JobObjectNative]::CreateKillOnCloseJob()
         if ($job -eq [IntPtr]::Zero) {
             if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-                Write-BotLog -Level Debug -Message "Kill-on-close job: CreateJobObject/SetInformationJobObject failed; relying on existing cleanup"
+                Write-BotLog -Level Debug -Message "Kill-on-close job: CreateJobObject/SetInformationJobObject failed (Win32 error $([Dotbot.JobObjectNative]::LastError)); relying on existing cleanup"
             }
             return $false
         }
@@ -1084,15 +1104,17 @@ public static bool AssignCurrentProcess(IntPtr job) {
         if (-not [Dotbot.JobObjectNative]::AssignCurrentProcess($job)) {
             [void][Dotbot.JobObjectNative]::CloseHandle($job)
             if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
-                Write-BotLog -Level Debug -Message "Kill-on-close job: AssignProcessToJobObject failed; relying on existing cleanup"
+                Write-BotLog -Level Debug -Message "Kill-on-close job: AssignProcessToJobObject failed (Win32 error $([Dotbot.JobObjectNative]::LastError)); relying on existing cleanup"
             }
             return $false
         }
 
         # Keep the handle open for the whole process lifetime. Do NOT close it:
         # the OS closes it on process death (however abrupt), and that is exactly
-        # what fires KILL_ON_JOB_CLOSE and reaps the subtree. Held in a
-        # script-scoped var as an explicit strong reference.
+        # what fires KILL_ON_JOB_CLOSE and reaps the subtree. The OS owns the
+        # handle's lifetime; the script-scoped var is the in-session idempotency
+        # marker (a raw IntPtr is not GC-tracked, so no strong ref is needed).
+        [Dotbot.JobObjectNative]::Bound = $true
         $script:DotbotKillJobHandle = $job
         if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
             Write-BotLog -Level Debug -Message "Kill-on-close job: current process (PID $PID) bound; descendants reaped on exit"
