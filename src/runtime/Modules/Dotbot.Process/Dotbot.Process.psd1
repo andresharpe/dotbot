@@ -27,6 +27,8 @@
         'Test-WorkflowComplete'
         # Child process spawning
         'Start-DotbotChildProcess'
+        # Process-tree lifetime binding
+        'Register-DotbotKillOnCloseJob'
     )
 
     CmdletsToExport   = @()
