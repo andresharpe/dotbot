@@ -942,6 +942,75 @@ function Start-DotbotChildProcess {
     Start-Process @params
 }
 
+function Write-DotbotCrashSummary {
+    <#
+    .SYNOPSIS
+    Persist a best-effort crash summary for `dotbot logs --last` and
+    `dotbot runtime-status`.
+
+    .DESCRIPTION
+    Writes <BotRoot>/.control/last-crash.json with the exit reason, the last
+    task, and the tail of the crashed process's activity log so an operator can
+    see what happened after the terminal window has closed. Overwrites any
+    previous summary — only the most recent crash is kept. Never throws: it runs
+    from the process crash trap, where a secondary failure must not mask the
+    original error.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$ProcessId,
+        [object]$Process,
+        [string]$Reason,
+        [int]$MaxEvents = 20,
+        [string]$BotRoot
+    )
+
+    try {
+        $controlDir   = Get-ProcessControlDir -BotRoot $BotRoot
+        $processesDir = Get-ProcessesDir -BotRoot $BotRoot
+
+        $lastEvents = @()
+        $activityPath = Join-Path $processesDir "$ProcessId.activity.jsonl"
+        if (Test-Path -LiteralPath $activityPath) {
+            try {
+                $stream = [System.IO.FileStream]::new($activityPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                try {
+                    $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8)
+                    try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+                } finally { $stream.Dispose() }
+
+                $lines = @($text -split "`n" | Where-Object { $_.Trim() })
+                $tail = if ($lines.Count -gt $MaxEvents) { $lines[($lines.Count - $MaxEvents)..($lines.Count - 1)] } else { $lines }
+                foreach ($ln in $tail) {
+                    try { $lastEvents += ($ln | ConvertFrom-Json) } catch { $null = $_ }
+                }
+            } catch { $null = $_ }
+        }
+
+        $summary = [ordered]@{
+            timestamp   = (Get-Date).ToUniversalTime().ToString("o")
+            process_id  = $ProcessId
+            run_id      = if ($Process -and $Process.run_id) { $Process.run_id } else { $null }
+            exit_reason = $Reason
+            last_task   = [ordered]@{
+                id     = if ($Process) { $Process.task_id } else { $null }
+                name   = if ($Process) { $Process.task_name } else { $null }
+                status = if ($Process) { $Process.status } else { $null }
+            }
+            last_events = @($lastEvents)
+        }
+
+        if (-not (Test-Path -LiteralPath $controlDir)) {
+            New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
+        }
+        $crashPath = Join-Path $controlDir "last-crash.json"
+        $json = $summary | ConvertTo-Json -Depth 8
+        [System.IO.File]::WriteAllText($crashPath, $json, [System.Text.UTF8Encoding]::new($false))
+    } catch {
+        # Best-effort only — never let crash-summary writing mask the original failure.
+        $null = $_
+    }
+}
+
 #endregion
 
 Export-ModuleMember -Function @(
@@ -961,4 +1030,6 @@ Export-ModuleMember -Function @(
     'Test-WorkflowComplete'
     # Child process spawning (low-level)
     'Start-DotbotChildProcess'
+    # Crash diagnostics
+    'Write-DotbotCrashSummary'
 )
