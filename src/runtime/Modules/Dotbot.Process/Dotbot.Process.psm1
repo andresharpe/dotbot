@@ -278,15 +278,44 @@ function Remove-ProcessLock {
     Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
 }
 
+function Test-DotbotPreflightCommand {
+    # Resolves a dependency across process + registry Machine/User PATH scopes
+    # (Windows split-PATH fix), repairing the session PATH on a registry hit so
+    # downstream spawns work. Falls back to plain Get-Command when the resolver
+    # is unavailable (stale vendored Dotbot.Core).
+    param([Parameter(Mandatory)][string]$Name)
+
+    if (Get-Command Resolve-DotbotExternalCommand -ErrorAction SilentlyContinue) {
+        return Resolve-DotbotExternalCommand -Name $Name -RepairSessionPath
+    }
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) { return @{ Found = $true; Name = $Name; Scope = 'Process' } }
+    return @{ Found = $false; Name = $Name }
+}
+
+function Get-DotbotPreflightCheckText {
+    # Check line for a resolved dependency. Registry-scope hits name the tool,
+    # the PATH scope it was found in, and how to fix the split permanently.
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][hashtable]$Resolution
+    )
+
+    if ($Resolution.Scope -in @('Machine', 'User')) {
+        return "${Name}: OK (found via $($Resolution.Scope) PATH: $($Resolution.Directory); missing from this process PATH - session PATH repaired; restart your terminal to fix it permanently)"
+    }
+    return "${Name}: OK"
+}
+
 function Test-Preflight {
     param([string]$BotRoot)
     $root = Resolve-DotbotBotRoot -BotRoot $BotRoot
     $checks = @()
     $allPassed = $true
 
-    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-    if ($gitCmd) {
-        $checks += "git: OK"
+    $gitRes = Test-DotbotPreflightCommand -Name 'git'
+    if ($gitRes.Found) {
+        $checks += Get-DotbotPreflightCheckText -Name 'git' -Resolution $gitRes
     } else {
         $checks += "git: MISSING - git not found on PATH"
         $allPassed = $false
@@ -302,9 +331,9 @@ function Test-Preflight {
     if ($providerConfig) {
         $providerExe = $providerConfig.executable
         $providerDisplay = $providerConfig.display_name
-        $providerCmd = Get-Command $providerExe -ErrorAction SilentlyContinue
-        if ($providerCmd) {
-            $checks += "${providerExe}: OK"
+        $providerRes = Test-DotbotPreflightCommand -Name $providerExe
+        if ($providerRes.Found) {
+            $checks += Get-DotbotPreflightCheckText -Name $providerExe -Resolution $providerRes
         } else {
             $checks += "${providerExe}: MISSING - $providerDisplay CLI not found on PATH"
             $allPassed = $false
