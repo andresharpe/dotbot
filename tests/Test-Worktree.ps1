@@ -426,6 +426,37 @@ try {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# Assert-OnBaseBranch on unborn HEAD (regression: #659)
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  Assert-OnBaseBranch — unborn repo" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Fresh `git init` with no commits used to throw "Cannot find base branch",
+# surfaced as a scary "Branch guard warning" on the very first workflow run
+# of a new project. The check should silently no-op instead — the first task
+# creates the base branch via its orphan worktree squash-merge.
+$unbornRepo = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-unborn-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+New-Item -ItemType Directory -Path $unbornRepo -Force | Out-Null
+try {
+    & git -C $unbornRepo init --quiet 2>$null | Out-Null
+    $threw = $false
+    $result = $null
+    try {
+        $result = Assert-OnBaseBranch -ProjectRoot $unbornRepo
+    } catch {
+        $threw = $true
+    }
+    Assert-True  -Name "Assert-OnBaseBranch — does not throw on unborn HEAD" -Condition (-not $threw)
+    Assert-True  -Name "Assert-OnBaseBranch — returns null on unborn HEAD"    -Condition ($null -eq $result)
+    & git -C $unbornRepo rev-parse --verify HEAD 2>$null | Out-Null
+    Assert-True  -Name "Assert-OnBaseBranch — does not create a commit"       -Condition ($LASTEXITCODE -ne 0)
+} finally {
+    Remove-Item -Path $unbornRepo -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # Summary
 # ═══════════════════════════════════════════════════════════════════
 

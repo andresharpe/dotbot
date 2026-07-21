@@ -42,6 +42,9 @@
         'Test-ManifestCondition'
         'Test-CanStartRun'
         'Test-GitReadyForWorktree'
+        'ConvertTo-DotbotGitVersion'
+        'Get-DotbotGitVersion'
+        'Get-MinDotbotGitVersion'
 
         # TaskDefinition
         'Get-TaskDefinitionFields'
