@@ -1706,11 +1706,12 @@ try {
             }
 
             if ($typeSuccess) {
-                Write-Status "Merging task branch to main..." -Type Process
+                $mergeTargetLabel = if ($integrationBranch) { $integrationBranch } else { 'main' }
+                Write-Status "Merging task branch to $mergeTargetLabel..." -Type Process
                 $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot -SkipRemotePush:($null -ne $integrationBranch)
                 if ($mergeResult.success) {
                     Write-Status "Merged: $($mergeResult.message)" -Type Complete
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to main: $($task.name)"
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to ${mergeTargetLabel}: $($task.name)"
                     if ($mergeResult.push_result.attempted) {
                         if ($mergeResult.push_result.success) {
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Pushed to remote: $($task.name)"
@@ -2281,13 +2282,14 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         } elseif ($taskSuccess) {
             $mergeCompleted = $true
 
-            # Squash-merge task branch to main
+            # Squash-merge task branch to main (or the run's integration branch)
             if ($worktreePath) {
-                Write-Status "Merging task branch to main..." -Type Process
+                $mergeTargetLabel = if ($integrationBranch) { $integrationBranch } else { 'main' }
+                Write-Status "Merging task branch to $mergeTargetLabel..." -Type Process
                 $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot -SkipRemotePush:($null -ne $integrationBranch)
                 if ($mergeResult.success) {
                     Write-Status "Merged: $($mergeResult.message)" -Type Complete
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to main: $($task.name)"
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to ${mergeTargetLabel}: $($task.name)"
                     if ($mergeResult.push_result.attempted) {
                         if ($mergeResult.push_result.success) {
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Pushed to remote: $($task.name)"
