@@ -27,6 +27,8 @@
         'Test-WorkflowComplete'
         # Child process spawning
         'Start-DotbotChildProcess'
+        # Crash diagnostics
+        'Write-DotbotCrashSummary'
     )
 
     CmdletsToExport   = @()

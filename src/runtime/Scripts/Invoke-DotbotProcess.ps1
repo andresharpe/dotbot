@@ -318,6 +318,7 @@ trap {
         $processData.error = "Unexpected termination: $($_.Exception.Message)"
         try { Write-ProcessFile -Id $procId -Data $processData } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
         try { Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process terminated unexpectedly: $($_.Exception.Message)" } catch { Write-BotLog -Level Warn -Message "Failed to write process activity" -Exception $_ }
+        try { Write-DotbotCrashSummary -BotRoot $botRoot -ProcessId $procId -Process $processData -Reason $processData.error } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
     }
     if (Test-Path variable:lockKey) {
         try { Remove-ProcessLock -LockType $lockKey } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
