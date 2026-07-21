@@ -413,6 +413,151 @@ function Update-ProcessHeartbeatFields {
 
 #endregion
 
+#region External Command Resolution
+
+# On Windows, Machine PATH and User PATH are merged into the process PATH at
+# login, but a spawned process can inherit a PATH missing one scope (e.g. Git
+# installed system-wide -> Machine PATH, a provider CLI installed per-user ->
+# User PATH). Get-Command only searches the process PATH, so tools that are
+# installed and registered on the machine get reported as missing. These
+# helpers resolve commands across all three scopes and can repair the session
+# PATH so downstream Get-Command calls and process spawns succeed.
+
+$script:ExternalCommandProbeExtensions = @('exe', 'cmd', 'bat', 'ps1')
+
+function Get-DotbotRegistryPathDirectories {
+    # Windows-only: PATH directories registered in a registry scope.
+    param([Parameter(Mandatory)][ValidateSet('Machine', 'User')][string]$Scope)
+
+    if (-not $IsWindows) { return @() }
+    $raw = [Environment]::GetEnvironmentVariable('Path', $Scope)
+    if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+    return @($raw -split [IO.Path]::PathSeparator | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Find-DotbotCommandInDirectory {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Directory
+    )
+
+    $probes = if ([IO.Path]::GetExtension($Name)) {
+        @($Name)
+    } else {
+        @($script:ExternalCommandProbeExtensions | ForEach-Object { "$Name.$_" })
+    }
+    foreach ($probe in $probes) {
+        try {
+            $candidate = Join-Path $Directory $probe
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+        } catch {
+            # Malformed PATH entries throw on Join-Path/Test-Path; skip them.
+        }
+    }
+    return $null
+}
+
+function Resolve-DotbotExternalCommand {
+    <#
+    .SYNOPSIS
+    Resolves an external command via the process PATH, falling back to the
+    registry Machine and User PATH scopes on Windows.
+
+    .DESCRIPTION
+    Returns a hashtable: @{ Found; Name; Source; Directory; Scope; Repaired }
+    where Scope is 'Process', 'Machine', or 'User'. With -RepairSessionPath,
+    a registry-scope hit appends the containing directory to the process
+    $env:PATH so later Get-Command calls and spawns in this process succeed.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [switch]$RepairSessionPath
+    )
+
+    $cmd = Get-Command -Name $Name -CommandType Application, ExternalScript -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($cmd) {
+        $source = if ($cmd.PSObject.Properties['Source'] -and $cmd.Source) { $cmd.Source } else { $cmd.Path }
+        return @{
+            Found     = $true
+            Name      = $Name
+            Source    = $source
+            Directory = (Split-Path $source -Parent)
+            Scope     = 'Process'
+            Repaired  = $false
+        }
+    }
+
+    if (-not $IsWindows) {
+        return @{ Found = $false; Name = $Name }
+    }
+
+    foreach ($scope in @('Machine', 'User')) {
+        foreach ($dir in (Get-DotbotRegistryPathDirectories -Scope $scope)) {
+            $hit = Find-DotbotCommandInDirectory -Name $Name -Directory $dir
+            if (-not $hit) { continue }
+
+            $repaired = $false
+            if ($RepairSessionPath) {
+                $normalized = $dir.TrimEnd('\', '/')
+                $present = @($env:PATH -split [IO.Path]::PathSeparator) |
+                    Where-Object { $_ -and ($_.TrimEnd('\', '/') -ieq $normalized) }
+                if (-not $present) {
+                    $env:PATH = $env:PATH + [IO.Path]::PathSeparator + $dir
+                }
+                $repaired = $true
+            }
+
+            return @{
+                Found     = $true
+                Name      = $Name
+                Source    = $hit
+                Directory = $dir
+                Scope     = $scope
+                Repaired  = $repaired
+            }
+        }
+    }
+
+    return @{ Found = $false; Name = $Name }
+}
+
+function Repair-DotbotProcessPath {
+    <#
+    .SYNOPSIS
+    Merges registry Machine/User PATH directories missing from the process
+    PATH into $env:PATH (Windows split-PATH repair).
+
+    .DESCRIPTION
+    Returns the list of appended directories. No-op on non-Windows platforms
+    and when DOTBOT_SKIP_PATH_REPAIR is set. Runs once per module load unless
+    -Force is passed; the merge is append-only, so repeats are harmless.
+    #>
+    param([switch]$Force)
+
+    if (-not $IsWindows) { return @() }
+    if ($env:DOTBOT_SKIP_PATH_REPAIR) { return @() }
+    if ($script:DotbotProcessPathRepaired -and -not $Force) { return @() }
+    $script:DotbotProcessPathRepaired = $true
+
+    $processDirs = @($env:PATH -split [IO.Path]::PathSeparator |
+        Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\', '/') })
+    $appended = @()
+    foreach ($scope in @('Machine', 'User')) {
+        foreach ($dir in (Get-DotbotRegistryPathDirectories -Scope $scope)) {
+            $normalized = $dir.TrimEnd('\', '/')
+            $known = @($processDirs) | Where-Object { $_ -ieq $normalized }
+            if ($known) { continue }
+            $env:PATH = $env:PATH + [IO.Path]::PathSeparator + $dir
+            $processDirs += $normalized
+            $appended += $dir
+        }
+    }
+    return $appended
+}
+
+#endregion
+
 Export-ModuleMember -Function @(
     'Get-DotbotInstallPath'
     'Get-DotbotProjectLocalInstallPath'
@@ -429,4 +574,6 @@ Export-ModuleMember -Function @(
     'Remove-AbsolutePaths'
     'ConvertTo-SanitizedConsoleText'
     'Update-ProcessHeartbeatFields'
+    'Resolve-DotbotExternalCommand'
+    'Repair-DotbotProcessPath'
 )

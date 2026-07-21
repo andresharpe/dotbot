@@ -25,6 +25,9 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
 }
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 
+# Dotbot.Core provides Resolve-DotbotExternalCommand (split-PATH detection).
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
+
 # Dotbot.Theme is optional here — it lights up the summary grid and separators.
 # If a project ships without it (e.g. doctor invoked before .bot is fully
 # materialized) the script must still run with Platform-Functions alone.
@@ -77,28 +80,46 @@ if (-not (Test-Path $BotRoot)) {
 
 Write-DotbotSection -Title "DEPENDENCIES"
 
+# Emits the Warn + fix guidance for a dependency that is registered in the
+# Machine/User registry PATH but missing from this process PATH. Doctor
+# diagnoses the split instead of repairing it - repairing here would erase
+# the very condition being reported.
+function Write-SplitPathCheck {
+    param([string]$Label, [hashtable]$Resolution)
+    Write-Check $Label "found via $($Resolution.Scope) PATH but missing from this process PATH (split PATH detected)" Warn
+    Write-DotbotCommand "Fix this session:  `$env:PATH += ';$($Resolution.Directory)'"
+    Write-DotbotCommand "Fix permanently:   restart your terminal (or the app that launched it) so it re-merges the $($Resolution.Scope) PATH"
+}
+
 # git
-if (Get-Command git -ErrorAction SilentlyContinue) {
+$gitRes = Resolve-DotbotExternalCommand -Name 'git'
+if ($gitRes.Found -and $gitRes.Scope -eq 'Process') {
     Write-Check "git" "found" Pass
+} elseif ($gitRes.Found) {
+    Write-SplitPathCheck -Label "git" -Resolution $gitRes
 } else {
-    Write-Check "git" "not found on PATH" Fail
+    Write-Check "git" "not found in process, Machine, or User PATH" Fail
 }
 
 # Provider CLI (claude, codex, Antigravity's agy, OpenCode, or GitHub Copilot CLI)
 $providerFound = $false
 foreach ($exe in @('claude', 'claude.exe', 'codex', 'codex.exe', 'agy', 'agy.exe', 'opencode', 'opencode.exe', 'copilot', 'copilot.exe')) {
-    if (Get-Command $exe -ErrorAction SilentlyContinue) {
+    $provRes = Resolve-DotbotExternalCommand -Name $exe
+    if (-not $provRes.Found) { continue }
+    if ($provRes.Scope -eq 'Process') {
         Write-Check "Provider CLI" "$exe found" Pass
-        $providerFound = $true
-        break
+    } else {
+        Write-SplitPathCheck -Label "Provider CLI ($exe)" -Resolution $provRes
     }
+    $providerFound = $true
+    break
 }
-if (-not $providerFound -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+if (-not $providerFound -and (Resolve-DotbotExternalCommand -Name 'gh').Found) {
     Write-Check "Provider CLI" "gh found (can run preview 'gh copilot')" Pass
     $providerFound = $true
 }
 if (-not $providerFound) {
-    Write-Check "Provider CLI" "no provider CLI found (claude/codex/agy/opencode/copilot)" Fail
+    Write-Check "Provider CLI" "no provider CLI found (claude/codex/agy/opencode/copilot) in process, Machine, or User PATH" Fail
 }
 
 Write-BlankLine

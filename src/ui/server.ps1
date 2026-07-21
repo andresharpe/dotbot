@@ -34,6 +34,10 @@ Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "D
 Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Process" "Dotbot.Process.psd1") -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot ".." "cli" "Platform-Functions.psm1") -Force
 
+# Merge registry Machine/User PATH into this process so provider/editor
+# probes in the API modules see every installed tool (Windows split-PATH fix).
+$null = Repair-DotbotProcessPath
+
 # Establish a stable correlation_id for the UI server's lifetime so events
 # emitted from request handlers (e.g. /api/aether/scan) carry a value that
 # joins them to the rest of the server's activity stream. Unconditional —

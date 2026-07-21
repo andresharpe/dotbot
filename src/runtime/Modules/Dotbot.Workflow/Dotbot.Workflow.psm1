@@ -1498,8 +1498,15 @@ function Test-GitReadyForWorktree {
         }
     }
 
-    $gitExe = Get-Command git -ErrorAction SilentlyContinue
-    if (-not $gitExe) {
+    # Resolve git across process + registry Machine/User PATH scopes when the
+    # resolver is available (Windows split-PATH fix); repair the session PATH
+    # on a registry hit so the `& git` calls below work.
+    $gitAvailable = if (Get-Command Resolve-DotbotExternalCommand -ErrorAction SilentlyContinue) {
+        (Resolve-DotbotExternalCommand -Name 'git' -RepairSessionPath).Found
+    } else {
+        [bool](Get-Command git -ErrorAction SilentlyContinue)
+    }
+    if (-not $gitAvailable) {
         return @{
             ok      = $false
             reason  = 'git_unavailable'
