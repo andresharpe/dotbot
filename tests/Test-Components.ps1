@@ -694,6 +694,82 @@ if (Test-Path $worktreeManagerModule) {
         Remove-TestProject -Path $completeRoot
     }
 
+    # Regression (#655): a multi-task workflow run passes -SkipRemotePush so
+    # the shared base branch is pushed once at the end of the run instead of
+    # once per task completion — each push fires the remote's full CI
+    # pipeline, so N tasks previously meant N CI runs.
+    $pushProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-complete-push'
+    $pushRoot = $pushProj.ProjectRoot
+    $pushBot = $pushProj.BotDir
+    $pushBareRemote = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-push-remote-$([System.Guid]::NewGuid().ToString().Substring(0,8)).git"
+    $pushResultA = $null
+    $pushResultB = $null
+    try {
+        Push-Location $pushRoot
+        & git branch -M main 2>&1 | Out-Null
+        Pop-Location
+
+        & git init --bare --quiet $pushBareRemote 2>&1 | Out-Null
+        & git -C $pushRoot remote add origin $pushBareRemote 2>&1 | Out-Null
+
+        $pushTaskIdA = "t_pushA001"
+        $pushResultA = New-TaskWorktree -TaskId $pushTaskIdA -TaskName "skip remote push task" `
+            -ProjectRoot $pushRoot -BotRoot $pushBot
+        Assert-True -Name "SkipRemotePush regression: first New-TaskWorktree returns success" `
+            -Condition ($pushResultA -and $pushResultA.success -eq $true) `
+            -Message "Expected New-TaskWorktree success, got: $($pushResultA | ConvertTo-Json -Compress)"
+
+        if ($pushResultA -and $pushResultA.success -and (Test-Path $pushResultA.worktree_path)) {
+            "skip push artifact" | Set-Content -Path (Join-Path $pushResultA.worktree_path "skip-push-artifact.txt") -Encoding UTF8
+
+            $pushMergeA = Complete-TaskWorktree -TaskId $pushTaskIdA -ProjectRoot $pushRoot -BotRoot $pushBot -SkipRemotePush
+            Assert-True -Name "SkipRemotePush regression: merge succeeds with -SkipRemotePush" `
+                -Condition ($pushMergeA.success -eq $true) `
+                -Message "Expected success, got: $($pushMergeA | ConvertTo-Json -Depth 10 -Compress)"
+            Assert-True -Name "SkipRemotePush regression: push not attempted" `
+                -Condition ($pushMergeA.push_result.attempted -eq $false) `
+                -Message "Expected push_result.attempted false, got: $($pushMergeA.push_result | ConvertTo-Json -Compress)"
+
+            & git -C $pushBareRemote rev-parse --verify main 2>$null | Out-Null
+            Assert-True -Name "SkipRemotePush regression: origin main ref not created" `
+                -Condition ($LASTEXITCODE -ne 0)
+        }
+
+        $pushTaskIdB = "t_pushB002"
+        $pushResultB = New-TaskWorktree -TaskId $pushTaskIdB -TaskName "default push task" `
+            -ProjectRoot $pushRoot -BotRoot $pushBot
+        Assert-True -Name "SkipRemotePush regression: second New-TaskWorktree returns success" `
+            -Condition ($pushResultB -and $pushResultB.success -eq $true) `
+            -Message "Expected New-TaskWorktree success, got: $($pushResultB | ConvertTo-Json -Compress)"
+
+        if ($pushResultB -and $pushResultB.success -and (Test-Path $pushResultB.worktree_path)) {
+            "default push artifact" | Set-Content -Path (Join-Path $pushResultB.worktree_path "default-push-artifact.txt") -Encoding UTF8
+
+            $pushMergeB = Complete-TaskWorktree -TaskId $pushTaskIdB -ProjectRoot $pushRoot -BotRoot $pushBot
+            Assert-True -Name "SkipRemotePush regression: default merge succeeds" `
+                -Condition ($pushMergeB.success -eq $true) `
+                -Message "Expected success, got: $($pushMergeB | ConvertTo-Json -Depth 10 -Compress)"
+            Assert-True -Name "SkipRemotePush regression: default push attempted and succeeds" `
+                -Condition ($pushMergeB.push_result.attempted -eq $true -and $pushMergeB.push_result.success -eq $true) `
+                -Message "Expected push attempted+success, got: $($pushMergeB.push_result | ConvertTo-Json -Compress)"
+
+            & git -C $pushBareRemote rev-parse --verify main 2>$null | Out-Null
+            Assert-True -Name "SkipRemotePush regression: origin main ref created after default push" `
+                -Condition ($LASTEXITCODE -eq 0)
+        }
+    } finally {
+        foreach ($pr in @($pushResultA, $pushResultB)) {
+            if ($pr -and $pr.worktree_path -and (Test-Path $pr.worktree_path)) {
+                & git -C $pushRoot worktree remove -f $pr.worktree_path 2>&1 | Out-Null
+            }
+            if ($pr -and $pr.branch_name) {
+                & git -C $pushRoot branch -D $pr.branch_name 2>&1 | Out-Null
+            }
+        }
+        Remove-TestProject -Path $pushRoot
+        Remove-Item -LiteralPath $pushBareRemote -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     $unbornRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-unborn-complete-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
     $unbornBot = Join-Path $unbornRoot ".bot"
     $earlierUnbornResult = $null

@@ -1625,7 +1625,13 @@ function Complete-TaskWorktree {
     param(
         [Parameter(Mandatory)][string]$TaskId,
         [Parameter(Mandatory)][string]$ProjectRoot,
-        [Parameter(Mandatory)][string]$BotRoot
+        [Parameter(Mandatory)][string]$BotRoot,
+        # Skip the auto-push to remote. Set by callers running a multi-task
+        # workflow run, where the base branch is a shared integration branch
+        # that only needs to reach origin once — after the last task — instead
+        # of on every single task completion (each push fires the remote's
+        # full CI pipeline).
+        [switch]$SkipRemotePush
     )
 
     $map = Read-WorktreeMap -BotRoot $BotRoot
@@ -1891,16 +1897,22 @@ function Complete-TaskWorktree {
             }
         }
 
-        # Auto-push to remote if one is configured
+        # Auto-push to remote if one is configured. Skipped when the caller is
+        # driving a multi-task run against a shared integration branch — that
+        # branch is pushed once at the end of the run instead (see
+        # Invoke-WorkflowProcess.ps1), so intermediate task completions don't
+        # each trigger a remote CI run against it.
         $pushResult = @{ attempted = $false; success = $false; error = $null }
-        $remoteUrl = git -C $ProjectRoot remote get-url origin 2>$null
-        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($remoteUrl)) {
-            $pushResult.attempted = $true
-            $pushOutput = git -C $ProjectRoot push origin $baseBranch 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                $pushResult.success = $true
-            } else {
-                $pushResult.error = ($pushOutput | Out-String).Trim()
+        if (-not $SkipRemotePush) {
+            $remoteUrl = git -C $ProjectRoot remote get-url origin 2>$null
+            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($remoteUrl)) {
+                $pushResult.attempted = $true
+                $pushOutput = git -C $ProjectRoot push origin $baseBranch 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    $pushResult.success = $true
+                } else {
+                    $pushResult.error = ($pushOutput | Out-String).Trim()
+                }
             }
         }
 
