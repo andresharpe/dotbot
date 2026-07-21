@@ -1707,7 +1707,7 @@ try {
 
             if ($typeSuccess) {
                 Write-Status "Merging task branch to main..." -Type Process
-                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot
+                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot -SkipRemotePush:($null -ne $integrationBranch)
                 if ($mergeResult.success) {
                     Write-Status "Merged: $($mergeResult.message)" -Type Complete
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to main: $($task.name)"
@@ -2284,7 +2284,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             # Squash-merge task branch to main
             if ($worktreePath) {
                 Write-Status "Merging task branch to main..." -Type Process
-                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot
+                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot -SkipRemotePush:($null -ne $integrationBranch)
                 if ($mergeResult.success) {
                     Write-Status "Merged: $($mergeResult.message)" -Type Complete
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to main: $($task.name)"
