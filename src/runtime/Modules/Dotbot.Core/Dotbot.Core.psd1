@@ -22,6 +22,8 @@
         'Remove-AbsolutePaths'
         'ConvertTo-SanitizedConsoleText'
         'Update-ProcessHeartbeatFields'
+        'Resolve-DotbotExternalCommand'
+        'Repair-DotbotProcessPath'
     )
 
     CmdletsToExport   = @()

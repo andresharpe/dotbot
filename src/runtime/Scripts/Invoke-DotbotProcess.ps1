@@ -97,6 +97,9 @@ $env:DOTBOT_CURRENT_PHASE = $phaseMap[$Type]
 
 # Resolve paths
 Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
+# Merge registry Machine/User PATH into this process before any preflight
+# check or provider spawn (Windows split-PATH fix).
+$null = Repair-DotbotProcessPath
 $botRoot = Get-DotbotProjectBotPath
 $controlDir = Join-Path $botRoot ".control"
 $processesDir = Join-Path $controlDir "processes"
