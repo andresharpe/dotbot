@@ -960,6 +960,7 @@ function Write-DotbotCrashSummary {
         [Parameter(Mandatory)] [string]$ProcessId,
         [object]$Process,
         [string]$Reason,
+        [ValidateRange(1, 1000)]
         [int]$MaxEvents = 20,
         [string]$BotRoot
     )
