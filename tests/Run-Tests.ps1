@@ -133,6 +133,7 @@ if (1 -in $layersToRun) {
     $structureCode       = Invoke-TestFile -Layer '1' -FileName 'Test-Structure.ps1'
     $compilationCode     = Invoke-TestFile -Layer '1' -FileName 'Test-Compilation.ps1'
     $workflowManifestCode = Invoke-TestFile -Layer '1' -FileName 'Test-WorkflowManifest.ps1'
+    $legacyYamlCode       = Invoke-TestFile -Layer '1' -FileName 'Test-LegacyYamlMigration.ps1'
     $dataModelCode        = Invoke-TestFile -Layer '1' -FileName 'Test-DataModel.ps1'
     $runtimeCode          = Invoke-TestFile -Layer '1' -FileName 'Test-Runtime.ps1'
     $worktreeCode         = Invoke-TestFile -Layer '1' -FileName 'Test-Worktree.ps1'
@@ -147,7 +148,7 @@ if (1 -in $layersToRun) {
     $pathSanitizerCode   = Invoke-TestFile -Layer '1' -FileName 'Test-PathSanitizer.ps1'
     $mcpSurfaceCode      = Invoke-TestFile -Layer '1' -FileName 'Test-McpSurface.ps1'
 
-    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $dataModelCode -ne 0 -or $runtimeCode -ne 0 -or $worktreeCode -ne 0 -or $executorCode -ne 0 -or $hooksCode -ne 0 -or $mdRefsCode -ne 0 -or $legacyVocabularyCode -ne 0 -or $backslashPathsCode -ne 0 -or $clarificationCode -ne 0 -or $activityLogCode -ne 0 -or $privacyScanCode -ne 0 -or $pathSanitizerCode -ne 0 -or $mcpSurfaceCode -ne 0) { 1 } else { 0 }
+    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $legacyYamlCode -ne 0 -or $dataModelCode -ne 0 -or $runtimeCode -ne 0 -or $worktreeCode -ne 0 -or $executorCode -ne 0 -or $hooksCode -ne 0 -or $mdRefsCode -ne 0 -or $legacyVocabularyCode -ne 0 -or $backslashPathsCode -ne 0 -or $clarificationCode -ne 0 -or $activityLogCode -ne 0 -or $privacyScanCode -ne 0 -or $pathSanitizerCode -ne 0 -or $mcpSurfaceCode -ne 0) { 1 } else { 0 }
     $layerResults["1"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
