@@ -244,6 +244,8 @@ function Find-Workflow {
         [string]$Name
     )
 
+    Invoke-DotbotWorkflowYamlMigration -BotRoot $BotRoot
+
     $roots = Get-WorkflowTierRoots -BotRoot $BotRoot
     $tried = @()
 
@@ -301,13 +303,17 @@ function Discover-Workflows {
             icon        = <string>
         }
 
-    Entries are sorted by name. Workflow folders without a valid workflow.json
-    are silently skipped — Test-ValidWorkflowDir filters them out.
+    Entries are sorted by name. Legacy v3.5 YAML manifests are migrated to the
+    v4 JSON layout (with an operator warning) before scanning; folders without
+    a valid workflow.json after that are skipped — Test-ValidWorkflowDir
+    filters them out.
     #>
     param(
         [Parameter(Mandatory)]
         [string]$BotRoot
     )
+
+    Invoke-DotbotWorkflowYamlMigration -BotRoot $BotRoot
 
     $roots = Get-WorkflowTierRoots -BotRoot $BotRoot
     $byName = [ordered]@{}

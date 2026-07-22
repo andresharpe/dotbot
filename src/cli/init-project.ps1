@@ -116,6 +116,7 @@ if (-not (Test-Path -LiteralPath $cliMarker) -or -not (Test-Path -LiteralPath $c
 # ---------------------------------------------------------------------------
 Import-Module (Join-Path $resolvedHome 'src/cli/Platform-Functions.psm1') -Force
 Import-Module (Join-Path $resolvedHome 'src/runtime/Modules/Dotbot.Theme/Dotbot.Theme.psd1') -Force -DisableNameChecking
+Import-Module (Join-Path $resolvedHome 'src/runtime/Modules/Dotbot.LegacyYaml/Dotbot.LegacyYaml.psd1') -Force -DisableNameChecking
 
 $ProjectDir = (Get-Location).Path
 $BotDir     = Join-Path $ProjectDir '.bot'
@@ -149,6 +150,27 @@ if (-not (Test-Path (Join-Path $ProjectDir '.git'))) {
         }
         Write-Success 'Initialized git repository'
     }
+}
+
+# ---------------------------------------------------------------------------
+# Legacy v3.5 YAML manifest migration offer
+# ---------------------------------------------------------------------------
+$legacyYamlFiles = @(Get-DotbotLegacyYamlFile -BotRoot $BotDir)
+if ($legacyYamlFiles.Count -gt 0) {
+    Write-DotbotWarning 'Legacy v3.5 YAML manifests found:'
+    foreach ($file in $legacyYamlFiles) {
+        Write-DotbotCommand "  $file"
+    }
+    if ($DryRun) {
+        Write-DotbotWarning 'Dry run — would convert these to the v4 JSON layout'
+    } elseif (Read-DotbotConfirmation -Message 'Convert them to the v4 JSON layout now?' -Default $true) {
+        Invoke-DotbotWorkflowYamlMigration -BotRoot $BotDir -Force
+        Write-Success 'Legacy YAML migration finished'
+        Write-DotbotCommand 'Review the changes and commit them if .bot/ is tracked.'
+    } else {
+        Write-DotbotWarning 'dotbot v4 does not read YAML manifests — these workflows stay invisible until converted. See MIGRATING.md.'
+    }
+    Write-BlankLine
 }
 
 if ((Test-Path $BotDir) -and -not $Force) {

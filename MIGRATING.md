@@ -183,7 +183,43 @@ UI writers (`Set-AnalysisConfig`, `Set-CostConfig`, `Set-EditorConfig`, `Set-Mot
 
 ---
 
-## 6. Upgrading the framework
+## 6. YAML manifests are retired — JSON is the standard
+
+v3.5 read workflow and registry manifests from YAML:
+
+| v3.5                                      | v4                                            |
+|-------------------------------------------|-----------------------------------------------|
+| `.bot/workflow.yaml`                      | `.bot/content/workflows/<name>/workflow.json` |
+| `.bot/workflows/<name>/workflow.yaml`     | `.bot/content/workflows/<name>/workflow.json` |
+| `<registry>/registry.yaml`                | `<registry>/registry.json`                    |
+
+v4 reads **only** the JSON files, and project workflows moved from
+`.bot/workflows/<name>/` to `.bot/content/workflows/<name>/`.
+
+You do not have to convert anything by hand. Any workflow or registry
+command (`dotbot workflow list`, `dotbot run`, `dotbot registry list`, ...)
+detects legacy YAML manifests on startup, converts them to JSON in the v4
+layout, renames the originals to `*.migrated`, and warns once about each
+conversion. `dotbot init` offers the same migration interactively and
+respects `-DryRun`.
+
+Conversion uses the `powershell-yaml` module — the same parser v3.5 used.
+dotbot installs it automatically (CurrentUser scope) when missing; if that
+fails, install it manually and re-run the command:
+
+```powershell
+Install-Module powershell-yaml -Scope CurrentUser
+```
+
+If both a `.yaml` manifest and its `.json` equivalent exist, **JSON wins**:
+nothing is converted or overwritten, and dotbot warns on every run until you
+remove or rename the YAML file. The `*.migrated` files are kept only so you
+can diff the conversion — delete them (and commit the moves/renames if your
+`.bot/` is tracked) once you have verified the result.
+
+---
+
+## 7. Upgrading the framework
 
 Once you're on v4, upgrade the install that supplies the runtime:
 
@@ -198,7 +234,7 @@ No test framework rebuild is required. `dotbot status` reflects the active insta
 
 ---
 
-## 7. Retired entry points (quick reference)
+## 8. Retired entry points (quick reference)
 
 | v3                                                            | v4                                                            |
 |---------------------------------------------------------------|---------------------------------------------------------------|

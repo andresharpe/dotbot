@@ -318,6 +318,61 @@ Assert-True -Name "registry-remove.ps1 exits non-zero for unregistered name" `
 Restore-RegistriesJson
 
 # ===================================================================
+# Update-StaleRegistries — legacy registry.yaml migration hook
+# ===================================================================
+
+Write-Host ""
+Write-Host "  UPDATE-STALEREGISTRIES (legacy YAML migration)" -ForegroundColor Cyan
+Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
+
+$legacyHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-regyaml-$(Get-Random)"
+$legacyOrg = Join-Path $legacyHome "registries/legacyorg"
+New-Item -Path (Join-Path $legacyOrg "workflows/deploy") -ItemType Directory -Force | Out-Null
+@"
+name: legacyorg
+version: "1.0"
+content:
+  workflows: [deploy]
+"@ | Set-Content (Join-Path $legacyOrg "registry.yaml")
+"name: deploy" | Set-Content (Join-Path $legacyOrg "workflows/deploy/workflow.yaml")
+
+Update-StaleRegistries -DotbotBase $legacyHome *>&1 | Out-Null
+
+Assert-PathExists -Name "Update-StaleRegistries converts legacy registry.yaml" `
+    -Path (Join-Path $legacyOrg "registry.json")
+Assert-PathExists -Name "Legacy registry.yaml kept as .migrated" `
+    -Path (Join-Path $legacyOrg "registry.yaml.migrated")
+Assert-PathExists -Name "Nested legacy workflow.yaml converted" `
+    -Path (Join-Path $legacyOrg "workflows/deploy/workflow.json")
+
+$regMeta = Get-Content (Join-Path $legacyOrg "registry.json") -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -AsHashtable -ErrorAction SilentlyContinue
+Assert-True -Name "Converted registry.json carries YAML content map" `
+    -Condition ($null -ne $regMeta -and $regMeta.name -eq "legacyorg" -and $regMeta.content.workflows[0] -eq "deploy") `
+    -Message "registry.json missing or does not match the source YAML"
+
+Remove-Item $legacyHome -Recurse -Force -ErrorAction SilentlyContinue
+
+$ambigHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-regambig-$(Get-Random)"
+$ambigOrg = Join-Path $ambigHome "registries/ambigorg"
+New-Item -Path $ambigOrg -ItemType Directory -Force | Out-Null
+'{"name":"ambigorg","content":{"workflows":["a"]}}' | Set-Content (Join-Path $ambigOrg "registry.json")
+"name: ambigorg" | Set-Content (Join-Path $ambigOrg "registry.yaml")
+$jsonBefore = (Get-Item (Join-Path $ambigOrg "registry.json")).LastWriteTimeUtc
+
+$ambigOutput = Update-StaleRegistries -DotbotBase $ambigHome *>&1 | ForEach-Object { "$_" } | Out-String
+
+Assert-True -Name "Ambiguous registry.yaml + registry.json warns loudly" `
+    -Condition ($ambigOutput -match 'reads only registry.json') `
+    -Message "Expected ambiguity warning, got: $ambigOutput"
+Assert-True -Name "Ambiguous registry.json left untouched" `
+    -Condition ((Get-Item (Join-Path $ambigOrg "registry.json")).LastWriteTimeUtc -eq $jsonBefore) `
+    -Message "registry.json was modified in ambiguous state"
+Assert-PathExists -Name "Ambiguous registry.yaml left in place" `
+    -Path (Join-Path $ambigOrg "registry.yaml")
+
+Remove-Item $ambigHome -Recurse -Force -ErrorAction SilentlyContinue
+
+# ===================================================================
 # CLEANUP
 # ===================================================================
 

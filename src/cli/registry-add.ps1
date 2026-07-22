@@ -50,6 +50,7 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
 }
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.LegacyYaml" "Dotbot.LegacyYaml.psd1") -Force -DisableNameChecking
 
 Write-DotbotBanner -Title "D O T B O T" -Subtitle "Registry: Add"
 
@@ -138,6 +139,8 @@ Write-BlankLine
 Write-DotbotSection -Title "VALIDATION"
 
 $registryJsonPath = Join-Path $RegistryPath "registry.json"
+
+Invoke-DotbotSingleRegistryYamlMigration -RegistryPath $RegistryPath
 
 # 4a. File must exist
 if (-not (Test-Path $registryJsonPath)) {
