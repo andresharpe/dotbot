@@ -2004,6 +2004,51 @@ try {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# Git version parsing + floor (regression: #659)
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host " Git version parsing" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Standard Windows form.
+$v = ConvertTo-DotbotGitVersion -VersionOutput 'git version 2.53.0.windows.3'
+Assert-True  -Name "parse windows form -> major"  -Condition ($v.Major -eq 2)
+Assert-True  -Name "parse windows form -> minor"  -Condition ($v.Minor -eq 53)
+Assert-True  -Name "parse windows form -> build"  -Condition ($v.Build -eq 0)
+
+# Two-component version (patch defaults to 0).
+$v = ConvertTo-DotbotGitVersion -VersionOutput 'git version 2.42'
+Assert-True  -Name "parse two-component -> minor" -Condition ($v.Minor -eq 42)
+Assert-True  -Name "parse two-component -> patch defaults to 0" -Condition ($v.Build -eq 0)
+
+# Old form the ticket reporter had.
+$v = ConvertTo-DotbotGitVersion -VersionOutput 'git version 2.31.1.windows.1'
+Assert-True  -Name "parse legacy windows form -> minor" -Condition ($v.Minor -eq 31)
+
+# Nonsense / empty input.
+Assert-True  -Name "parse empty -> null" -Condition ($null -eq (ConvertTo-DotbotGitVersion -VersionOutput ''))
+Assert-True  -Name "parse garbage -> null" -Condition ($null -eq (ConvertTo-DotbotGitVersion -VersionOutput 'not a version'))
+
+# Floor is 2.42 (see Dotbot.Workflow.psm1 script scope).
+$minVersion = Get-MinDotbotGitVersion
+Assert-True  -Name "min version is 2.42.0" `
+    -Condition ($minVersion -eq ([System.Version]::new(2, 42, 0)))
+
+# Version-comparison sanity: 2.31 is below the floor; 2.42 is at the floor.
+$tooOld = ConvertTo-DotbotGitVersion -VersionOutput 'git version 2.31.1.windows.1'
+$atFloor = ConvertTo-DotbotGitVersion -VersionOutput 'git version 2.42.0'
+Assert-True  -Name "2.31 is below the min version" -Condition ($tooOld -lt $minVersion)
+Assert-True  -Name "2.42 meets the min version"   -Condition ($atFloor -ge $minVersion)
+
+# Get-DotbotGitVersion should return the installed git's version when git is on PATH.
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $installed = Get-DotbotGitVersion
+    Assert-True -Name "Get-DotbotGitVersion returns a Version" -Condition ($installed -is [System.Version])
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # workflow manifest removed isolation fields + skip_worktree lint
 # ═══════════════════════════════════════════════════════════════════
 

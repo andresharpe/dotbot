@@ -220,12 +220,20 @@ function Assert-OnBaseBranch {
     Ensure the main repo is checked out on the specified branch (or the canonical
     main/master if none is specified). Checks out the branch if not already on it.
     Throws if the branch cannot be found or checked out.
-    Returns the confirmed base branch name.
+    Returns the confirmed base branch name, or $null when the repo is unborn.
+
+    Unborn repos have no base branch to switch to — the first task runs on an
+    orphan worktree, and its squash-merge creates the base branch. Callers
+    already handle this path; silently return $null instead of throwing a
+    misleading "Cannot find base branch" error.
     #>
     param(
         [Parameter(Mandatory)][string]$ProjectRoot,
         [string]$BranchName
     )
+    if (-not (Test-RepositoryHasCommits -ProjectRoot $ProjectRoot)) {
+        return $null
+    }
     if (-not $BranchName) {
         $BranchName = Resolve-MainBranch -ProjectRoot $ProjectRoot
     }

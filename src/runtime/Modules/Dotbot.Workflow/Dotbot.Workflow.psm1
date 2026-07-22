@@ -1452,16 +1452,56 @@ function Test-CanStartRun {
     return @{ ok = $true }
 }
 
+# Minimum git version dotbot operates on. `git worktree add --orphan` (used
+# by the first task in a brand-new project) requires 2.42; supporting older
+# releases previously meant a fallback that failed with a cryptic
+# `fatal: invalid reference`. See issue #659.
+$script:MinDotbotGitVersion = [System.Version]::new(2, 42, 0)
+
+function Get-MinDotbotGitVersion {
+    return $script:MinDotbotGitVersion
+}
+
+function ConvertTo-DotbotGitVersion {
+    <#
+    .SYNOPSIS
+    Parse the output of `git --version` into a [System.Version].
+    Returns $null when the input can't be parsed.
+    #>
+    param([string]$VersionOutput)
+    if ([string]::IsNullOrWhiteSpace($VersionOutput)) { return $null }
+    if ($VersionOutput -notmatch '(\d+)\.(\d+)(?:\.(\d+))?') { return $null }
+    $maj = [int]$Matches[1]
+    $min = [int]$Matches[2]
+    $patch = if ($Matches[3]) { [int]$Matches[3] } else { 0 }
+    return [System.Version]::new($maj, $min, $patch)
+}
+
+function Get-DotbotGitVersion {
+    <#
+    .SYNOPSIS
+    Return the installed git's [System.Version], or $null if git is not on PATH
+    or its version output cannot be parsed.
+    #>
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return $null }
+    $out = & git --version 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $out) { return $null }
+    return ConvertTo-DotbotGitVersion -VersionOutput ([string]$out)
+}
+
 function Test-GitReadyForWorktree {
     <#
     .SYNOPSIS
     Check whether a project directory satisfies the workflow worktree preconditions.
 
     .DESCRIPTION
-    Starting a WorkflowRun requires that the project directory is a git repo.
-    Repositories with no commits are allowed; task worktrees use git's orphan
-    worktree mode until the first task commit establishes the base branch.
+    Starting a WorkflowRun requires that the project directory is a git repo
+    and that git itself is new enough to support the orphan-worktree path used
+    for the first task in a fresh project. Repositories with no commits are
+    allowed; task worktrees use `git worktree add --orphan` until the first
+    task commit establishes the base branch.
     Concretely:
+        - git ≥ $script:MinDotbotGitVersion must be on PATH.
         - <ProjectRoot>/.git must exist (directory or gitlink file — gitlink
           covers the worktree case where .git is a small file pointing to the
           real gitdir).
@@ -1470,10 +1510,8 @@ function Test-GitReadyForWorktree {
           unborn git worktree.
 
     On success returns @{ ok = $true }. On failure returns @{ ok = $false;
-    reason = 'no_git'|'git_unavailable'; message = '<text>' }
-    where <text> is the user-facing refusal message:
-
-        "Workflow runs require a git repo. Initialise git first, then retry."
+    reason = 'no_git'|'git_unavailable'|'git_too_old'|'invalid_git_repo';
+    message = '<text>' } where <text> is the user-facing refusal message.
 
     This is a pure check — it neither modifies anything nor talks to a
     network. Dotbot.Worktree's create call also invokes the check before
@@ -1504,6 +1542,16 @@ function Test-GitReadyForWorktree {
             ok      = $false
             reason  = 'git_unavailable'
             message = "git CLI is not available on PATH; cannot verify the worktree precondition.`n$refusalMessage"
+        }
+    }
+
+    $installedGitVersion = Get-DotbotGitVersion
+    if (-not $installedGitVersion -or $installedGitVersion -lt $script:MinDotbotGitVersion) {
+        $found = if ($installedGitVersion) { "$installedGitVersion" } else { 'unknown' }
+        return @{
+            ok      = $false
+            reason  = 'git_too_old'
+            message = "dotbot requires git $($script:MinDotbotGitVersion) or newer (found: $found). Upgrade git and retry."
         }
     }
 
@@ -1635,6 +1683,9 @@ Export-ModuleMember -Function @(
     'Test-ManifestCondition'
     'Test-CanStartRun'
     'Test-GitReadyForWorktree'
+    'ConvertTo-DotbotGitVersion'
+    'Get-DotbotGitVersion'
+    'Get-MinDotbotGitVersion'
 
     # Defined in nested modules under Private/, re-exported here so the
     # manifest sees them.

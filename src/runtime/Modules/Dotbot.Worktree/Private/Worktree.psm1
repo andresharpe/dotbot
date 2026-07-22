@@ -150,9 +150,12 @@ function Resolve-WorkflowMainBranch {
     return $null
 }
 
+$script:_MinGitVersion = [System.Version]::new(2, 42, 0)
+
 function _Test-GitReadyForWorktree {
     # Local copy of Test-GitReadyForWorktree's check so this module doesn't
-    # have to drag in Dotbot.Workflow.
+    # have to drag in Dotbot.Workflow. Keep these two implementations in
+    # lockstep (see Dotbot.Workflow.psm1).
     param([Parameter(Mandatory)][string]$ProjectRoot)
 
     $refusal = @(
@@ -166,6 +169,17 @@ function _Test-GitReadyForWorktree {
     }
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         return @{ ok = $false; reason = 'git_unavailable'; message = "git CLI is not available on PATH; cannot verify the worktree precondition.`n$refusal" }
+    }
+
+    $installedGitVersion = $null
+    $verOut = & git --version 2>$null
+    if ($LASTEXITCODE -eq 0 -and $verOut -and ([string]$verOut) -match '(\d+)\.(\d+)(?:\.(\d+))?') {
+        $vp = if ($Matches[3]) { [int]$Matches[3] } else { 0 }
+        $installedGitVersion = [System.Version]::new([int]$Matches[1], [int]$Matches[2], $vp)
+    }
+    if (-not $installedGitVersion -or $installedGitVersion -lt $script:_MinGitVersion) {
+        $found = if ($installedGitVersion) { "$installedGitVersion" } else { 'unknown' }
+        return @{ ok = $false; reason = 'git_too_old'; message = "dotbot requires git $($script:_MinGitVersion) or newer (found: $found). Upgrade git and retry." }
     }
 
     $count = $null

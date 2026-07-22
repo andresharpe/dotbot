@@ -44,7 +44,7 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 
 **Required:**
 - **PowerShell 7+** - [Download](https://aka.ms/powershell)
-- **Git** - [Download](https://git-scm.com/downloads)
+- **Git 2.42+** - [Download](https://git-scm.com/downloads) (required for `git worktree add --orphan`, used on the first task of a fresh project)
 - **AI CLI** (at least one) - [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli), [Codex CLI](https://github.com/openai/codex), or [Antigravity](https://antigravity.google/)
 
 **Recommended MCP servers:**
