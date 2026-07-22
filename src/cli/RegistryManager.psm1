@@ -10,6 +10,8 @@
 
 $ErrorActionPreference = "Stop"
 
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.LegacyYaml" "Dotbot.LegacyYaml.psd1") -DisableNameChecking
+
 function Get-DotbotRegistries {
     <#
     .SYNOPSIS
@@ -52,6 +54,8 @@ function Update-StaleRegistries {
         [Parameter(Mandatory)][string]$DotbotBase,
         [int]$MaxAgeSecs = 3600
     )
+
+    Invoke-DotbotRegistryYamlMigration -DotbotBase $DotbotBase
 
     $configPath   = Join-Path $DotbotBase "registries.json"
     $registries   = Get-DotbotRegistries -DotbotBase $DotbotBase
