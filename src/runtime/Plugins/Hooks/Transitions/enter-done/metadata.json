@@ -4,6 +4,6 @@
   "target_statuses": [
     "done"
   ],
-  "max_duration": 120,
+  "max_duration": 600,
   "abort_on_failure": true
 }
