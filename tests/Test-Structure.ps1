@@ -1286,6 +1286,26 @@ if (Test-Path $verifyConfig) {
             -Condition ($entry.core -eq $true) `
             -Message "Expected core=true"
     }
+
+    # #656: optional quality gate — configurable test/lint commands, off by
+    # default, so it must not be "core" (a project can't opt out of core checks).
+    $qualityEntry = $cfg.scripts | Where-Object { $_.name -eq '05-verify-quality.ps1' }
+    Assert-True -Name "config.json registers 05-verify-quality.ps1" `
+        -Condition ($null -ne $qualityEntry) `
+        -Message "Entry for 05-verify-quality.ps1 missing from config.json"
+    if ($qualityEntry) {
+        Assert-True -Name "05-verify-quality.ps1 marked core=false" `
+            -Condition ($qualityEntry.core -eq $false) `
+            -Message "Expected core=false"
+    }
+}
+
+$qualityGateSettingsFile = Join-Path $repoRoot "content" "settings" "settings.default.json"
+if (Test-Path $qualityGateSettingsFile) {
+    $qualityGateSettings = Get-Content $qualityGateSettingsFile -Raw | ConvertFrom-Json
+    Assert-True -Name "#656: settings.default.json declares quality_gate.enabled=false by default" `
+        -Condition ($null -ne $qualityGateSettings.quality_gate -and $qualityGateSettings.quality_gate.enabled -eq $false) `
+        -Message "Expected quality_gate.enabled=false in settings.default.json"
 }
 
 # removed the task-mark-* MCP tools; the FrameworkIntegrity gate
@@ -1308,6 +1328,7 @@ $bannerTargets = @(
     'src/hooks/verify/02-git-pushed.ps1',
     'src/hooks/verify/03-check-md-refs.ps1',
     'src/hooks/verify/04-framework-integrity.ps1',
+    'src/hooks/verify/05-verify-quality.ps1',
     'src/hooks/scripts/commit-bot-state.ps1',
     'src/hooks/scripts/steering.ps1',
     'src/hooks/dev/Start-Dev.ps1',

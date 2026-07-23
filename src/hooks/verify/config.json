@@ -34,6 +34,13 @@
       "required": true,
       "core": true,
       "timeout_seconds": 30
+    },
+    {
+      "name": "05-verify-quality.ps1",
+      "description": "Run configured test/lint commands (quality_gate setting); no-op when not configured",
+      "required": false,
+      "core": false,
+      "timeout_seconds": 300
     }
   ]
 }
