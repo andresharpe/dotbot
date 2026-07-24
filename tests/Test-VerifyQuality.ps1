@@ -125,6 +125,9 @@ try {
         Assert-Equal -Name "Failing test command: exactly one failure" -Expected 1 -Actual @($result.failures).Count
         Assert-True -Name "Failing test command: failure names the test check" `
             -Condition ($result.failures[0].issue -match '^test command failed')
+        Assert-True -Name "Failing test command: top-level message names the failing check" `
+            -Condition ($result.message -match 'test \(exit 1\)') `
+            -Message "enter-done only surfaces 'message' on failure, not 'failures' — got: $($result.message)"
     } finally {
         Remove-Item -LiteralPath $failTestRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -144,6 +147,9 @@ try {
         Assert-Equal -Name "Failing lint command: exactly one failure" -Expected 1 -Actual @($result.failures).Count
         Assert-True -Name "Failing lint command: failure names the lint check" `
             -Condition ($result.failures[0].issue -match '^lint command failed')
+        Assert-True -Name "Failing lint command: top-level message names the failing check" `
+            -Condition ($result.message -match 'lint \(exit 1\)') `
+            -Message "enter-done only surfaces 'message' on failure, not 'failures' — got: $($result.message)"
     } finally {
         Remove-Item -LiteralPath $failLintRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
