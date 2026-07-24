@@ -73,7 +73,11 @@ if (-not $settingsModulePath) {
 }
 Import-Module $settingsModulePath -Force -DisableNameChecking
 
-$botRoot = Join-Path (Get-Location).Path ".bot"
+$botRoot = if (Get-Command Get-DotbotProjectBotPath -ErrorAction SilentlyContinue) {
+    Get-DotbotProjectBotPath
+} else {
+    Join-Path (Get-Location).Path ".bot"
+}
 $settings = Get-MergedSettings -BotRoot $botRoot
 $gate = $settings.quality_gate
 
@@ -106,8 +110,11 @@ foreach ($check in $checks) {
         # Run in a child pwsh rather than Invoke-Expression in-process: the
         # command string is project-supplied config (same trust level as a
         # CI yaml step), and a child process keeps it from touching this
-        # runspace's variables/functions.
-        $output = & pwsh -NoProfile -Command "$($check.command) 2>&1" | Out-String
+        # runspace's variables/functions. Redirect stderr at this call site
+        # (not inside the -Command string) so it also catches the child
+        # pwsh's own parser/startup errors, and so quotes/redirections in
+        # the configured command itself don't need double-escaping.
+        $output = & pwsh -NoProfile -Command $check.command 2>&1 | Out-String
         $exitCode = $LASTEXITCODE
     } catch {
         $output = $_.Exception.Message
@@ -124,8 +131,18 @@ foreach ($check in $checks) {
     }
 }
 
+# enter-done only surfaces the JSON 'message' field on failure (not the
+# 'failures' array), so name the failing check(s) here rather than a
+# generic "failed" — that's the only detail that reaches the agent/caller.
+$resultMessage = if ($failures.Count -eq 0) {
+    "Quality gate passed ($($ranChecks.Count) check(s))"
+} else {
+    $failedNames = @($ranChecks | Where-Object { $_.exit_code -ne 0 } | ForEach-Object { "$($_.name) (exit $($_.exit_code))" })
+    "Quality gate failed: " + ($failedNames -join ", ")
+}
+
 Write-QualityResult -Success ($failures.Count -eq 0) `
-    -Message $(if ($failures.Count -eq 0) { "Quality gate passed ($($ranChecks.Count) check(s))" } else { "Quality gate failed" }) `
+    -Message $resultMessage `
     -Details @{ enabled = $true; checks = $ranChecks } `
     -Failures $failures
 
