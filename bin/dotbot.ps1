@@ -141,6 +141,7 @@ function Show-Help {
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
     Write-DotbotLabel "    serve             " "Start only the low-level HTTP runtime in the foreground"
     Write-DotbotLabel "    runtime-status    " "Show runtime PID, URL, and active workflow runs"
+    Write-DotbotLabel "    logs              " "Show recent activity, or the last crash (--last, --follow)"
     Write-DotbotLabel "    prune-branches    " "Delete stale workflow/* and task/* branches"
     Write-DotbotLabel "    help              " "Show this help message"
     Write-BlankLine
@@ -730,6 +731,7 @@ switch ($Command) {
     "doctor" { & (Join-Path $ScriptsDir 'doctor.ps1') @SplatArgs }
     "serve"          { & (Join-Path $ScriptsDir 'serve.ps1')          @SplatArgs }
     "runtime-status" { & (Join-Path $ScriptsDir 'runtime-status.ps1') @SplatArgs }
+    "logs"           { & (Join-Path $ScriptsDir 'logs.ps1')           @SplatArgs }
     "prune-branches" { & (Join-Path $ScriptsDir 'prune-branches.ps1') @SplatArgs }
     "update" { Invoke-Update }
     "help" { Show-Help }

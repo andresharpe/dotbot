@@ -37,6 +37,36 @@ function Find-BotRoot {
     return $null
 }
 
+function Show-LastCrash {
+    <#
+    .SYNOPSIS
+    When the runtime is not running, surface the summary written to
+    <BotRoot>/.control/last-crash.json on the last fatal exit. Best-effort:
+    a missing or unreadable file is simply not shown.
+    #>
+    param([Parameter(Mandatory)] [string]$BotRoot)
+
+    $crashPath = Join-Path $BotRoot (Join-Path '.control' 'last-crash.json')
+    if (-not (Test-Path -LiteralPath $crashPath)) { return }
+    try {
+        $crash = Get-Content -LiteralPath $crashPath -Raw -ErrorAction Stop | ConvertFrom-Json
+    } catch {
+        return
+    }
+
+    Write-BlankLine
+    Write-DotbotSection "LAST CRASH"
+    Write-DotbotLabel "Time:"   ([string]$crash.timestamp)
+    Write-DotbotLabel "Reason:" ([string]$crash.exit_reason) -ValueType Error
+    if ($crash.last_task -and ($crash.last_task.id -or $crash.last_task.name)) {
+        $taskLabel = @($crash.last_task.name, $crash.last_task.id, $crash.last_task.status |
+            Where-Object { $_ }) -join ' · '
+        Write-DotbotLabel "Last task:" $taskLabel
+    }
+    Write-BlankLine
+    Write-DotbotCommand "Run 'dotbot logs --last' for the full crash summary."
+}
+
 $botRoot = Find-BotRoot
 if (-not $botRoot) {
     Write-DotbotError "Could not find a .bot/ directory in this or any parent path."
@@ -60,6 +90,7 @@ if (-not (Test-Path -LiteralPath $connPath)) {
     Write-DotbotLabel "Reason:" "no .bot/.control/runtime.json"
     Write-BlankLine
     Write-DotbotWarning "Start the runtime with 'dotbot serve'."
+    Show-LastCrash -BotRoot $botRoot
     exit 1
 }
 
@@ -78,6 +109,7 @@ Write-BlankLine
 if (-not $alive) {
     Write-DotbotWarning "The PID recorded in runtime.json is no longer running."
     Write-DotbotWarning "The next 'dotbot serve' will rewrite runtime.json with a fresh token."
+    Show-LastCrash -BotRoot $botRoot
     exit 1
 }
 
