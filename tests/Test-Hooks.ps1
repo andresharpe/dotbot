@@ -288,6 +288,270 @@ $skipResult = $r.hook_results | Where-Object { $_.name -eq 'enter-skipped' } | S
 Assert-True -Name "enter-skipped smoke: hook reports success"   -Condition ([bool]$skipResult.success)
 
 # ═══════════════════════════════════════════════════════════════════════════
+# #628: enter-done resolves the verify chain's cwd, not the launch cwd
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# 01-git-clean.ps1 (and the rest of the verify chain) run `git status`
+# relative to the process's current directory. Before the #628 fix,
+# `pwsh -File` inherited whatever directory the runtime happened to be
+# launched from — wrong whenever that isn't the task's project. These
+# tests drive enter-done's actual script.ps1 (not a fixture stand-in) as a
+# fresh, unimported pwsh child process — same isolation the real dispatcher
+# runspace has (Dispatch.psm1 creates one PowerShell instance per hook with
+# no shared module state) — so the lazy Import-Module branches for
+# Dotbot.Content / Dotbot.Worktree are genuinely exercised, not bypassed by
+# modules this test file already imported above.
+
+Write-Host ""
+Write-Host "  #628: verify chain cwd resolution (worktree / working_directory / botRoot)" -ForegroundColor Cyan
+Write-Host "  ──────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$enterDoneScript = Join-Path $repoRoot "src/runtime/Plugins/Hooks/Transitions/enter-done/script.ps1"
+
+function ConvertTo-PSSingleQuoteLiteral {
+    # Escapes a value for safe embedding inside a single-quoted PowerShell
+    # string literal in generated source (the stub bodies and out-of-process
+    # runner scripts below build .ps1 source as text). PowerShell's escape
+    # for a literal ' inside '...' is '' — without this, any temp/worktree
+    # path containing an apostrophe (rare but valid on Windows/macOS/Linux,
+    # e.g. a user profile folder) would terminate the string early and make
+    # the generated script syntactically invalid, failing the test for
+    # reasons unrelated to cwd resolution.
+    param([Parameter(Mandatory)] [AllowEmptyString()] [string]$Value)
+    return $Value.Replace("'", "''")
+}
+
+function New-Issue628FixtureDir {
+    $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("dotbot-628-" + [guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    return $dir
+}
+
+function New-VerifyCwdStubBotRoot {
+    # Overrides every real framework verify script name with a stub that just
+    # records (Get-Location).Path to $MarkerFile and reports success. Project
+    # hooks win over framework ones for the same filename (Get-DotbotHookChain),
+    # so this fully isolates the test from real verify logic (gitleaks, git
+    # state, md refs, ...) and gives an unambiguous signal of which directory
+    # Push-Location actually targeted.
+    param(
+        [Parameter(Mandatory)] [string]$FixtureRoot,
+        [Parameter(Mandatory)] [string]$MarkerFile
+    )
+    $botRootDir     = Join-Path $FixtureRoot 'botroot'
+    $hooksVerifyDir = Join-Path $botRootDir 'hooks/verify'
+    New-Item -ItemType Directory -Force -Path $hooksVerifyDir, (Join-Path $botRootDir '.control') | Out-Null
+
+    $stubBody = @'
+param([string]$TaskId, [string]$Category)
+Add-Content -LiteralPath '__MARKER__' -Value (Get-Location).Path
+@{ success = $true; script = 'stub'; message = 'stub ok' } | ConvertTo-Json
+'@.Replace('__MARKER__', (ConvertTo-PSSingleQuoteLiteral $MarkerFile))
+
+    foreach ($name in @('00-privacy-scan.ps1','01-git-clean.ps1','02-git-pushed.ps1','03-check-md-refs.ps1','04-framework-integrity.ps1')) {
+        Set-Content -LiteralPath (Join-Path $hooksVerifyDir $name) -Value $stubBody -Encoding utf8NoBOM
+    }
+    return $botRootDir
+}
+
+function Set-Issue628WorktreeMapEntry {
+    # Hand-writes <BotRoot>/.control/worktree-map.json — the format
+    # Read-WorktreeMap expects (a JSON object keyed by TaskId) — without
+    # needing Dotbot.Worktree imported in this test process.
+    param(
+        [Parameter(Mandatory)] [string]$BotRootDir,
+        [Parameter(Mandatory)] [string]$TaskId,
+        [Parameter(Mandatory)] [string]$WorktreePath
+    )
+    $map = @{
+        $TaskId = @{
+            worktree_path = $WorktreePath
+            branch_name   = "task/$TaskId"
+            task_name     = "fixture task"
+            created_at    = "2026-07-13T00:00:00Z"
+        }
+    }
+    $map | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $BotRootDir '.control/worktree-map.json') -Encoding utf8NoBOM
+}
+
+function Invoke-EnterDoneOutOfProcess {
+    # Runs enter-done's real Invoke-Hook in a brand-new pwsh process (no
+    # preloaded modules), launched from an arbitrary directory — reproducing
+    # both halves of the #628 bug scenario (wrong launch cwd; fresh runspace
+    # module state) in one call.
+    #
+    # -ProvenanceAsPSObject builds $Task.provenance as [pscustomobject] instead
+    # of [hashtable] to exercise the `$prov.PSObject.Properties['run_id']`
+    # fallback branch. Today's only production caller (HttpServer.psm1's
+    # Invoke-TaskStatusHandler) reads tasks via ConvertFrom-Json -AsHashtable,
+    # so provenance always arrives as a nested hashtable in practice — this
+    # covers the defensive branch in case another caller ever constructs
+    # $Task differently (it mirrors the same dual-branch check already shipped
+    # in enter-in-progress/script.ps1).
+    param(
+        [Parameter(Mandatory)] [string]$RunnerPath,
+        [Parameter(Mandatory)] [string]$TaskId,
+        [string]$RunId,
+        [string]$WorkingDirectory,
+        [Parameter(Mandatory)] [string]$BotRootDir,
+        [switch]$ProvenanceAsPSObject,
+        [string]$LaunchCwd = ([System.IO.Path]::GetTempPath())
+    )
+
+    $runIdLiteral   = if ($RunId)            { "'$(ConvertTo-PSSingleQuoteLiteral $RunId)'" }            else { '$null' }
+    $workDirLiteral = if ($WorkingDirectory) { "'$(ConvertTo-PSSingleQuoteLiteral $WorkingDirectory)'" } else { '$null' }
+    $provenanceLiteral = if ($ProvenanceAsPSObject) {
+        "[pscustomobject]@{ run_id = $runIdLiteral }"
+    } else {
+        "@{ run_id = $runIdLiteral }"
+    }
+
+    $repoRootLiteral       = ConvertTo-PSSingleQuoteLiteral $repoRoot
+    $enterDoneScriptLiteral = ConvertTo-PSSingleQuoteLiteral $enterDoneScript
+    $taskIdLiteral         = ConvertTo-PSSingleQuoteLiteral $TaskId
+    $botRootDirLiteral     = ConvertTo-PSSingleQuoteLiteral $BotRootDir
+
+    # Load script.ps1 the same way Dispatch.psm1's Invoke-SingleTransitionHook
+    # actually does in production — build a dynamic module from a scriptblock
+    # of the file's content — rather than dot-sourcing or Import-Module on a
+    # bare .ps1 (neither gives Export-ModuleMember a real module scope, so
+    # both throw "can only be called from inside a module" as a non-terminating
+    # error that would otherwise need to be swallowed with 2>$null).
+    $runner = @"
+`$env:DOTBOT_HOME = '$repoRootLiteral'
+`$content = Get-Content -LiteralPath '$enterDoneScriptLiteral' -Raw
+`$sb = [ScriptBlock]::Create(`$content)
+`$mod = New-Module -Name 'EnterDoneUnderTest' -ScriptBlock `$sb
+`$task = @{
+    id                = '$taskIdLiteral'
+    category          = 'test'
+    provenance        = $provenanceLiteral
+    working_directory = $workDirLiteral
+}
+`$runContext = @{ BotRoot = '$botRootDirLiteral' }
+`$result = & `$mod Invoke-Hook -Task `$task -RunContext `$runContext -FromStatus 'in-progress' -ToStatus 'done'
+`$result | ConvertTo-Json -Depth 5 -Compress
+"@
+    Set-Content -LiteralPath $RunnerPath -Value $runner -Encoding utf8NoBOM
+
+    Push-Location -LiteralPath $LaunchCwd
+    try {
+        $out = & pwsh -NoProfile -File $RunnerPath
+    } finally {
+        Pop-Location
+    }
+    try { return ($out -join "`n") | ConvertFrom-Json -ErrorAction Stop } catch { return $null }
+}
+
+function Assert-VerifyCwdMarker {
+    # Asserts the whole verify chain (all 5 stubs) ran in exactly $ExpectedDir.
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [string]$MarkerFile,
+        [Parameter(Mandatory)] [string]$ExpectedDir
+    )
+    $lines = if (Test-Path -LiteralPath $MarkerFile) { @(Get-Content -LiteralPath $MarkerFile) } else { @() }
+    Assert-Equal -Name "$Name`: verify chain ran (5 stub hooks recorded cwd)" -Expected 5 -Actual $lines.Count
+    Assert-Equal -Name "$Name`: verify chain cwd" -Expected $ExpectedDir -Actual ($lines | Select-Object -First 1) `
+        -Message "Expected every stub to run in '$ExpectedDir', got: $($lines -join ', ')"
+    Assert-True -Name "$Name`: cwd consistent across the whole chain" `
+        -Condition (@($lines | Select-Object -Unique).Count -eq 1)
+}
+
+# --- Scenario 1: worktree registry entry exists and is valid → worktree_path wins
+$fx = New-Issue628FixtureDir
+try {
+    $marker      = Join-Path $fx 'marker.txt'
+    $worktreeDir = Join-Path $fx 'worktree'
+    $workingDir  = Join-Path $fx 'workingdir'
+    New-Item -ItemType Directory -Force -Path $worktreeDir, $workingDir | Out-Null
+    $botRootDir = New-VerifyCwdStubBotRoot -FixtureRoot $fx -MarkerFile $marker
+    Set-Issue628WorktreeMapEntry -BotRootDir $botRootDir -TaskId 't_628scn1' -WorktreePath $worktreeDir
+
+    $r = Invoke-EnterDoneOutOfProcess -RunnerPath (Join-Path $fx 'runner.ps1') `
+        -TaskId 't_628scn1' -RunId 'wr_628scn1' -WorkingDirectory $workingDir -BotRootDir $botRootDir
+    Assert-True -Name "Scenario 1 (valid worktree): Invoke-Hook succeeds" -Condition ([bool]$r.Success)
+    Assert-VerifyCwdMarker -Name "Scenario 1 (valid worktree)" -MarkerFile $marker -ExpectedDir $worktreeDir
+} finally {
+    Remove-Item -LiteralPath $fx -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- Scenario 1b: same as Scenario 1, but provenance arrives as a PSCustomObject
+#     (e.g. plain ConvertFrom-Json without -AsHashtable) instead of a hashtable
+$fx = New-Issue628FixtureDir
+try {
+    $marker      = Join-Path $fx 'marker.txt'
+    $worktreeDir = Join-Path $fx 'worktree'
+    $workingDir  = Join-Path $fx 'workingdir'
+    New-Item -ItemType Directory -Force -Path $worktreeDir, $workingDir | Out-Null
+    $botRootDir = New-VerifyCwdStubBotRoot -FixtureRoot $fx -MarkerFile $marker
+    Set-Issue628WorktreeMapEntry -BotRootDir $botRootDir -TaskId 't_628scn1b' -WorktreePath $worktreeDir
+
+    $r = Invoke-EnterDoneOutOfProcess -RunnerPath (Join-Path $fx 'runner.ps1') `
+        -TaskId 't_628scn1b' -RunId 'wr_628scn1b' -WorkingDirectory $workingDir -BotRootDir $botRootDir `
+        -ProvenanceAsPSObject
+    Assert-True -Name "Scenario 1b (PSCustomObject provenance): Invoke-Hook succeeds" -Condition ([bool]$r.Success)
+    Assert-VerifyCwdMarker -Name "Scenario 1b (PSCustomObject provenance, valid worktree)" -MarkerFile $marker -ExpectedDir $worktreeDir
+} finally {
+    Remove-Item -LiteralPath $fx -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- Scenario 2: worktree registry entry exists but worktree_path is gone from
+#     disk (Test-Path guard) → falls back to working_directory
+$fx = New-Issue628FixtureDir
+try {
+    $marker      = Join-Path $fx 'marker.txt'
+    $missingWorktreeDir = Join-Path $fx 'worktree-deleted'
+    $workingDir  = Join-Path $fx 'workingdir'
+    New-Item -ItemType Directory -Force -Path $workingDir | Out-Null
+    # Deliberately never create $missingWorktreeDir — registry points at a
+    # worktree that's already been discarded (e.g. Reset-TaskWorktree ran).
+    $botRootDir = New-VerifyCwdStubBotRoot -FixtureRoot $fx -MarkerFile $marker
+    Set-Issue628WorktreeMapEntry -BotRootDir $botRootDir -TaskId 't_628scn2' -WorktreePath $missingWorktreeDir
+
+    $r = Invoke-EnterDoneOutOfProcess -RunnerPath (Join-Path $fx 'runner.ps1') `
+        -TaskId 't_628scn2' -RunId 'wr_628scn2' -WorkingDirectory $workingDir -BotRootDir $botRootDir
+    Assert-True -Name "Scenario 2 (stale worktree entry): Invoke-Hook succeeds" -Condition ([bool]$r.Success)
+    Assert-VerifyCwdMarker -Name "Scenario 2 (stale worktree entry falls back)" -MarkerFile $marker -ExpectedDir $workingDir
+} finally {
+    Remove-Item -LiteralPath $fx -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- Scenario 3: no provenance/run_id (standalone task) → working_directory,
+#     worktree registry never consulted
+$fx = New-Issue628FixtureDir
+try {
+    $marker     = Join-Path $fx 'marker.txt'
+    $workingDir = Join-Path $fx 'workingdir'
+    New-Item -ItemType Directory -Force -Path $workingDir | Out-Null
+    $botRootDir = New-VerifyCwdStubBotRoot -FixtureRoot $fx -MarkerFile $marker
+    # No worktree-map.json entry at all — a standalone task has nothing to look up.
+
+    $r = Invoke-EnterDoneOutOfProcess -RunnerPath (Join-Path $fx 'runner.ps1') `
+        -TaskId 't_628scn3' -RunId $null -WorkingDirectory $workingDir -BotRootDir $botRootDir
+    Assert-True -Name "Scenario 3 (no run_id): Invoke-Hook succeeds" -Condition ([bool]$r.Success)
+    Assert-VerifyCwdMarker -Name "Scenario 3 (no run_id uses working_directory)" -MarkerFile $marker -ExpectedDir $workingDir
+} finally {
+    Remove-Item -LiteralPath $fx -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- Scenario 4: no run_id AND working_directory doesn't exist on disk → botRoot
+$fx = New-Issue628FixtureDir
+try {
+    $marker           = Join-Path $fx 'marker.txt'
+    $missingWorkingDir = Join-Path $fx 'workingdir-does-not-exist'
+    $botRootDir = New-VerifyCwdStubBotRoot -FixtureRoot $fx -MarkerFile $marker
+    # Deliberately never create $missingWorkingDir.
+
+    $r = Invoke-EnterDoneOutOfProcess -RunnerPath (Join-Path $fx 'runner.ps1') `
+        -TaskId 't_628scn4' -RunId $null -WorkingDirectory $missingWorkingDir -BotRootDir $botRootDir
+    Assert-True -Name "Scenario 4 (nothing valid): Invoke-Hook succeeds" -Condition ([bool]$r.Success)
+    Assert-VerifyCwdMarker -Name "Scenario 4 (falls all the way back to botRoot)" -MarkerFile $marker -ExpectedDir $botRootDir
+} finally {
+    Remove-Item -LiteralPath $fx -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
 # End-to-end: HTTP /tasks/<id>/status with aborting hook reverts on disk
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -301,7 +565,7 @@ function New-RuntimeTestBot {
     New-Item -ItemType Directory -Path $bot | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $bot '.control') | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $bot 'workspace/tasks') -Force | Out-Null
-    Push-Location $base
+    Push-Location -LiteralPath $base
     try {
         & git init -q | Out-Null
         & git config user.email "t@example.com" | Out-Null
