@@ -465,11 +465,23 @@ public static class DotbotTestNativePath
 }
 '@
         }
-        $buffer = [System.Text.StringBuilder]::new(32768)
-        $length = [DotbotTestNativePath]::GetLongPathName($resolved, $buffer, [uint32]$buffer.Capacity)
-        if ($length -gt 0 -and $length -lt $buffer.Capacity) {
-            $resolved = $buffer.ToString()
+        # Expand one existing component at a time. GetLongPathName can return
+        # access denied for a deeper child even though an earlier 8.3 segment
+        # (for example the user profile) is resolvable. Keeping each successful
+        # prefix expansion still gives both aliases the same canonical spelling.
+        $root = [System.IO.Path]::GetPathRoot($resolved)
+        $expanded = $root
+        foreach ($segment in @($resolved.Substring($root.Length) -split '[\\/]' | Where-Object { $_ })) {
+            $candidate = Join-Path $expanded $segment
+            $buffer = [System.Text.StringBuilder]::new(32768)
+            $length = [DotbotTestNativePath]::GetLongPathName($candidate, $buffer, [uint32]$buffer.Capacity)
+            $expanded = if ($length -gt 0 -and $length -lt $buffer.Capacity) {
+                $buffer.ToString()
+            } else {
+                $candidate
+            }
         }
+        $resolved = $expanded
     } elseif ($IsMacOS -or $IsLinux) {
         Push-Location -LiteralPath $resolved
         try {
