@@ -443,6 +443,49 @@ function Invoke-EnterDoneOutOfProcess {
     try { return ($out -join "`n") | ConvertFrom-Json -ErrorAction Stop } catch { return $null }
 }
 
+function Resolve-Issue628CanonicalPath {
+    # Compare filesystem locations rather than their textual aliases.
+    # GetLongPathName expands Windows short-name segments. On POSIX, pwd -P
+    # follows symlinked path components (notably macOS
+    # /var -> /private/var) to match the cwd reported by child pwsh.
+    param([Parameter(Mandatory)] [string]$Path)
+
+    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    if ($IsWindows) {
+        if (-not ('DotbotTestNativePath' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class DotbotTestNativePath
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint GetLongPathName(string shortPath, StringBuilder longPath, uint bufferLength);
+}
+'@
+        }
+        $buffer = [System.Text.StringBuilder]::new(32768)
+        $length = [DotbotTestNativePath]::GetLongPathName($resolved, $buffer, [uint32]$buffer.Capacity)
+        if ($length -gt 0 -and $length -lt $buffer.Capacity) {
+            $resolved = $buffer.ToString()
+        }
+    } elseif ($IsMacOS -or $IsLinux) {
+        Push-Location -LiteralPath $resolved
+        try {
+            $physical = & /bin/pwd -P 2>$null
+            $physicalExit = $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
+        if ($physicalExit -eq 0 -and $physical) {
+            $resolved = ([string]$physical).Trim()
+        }
+    }
+
+    return [System.IO.Path]::TrimEndingDirectorySeparator($resolved)
+}
+
 function Assert-VerifyCwdMarker {
     # Asserts the whole verify chain (all 5 stubs) ran in exactly $ExpectedDir.
     param(
@@ -452,10 +495,12 @@ function Assert-VerifyCwdMarker {
     )
     $lines = if (Test-Path -LiteralPath $MarkerFile) { @(Get-Content -LiteralPath $MarkerFile) } else { @() }
     Assert-Equal -Name "$Name`: verify chain ran (5 stub hooks recorded cwd)" -Expected 5 -Actual $lines.Count
-    Assert-Equal -Name "$Name`: verify chain cwd" -Expected $ExpectedDir -Actual ($lines | Select-Object -First 1) `
-        -Message "Expected every stub to run in '$ExpectedDir', got: $($lines -join ', ')"
+    $canonicalExpected = Resolve-Issue628CanonicalPath -Path $ExpectedDir
+    $canonicalLines = @($lines | ForEach-Object { Resolve-Issue628CanonicalPath -Path ([string]$_).Trim() })
+    Assert-Equal -Name "$Name`: verify chain cwd" -Expected $canonicalExpected -Actual ($canonicalLines | Select-Object -First 1) `
+        -Message "Expected every stub to run in '$ExpectedDir' ('$canonicalExpected' canonical), got: $($lines -join ', ')"
     Assert-True -Name "$Name`: cwd consistent across the whole chain" `
-        -Condition (@($lines | Select-Object -Unique).Count -eq 1)
+        -Condition (@($canonicalLines | Select-Object -Unique).Count -eq 1)
 }
 
 # --- Scenario 1: worktree registry entry exists and is valid → worktree_path wins
