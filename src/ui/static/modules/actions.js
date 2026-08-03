@@ -467,6 +467,38 @@ function setTaskQuestionDraft(questionBlock, draft) {
 }
 
 /**
+ * Point the stored draft at whatever a batch question block currently holds.
+ *
+ * The draft only restores a selection correctly if it never disagrees with the
+ * DOM, so derive it from the block instead of having each input handler decide
+ * for itself — a handler that stored the wrong thing (or nothing) for its own
+ * edge case would silently make the selection non-durable across a re-render.
+ * See taskQuestionDrafts / issue #622.
+ *
+ * @param {HTMLElement} questionBlock - The .task-question-block element
+ */
+function syncTaskQuestionDraft(questionBlock) {
+    if (!questionBlock) return;
+
+    const selected = questionBlock.querySelector('.answer-option.selected');
+    if (selected) {
+        // An option and free text are mutually exclusive: selecting one clears
+        // the other, so a live selection means there is no text to keep.
+        setTaskQuestionDraft(questionBlock, { key: selected.dataset.key, customText: '' });
+        return;
+    }
+
+    const textarea = questionBlock.querySelector('.workflow-launch-freetext-input');
+    if (textarea?.value.trim()) {
+        setTaskQuestionDraft(questionBlock, { key: null, customText: textarea.value });
+        return;
+    }
+
+    // Nothing selected and no meaningful text — there is nothing to restore.
+    clearTaskQuestionDraft(questionBlock);
+}
+
+/**
  * Drop the stored draft for a batch question block — once it is answered or its
  * inputs are cleared, there is nothing to restore. See taskQuestionDrafts / #622.
  * @param {HTMLElement} questionBlock - The .task-question-block element
@@ -711,9 +743,16 @@ function renderWorkflowLaunchQuestionsItem(item) {
  * @param {HTMLElement} container - Container element
  */
 function attachActionHandlers(container) {
-    // Answer option selection
+    // Answer option selection for single-question items.
+    // Batch (task-questions) blocks carry data-task-id too, so without this guard
+    // they get handled twice: once here and once by the task-question handler
+    // below. That wrote selectedAnswers entries which nothing reads for a batch
+    // task (submitTaskQuestion reads the DOM) and nothing ever cleans up, and it
+    // left draft correctness depending on the two listeners' attachment order.
+    // Workflow-launch questions are already excluded by the !taskId bail below.
     container.querySelectorAll('.answer-option').forEach(option => {
         option.addEventListener('click', (e) => {
+            if (option.closest('.task-question-block')) return;
             const optionsContainer = option.closest('.answer-options');
             const isMultiSelect = optionsContainer?.dataset.multiSelect === 'true';
             const taskId = option.closest('.action-item')?.dataset.taskId;
@@ -980,7 +1019,7 @@ function attachActionHandlers(container) {
             const freetext = questionBlock.querySelector('.workflow-launch-freetext-input');
             if (freetext) freetext.value = '';
             // Persist the choice so it survives a re-render (issue #622).
-            setTaskQuestionDraft(questionBlock, { key: option.dataset.key, customText: '' });
+            syncTaskQuestionDraft(questionBlock);
         });
     });
 
@@ -989,14 +1028,13 @@ function attachActionHandlers(container) {
         textarea.addEventListener('input', () => {
             const questionBlock = textarea.closest('.task-question-block');
             if (questionBlock?.classList.contains('answered')) return;
+            // Real text wins over a chosen option; whitespace alone is not an
+            // answer, so it leaves any existing selection standing.
             if (textarea.value.trim()) {
                 questionBlock?.querySelectorAll('.answer-option').forEach(opt => opt.classList.remove('selected'));
-                // Persist the free-text draft so it survives a re-render (issue #622).
-                setTaskQuestionDraft(questionBlock, { key: null, customText: textarea.value });
-            } else {
-                // Emptied with no option selected — drop the draft.
-                clearTaskQuestionDraft(questionBlock);
             }
+            // Persist whatever the block now holds so it survives a re-render (#622).
+            syncTaskQuestionDraft(questionBlock);
         });
     });
 
