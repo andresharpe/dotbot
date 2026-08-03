@@ -43,6 +43,7 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
 }
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.Theme" "Dotbot.Theme.psd1") -Force -DisableNameChecking
+Import-Module (Join-Path (Get-DotbotInstallPath) "src" "runtime" "Modules" "Dotbot.LegacyYaml" "Dotbot.LegacyYaml.psd1") -Force -DisableNameChecking
 
 Write-DotbotBanner -Title "D O T B O T" -Subtitle "Registry: Update"
 
@@ -174,6 +175,7 @@ foreach ($entry in $targets) {
     if ($entry.type -eq 'local') {
         # Local: symlink/junction is always current — just re-validate
         Write-Status "Local registry — re-validating (symlink tracks source automatically)"
+        $null = Invoke-DotbotSingleRegistryYamlMigration -RegistryPath $registryPath -AllowExternalLink -ExpectedName $entryName
         $result = Invoke-RegistryValidation -RegistryPath $registryPath -RegistryName $entryName
         if ($result -eq $false) {
             $failedCount++
@@ -240,6 +242,7 @@ foreach ($entry in $targets) {
 
         Write-BlankLine
         Write-DotbotSection -Title "VALIDATION"
+        $null = Invoke-DotbotSingleRegistryYamlMigration -RegistryPath $registryPath -ExpectedName $entryName
         $result = Invoke-RegistryValidation -RegistryPath $registryPath -RegistryName $entryName
         if ($result -eq $false) {
             $failedCount++

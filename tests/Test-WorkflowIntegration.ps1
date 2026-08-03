@@ -946,6 +946,80 @@ Assert-True -Name "Get-ActiveWorkflowManifest fallback uses Test-ValidWorkflowDi
     -Message "Get-ActiveWorkflowManifest must apply Test-ValidWorkflowDir on both the named-workflow path and the alphabetic-first scan (directly or via Find-Workflow + Discover-Workflows)"
 
 # ═══════════════════════════════════════════════════════════════════
+# INIT LEGACY YAML MIGRATION OFFER
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  INIT LEGACY YAML MIGRATION OFFER" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$initScript = Join-Path $dotbotDir "src/cli/init-project.ps1"
+
+function New-LegacyYamlProject {
+    $project = New-TestProject
+    $legacyDir = Join-Path $project ".bot/workflows/azure-to-github"
+    New-Item -ItemType Directory -Path $legacyDir -Force | Out-Null
+    "name: azure-to-github`nversion: `"1.0`"" | Set-Content (Join-Path $legacyDir "workflow.yaml")
+    return $project
+}
+
+# Accept path (-y auto-confirms): legacy YAML converted into the v4 layout
+$testProject = New-LegacyYamlProject
+try {
+    Push-Location $testProject
+    $acceptOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Force -y 2>&1 | Out-String
+    Pop-Location
+
+    Assert-True -Name "Init accept: offer names the legacy manifest" `
+        -Condition ($acceptOutput -match 'Legacy v3.5 YAML manifests found') `
+        -Message "Expected offer text, got: $acceptOutput"
+    Assert-PathExists -Name "Init accept: workflow.json written in v4 layout" `
+        -Path (Join-Path $testProject ".bot/content/workflows/azure-to-github/workflow.json")
+    Assert-PathExists -Name "Init accept: source YAML kept as .migrated" `
+        -Path (Join-Path $testProject ".bot/content/workflows/azure-to-github/workflow.yaml.migrated")
+    Assert-PathNotExists -Name "Init accept: legacy workflows/ dir gone" `
+        -Path (Join-Path $testProject ".bot/workflows")
+} finally {
+    Remove-TestProject -Path $testProject
+}
+
+# Decline path ('n' on stdin): YAML untouched, explicit warning shown
+$testProject = New-LegacyYamlProject
+try {
+    Push-Location $testProject
+    $declineOutput = 'n' | & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Force 2>&1 | Out-String
+    Pop-Location
+
+    Assert-PathExists -Name "Init decline: YAML left untouched" `
+        -Path (Join-Path $testProject ".bot/workflows/azure-to-github/workflow.yaml")
+    Assert-PathNotExists -Name "Init decline: nothing converted" `
+        -Path (Join-Path $testProject ".bot/content/workflows/azure-to-github/workflow.json")
+    Assert-True -Name "Init decline: warns workflows stay invisible" `
+        -Condition ($declineOutput -match 'stay invisible until converted') `
+        -Message "Expected decline warning, got: $declineOutput"
+} finally {
+    Remove-TestProject -Path $testProject
+}
+
+# Dry run: reports the finding, writes nothing
+$testProject = New-LegacyYamlProject
+try {
+    Push-Location $testProject
+    $dryRunOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -DryRun 2>&1 | Out-String
+    Pop-Location
+
+    Assert-True -Name "Init dry run: reports would-convert" `
+        -Condition ($dryRunOutput -match 'would convert') `
+        -Message "Expected dry-run report, got: $dryRunOutput"
+    Assert-PathExists -Name "Init dry run: YAML left untouched" `
+        -Path (Join-Path $testProject ".bot/workflows/azure-to-github/workflow.yaml")
+    Assert-PathNotExists -Name "Init dry run: nothing converted" `
+        -Path (Join-Path $testProject ".bot/content/workflows/azure-to-github/workflow.json")
+} finally {
+    Remove-TestProject -Path $testProject
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # INSTALL SCRIPTS (workflow-add, init-project)
 # ═══════════════════════════════════════════════════════════════════
 
