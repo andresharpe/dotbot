@@ -140,7 +140,7 @@ Write-DotbotSection -Title "VALIDATION"
 
 $registryJsonPath = Join-Path $RegistryPath "registry.json"
 
-Invoke-DotbotSingleRegistryYamlMigration -RegistryPath $RegistryPath
+Invoke-DotbotSingleRegistryYamlMigration -RegistryPath $RegistryPath -AllowExternalLink -ExpectedName $Name | Out-Null
 
 # 4a. File must exist
 if (-not (Test-Path $registryJsonPath)) {

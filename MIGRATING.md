@@ -204,11 +204,18 @@ conversion. `dotbot init` offers the same migration interactively and
 respects `-DryRun`.
 
 Conversion uses the `powershell-yaml` module — the same parser v3.5 used.
-dotbot installs it automatically (CurrentUser scope) when missing; if that
-fails, install it manually and re-run the command:
+Because workflow and registry discovery are read operations, dotbot never
+changes package repositories or installs modules implicitly. Install the
+parser explicitly with either supported package manager, then re-run the
+command:
 
 ```powershell
-Install-Module powershell-yaml -Scope CurrentUser
+# PowerShellGet
+Register-PSRepository -Default
+Install-Module powershell-yaml -Repository PSGallery -Scope CurrentUser
+
+# PSResourceGet
+Install-PSResource powershell-yaml -Repository PSGallery -Scope CurrentUser -TrustRepository
 ```
 
 If both a `.yaml` manifest and its `.json` equivalent exist, **JSON wins**:

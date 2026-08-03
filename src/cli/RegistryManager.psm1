@@ -55,8 +55,6 @@ function Update-StaleRegistries {
         [int]$MaxAgeSecs = 3600
     )
 
-    Invoke-DotbotRegistryYamlMigration -DotbotBase $DotbotBase
-
     $configPath   = Join-Path $DotbotBase "registries.json"
     $registries   = Get-DotbotRegistries -DotbotBase $DotbotBase
     if ($registries.Count -eq 0) { return }
@@ -115,6 +113,15 @@ function Update-StaleRegistries {
         $null = & git -C $registryPath merge --ff-only "origin/$branch" 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-DotbotWarning "Auto-update failed for registry '$safeName' (cannot fast-forward) — using cached copy"
+            continue
+        }
+
+        # Migrate only after the cached clone is at the requested revision.
+        # A later fetch/reset therefore cannot erase the generated JSON before
+        # validation, and linked local sources are never mutated by this
+        # automatic update path.
+        if (-not (Invoke-DotbotSingleRegistryYamlMigration -RegistryPath $registryPath -ExpectedName $safeName)) {
+            Write-DotbotWarning "Registry '$safeName' contains legacy YAML that could not be migrated — using cached copy"
             continue
         }
 

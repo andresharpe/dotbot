@@ -103,6 +103,42 @@ try {
         Assert-True -Name "Empty YAML throws instead of writing null JSON" -Condition $threw
         Assert-PathNotExists -Name "Empty YAML writes no JSON" -Path (Join-Path $root "empty.json")
         Assert-PathExists -Name "Empty YAML source left untouched" -Path $emptyYaml
+
+        foreach ($wrongRoot in @(
+            @{ Name = 'scalar'; Content = 'just-a-string' },
+            @{ Name = 'sequence'; Content = "- one`n- two" }
+        )) {
+            $wrongYaml = Join-Path $root "$($wrongRoot.Name).yaml"
+            $wrongJson = Join-Path $root "$($wrongRoot.Name).json"
+            Set-Content -Path $wrongYaml -Value $wrongRoot.Content
+            $wrongThrew = $false
+            try {
+                Convert-DotbotYamlFileToJson -YamlPath $wrongYaml -JsonPath $wrongJson 6>&1 | Out-Null
+            } catch { $wrongThrew = $true }
+            Assert-True -Name "$($wrongRoot.Name) YAML root is rejected" -Condition $wrongThrew
+            Assert-PathNotExists -Name "$($wrongRoot.Name) YAML writes no JSON" -Path $wrongJson
+            Assert-PathExists -Name "$($wrongRoot.Name) YAML remains retryable" -Path $wrongYaml
+        }
+
+        $rollbackYaml = Join-Path $root "rollback.yaml"
+        $rollbackJson = Join-Path $root "rollback.json"
+        Set-Content -Path $rollbackYaml -Value "name: rollback"
+        & (Get-Module Dotbot.LegacyYaml) {
+            $script:MigrationFailureInjector = {
+                param($Operation, $Source, $Destination)
+                if ($Operation -eq 'archive-yaml') { throw 'injected archive failure' }
+            }
+        }
+        $rollbackThrew = $false
+        try {
+            Convert-DotbotYamlFileToJson -YamlPath $rollbackYaml -JsonPath $rollbackJson 6>&1 | Out-Null
+        } catch { $rollbackThrew = $true }
+        & (Get-Module Dotbot.LegacyYaml) { $script:MigrationFailureInjector = $null }
+        Assert-True -Name "Archive failure is surfaced" -Condition $rollbackThrew
+        Assert-PathNotExists -Name "Archive failure rolls back published JSON" -Path $rollbackJson
+        Assert-PathExists -Name "Archive failure leaves YAML in place" -Path $rollbackYaml
+        Assert-PathNotExists -Name "Archive failure creates no misleading backup" -Path "$rollbackYaml.migrated"
+        Assert-Equal -Name "Archive failure cleans staged files" -Expected 0 -Actual @(Get-ChildItem $root -Filter 'rollback.json.tmp-*').Count
     } finally {
         Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -290,7 +326,61 @@ try {
         Assert-PathExists -Name "Malformed YAML left untouched" -Path (Join-Path $badDir "workflow.yaml")
         Assert-True -Name "Malformed YAML fails loudly" -Condition (@($output | Where-Object { "$_" -match 'Could not migrate' }).Count -ge 1)
         Assert-ValidJson -Name "Valid neighbour still converts in same run" -Path (Join-Path $goodDir "workflow.json")
+
+        Set-Content -Path (Join-Path $badDir "workflow.yaml") -Value "name: repaired"
+        Invoke-DotbotWorkflowYamlMigration -BotRoot $bot 6>&1 | Out-Null
+        Assert-ValidJson -Name "Failed migration retries in the same process after repair" -Path (Join-Path $badDir "workflow.json")
     } finally {
+        Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # A failure after the legacy directory move restores the entire v3 layout.
+    $root = New-TempRoot -Prefix "dotbot-lym-dirrollback"
+    try {
+        $bot = Join-Path $root ".bot"
+        $legacyDir = Join-Path $bot "workflows/rollback-flow"
+        $targetDir = Join-Path $bot "content/workflows/rollback-flow"
+        New-Item -ItemType Directory -Path $legacyDir -Force | Out-Null
+        Set-Content -Path (Join-Path $legacyDir "workflow.yaml") -Value "name: rollback-flow"
+        Set-Content -Path (Join-Path $legacyDir "sibling.txt") -Value "preserve me"
+        & (Get-Module Dotbot.LegacyYaml) {
+            $script:MigrationFailureInjector = {
+                param($Operation, $Source, $Destination)
+                if ($Operation -eq 'archive-yaml') { throw 'injected directory conversion failure' }
+            }
+        }
+        Invoke-DotbotWorkflowYamlMigration -BotRoot $bot -Force 6>&1 | Out-Null
+        & (Get-Module Dotbot.LegacyYaml) { $script:MigrationFailureInjector = $null }
+        Assert-PathExists -Name "Failed directory conversion restores legacy directory" -Path $legacyDir
+        Assert-PathExists -Name "Directory rollback preserves sibling files" -Path (Join-Path $legacyDir "sibling.txt")
+        Assert-PathExists -Name "Directory rollback restores source YAML" -Path (Join-Path $legacyDir "workflow.yaml")
+        Assert-PathNotExists -Name "Failed directory conversion leaves no v4 directory" -Path $targetDir
+    } finally {
+        & (Get-Module Dotbot.LegacyYaml) { $script:MigrationFailureInjector = $null }
+        Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # Project workflow discovery must not mutate a linked external directory.
+    $root = New-TempRoot -Prefix "dotbot-lym-wflink"
+    $link = $null
+    try {
+        $bot = Join-Path $root ".bot"
+        $external = Join-Path $root "external-workflow"
+        $link = Join-Path $bot "content/workflows/linked"
+        New-Item -ItemType Directory -Path $external -Force | Out-Null
+        New-Item -ItemType Directory -Path (Split-Path -Parent $link) -Force | Out-Null
+        Set-Content -Path (Join-Path $external "workflow.yaml") -Value "name: linked"
+        if ($IsWindows) {
+            New-Item -ItemType Junction -Path $link -Target $external | Out-Null
+        } else {
+            New-Item -ItemType SymbolicLink -Path $link -Target $external | Out-Null
+        }
+        $linkedOutput = Invoke-DotbotWorkflowYamlMigration -BotRoot $bot -Force 6>&1 | Out-String
+        Assert-True -Name "Linked project workflow warns and skips" -Condition ($linkedOutput -match 'linked directory')
+        Assert-PathExists -Name "Linked project workflow leaves external YAML untouched" -Path (Join-Path $external "workflow.yaml")
+        Assert-PathNotExists -Name "Linked project workflow writes no external JSON" -Path (Join-Path $external "workflow.json")
+    } finally {
+        if ($link -and (Test-Path -LiteralPath $link)) { Remove-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue }
         Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
     }
 
@@ -342,6 +432,9 @@ content:
 "@ | Set-Content -Path (Join-Path $acme "registry.yaml")
         Set-Content -Path (Join-Path $acme "workflows/deploy/workflow.yaml") -Value "name: deploy`nversion: `"1.0`""
 
+        @{ registries = @(@{ name = 'acme'; type = 'git'; source = 'test'; auto_update = $false }) } |
+            ConvertTo-Json -Depth 5 | Set-Content (Join-Path $root "registries.json")
+
         Invoke-DotbotRegistryYamlMigration -DotbotBase $root -Force 6>&1 | Out-Null
 
         Assert-ValidJson -Name "registry.yaml converted to registry.json" -Path (Join-Path $acme "registry.json")
@@ -350,6 +443,66 @@ content:
         Assert-Equal -Name "Registry name survives conversion" -Expected "acme" -Actual $regMeta.name
         Assert-Equal -Name "Registry content map survives conversion" -Expected "deploy" -Actual $regMeta.content.workflows[0]
         Assert-ValidJson -Name "Nested registry workflow converted" -Path (Join-Path $acme "workflows/deploy/workflow.json")
+
+        $invalidYaml = Join-Path $acme "invalid-registry.yaml"
+        $invalidJson = Join-Path $acme "invalid-registry.json"
+        Set-Content -Path $invalidYaml -Value "name: invalid-registry"
+        $invalidThrew = $false
+        try {
+            Convert-DotbotYamlFileToJson -YamlPath $invalidYaml -JsonPath $invalidJson -ManifestKind Registry 6>&1 | Out-Null
+        } catch { $invalidThrew = $true }
+        Assert-True -Name "Registry without content mapping is rejected" -Condition $invalidThrew
+        Assert-PathNotExists -Name "Invalid registry publishes no JSON" -Path $invalidJson
+        Assert-PathExists -Name "Invalid registry YAML remains retryable" -Path $invalidYaml
+    } finally {
+        Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # Automatic registry discovery never follows a configured local link.
+    $root = New-TempRoot -Prefix "dotbot-lym-reglink"
+    try {
+        $external = Join-Path $root "external-source"
+        $registries = Join-Path $root "home/registries"
+        $link = Join-Path $registries "linked"
+        New-Item -ItemType Directory -Path (Join-Path $external "workflows/deploy") -Force | Out-Null
+        New-Item -ItemType Directory -Path $registries -Force | Out-Null
+        "name: linked`ncontent:`n  workflows: [deploy]" | Set-Content (Join-Path $external "registry.yaml")
+        "name: deploy" | Set-Content (Join-Path $external "workflows/deploy/workflow.yaml")
+        if ($IsWindows) {
+            New-Item -ItemType Junction -Path $link -Target $external | Out-Null
+        } else {
+            New-Item -ItemType SymbolicLink -Path $link -Target $external | Out-Null
+        }
+        @{ registries = @(@{ name = 'linked'; type = 'local'; source = $external; auto_update = $false }) } |
+            ConvertTo-Json -Depth 5 | Set-Content (Join-Path $root "home/registries.json")
+
+        $linkedOutput = Invoke-DotbotRegistryYamlMigration -DotbotBase (Join-Path $root 'home') -Force 6>&1 | Out-String
+        Assert-True -Name "Automatic linked registry migration warns and skips" -Condition ($linkedOutput -match 'skipped for linked registry')
+        Assert-PathExists -Name "Automatic discovery leaves external YAML untouched" -Path (Join-Path $external "registry.yaml")
+        Assert-PathNotExists -Name "Automatic discovery writes no external JSON" -Path (Join-Path $external "registry.json")
+
+        Invoke-DotbotSingleRegistryYamlMigration -RegistryPath $link -AllowExternalLink 6>&1 | Out-Null
+        Assert-PathExists -Name "Explicit linked registry update may migrate source" -Path (Join-Path $external "registry.json")
+    } finally {
+        Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # Only configured registries migrate; unrelated directories stay untouched.
+    $root = New-TempRoot -Prefix "dotbot-lym-regscope"
+    try {
+        $registered = Join-Path $root "registries/registered"
+        $unregistered = Join-Path $root "registries/unregistered"
+        foreach ($path in @($registered, $unregistered)) {
+            New-Item -ItemType Directory -Path (Join-Path $path "workflows/deploy") -Force | Out-Null
+            "name: $([IO.Path]::GetFileName($path))`ncontent:`n  workflows: [deploy]" | Set-Content (Join-Path $path "registry.yaml")
+            "name: deploy" | Set-Content (Join-Path $path "workflows/deploy/workflow.yaml")
+        }
+        @{ registries = @(@{ name = 'registered'; type = 'git'; source = 'test'; auto_update = $false }) } |
+            ConvertTo-Json -Depth 5 | Set-Content (Join-Path $root "registries.json")
+        Invoke-DotbotRegistryYamlMigration -DotbotBase $root -Force 6>&1 | Out-Null
+        Assert-PathExists -Name "Configured registry is migrated" -Path (Join-Path $registered "registry.json")
+        Assert-PathExists -Name "Unregistered registry YAML is untouched" -Path (Join-Path $unregistered "registry.yaml")
+        Assert-PathNotExists -Name "Unregistered registry gets no JSON" -Path (Join-Path $unregistered "registry.json")
     } finally {
         Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -361,6 +514,8 @@ content:
         New-Item -ItemType Directory -Path $acme -Force | Out-Null
         Set-Content -Path (Join-Path $acme "registry.json") -Value '{"name":"acme","content":{"workflows":["a"]}}'
         Set-Content -Path (Join-Path $acme "registry.yaml") -Value "name: acme"
+        @{ registries = @(@{ name = 'acme'; type = 'git'; source = 'test'; auto_update = $false }) } |
+            ConvertTo-Json -Depth 5 | Set-Content (Join-Path $root "registries.json")
         $before = (Get-Item (Join-Path $acme "registry.json")).LastWriteTimeUtc
 
         $warnings = @(Invoke-DotbotRegistryYamlMigration -DotbotBase $root -Force 6>&1)
@@ -418,9 +573,10 @@ content:
 
         $modulePath = Join-Path $repoRoot "src/runtime/Modules/Dotbot.LegacyYaml/Dotbot.LegacyYaml.psd1"
         $script = @"
-function global:Get-Module { param([switch]`$ListAvailable, [string[]]`$Name) return `$null }
-function global:Install-Module { throw 'install blocked by test' }
+`$env:PSModulePath = Join-Path `$PSHOME 'Modules'
 Import-Module '$modulePath' -Force -DisableNameChecking
+function global:Install-Module { throw 'Install-Module must not be invoked during discovery' }
+function global:Install-PSResource { throw 'Install-PSResource must not be invoked during discovery' }
 `$env:DOTBOT_HOME = '$fakeHome'
 Invoke-DotbotWorkflowYamlMigration -BotRoot '$bot' -Force 6>&1 | ForEach-Object { "`$_" }
 exit 0
@@ -429,7 +585,9 @@ exit 0
         $exitCode = $LASTEXITCODE
 
         Assert-Equal -Name "Command completes despite missing module" -Expected 0 -Actual $exitCode
-        Assert-True -Name "Error names the manual install command" -Condition ($output -match 'Install-Module powershell-yaml -Scope CurrentUser')
+        Assert-True -Name "Error names PowerShellGet installation" -Condition ($output -match 'Install-Module powershell-yaml')
+        Assert-True -Name "Error names PSResourceGet installation" -Condition ($output -match 'Install-PSResource powershell-yaml')
+        Assert-True -Name "Discovery performs no implicit package installation" -Condition ($output -notmatch 'must not be invoked during discovery')
         Assert-PathNotExists -Name "No JSON written without the module" -Path (Join-Path $wfDir "workflow.json")
         Assert-PathExists -Name "YAML untouched without the module" -Path (Join-Path $wfDir "workflow.yaml")
     } finally {
