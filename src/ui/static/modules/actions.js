@@ -263,6 +263,9 @@ async function fetchAndRenderActionItems() {
         } else {
             content.innerHTML = '<div class="empty-state">No pending actions</div>';
             actionItems = [];
+            // Nothing is pending server-side, so no stored draft can still belong
+            // to a live question — drop them all (issue #622).
+            pruneTaskQuestionDrafts([]);
         }
     } catch (error) {
         console.error('Failed to fetch action items:', error);
@@ -276,6 +279,10 @@ async function fetchAndRenderActionItems() {
  * @param {Array} items - Action items to render
  */
 function renderActionItems(container, items) {
+    // The payload is the source of truth for what is still pending; discard any
+    // draft it no longer covers before repainting (issue #622).
+    pruneTaskQuestionDrafts(items);
+
     container.innerHTML = items.map(item => {
         if (item.type === 'question') {
             return renderQuestionItem(item);
@@ -411,7 +418,7 @@ function renderTaskQuestionsItem(item) {
                     // Restore any un-submitted selection for this question so a
                     // re-render (e.g. after a sibling question is submitted)
                     // does not wipe it — see taskQuestionDrafts (issue #622).
-                    const draft = (taskQuestionDrafts[taskId] || {})[q.id] || {};
+                    const draft = taskQuestionDrafts[taskId]?.[q.id] || {};
                     return `
                     ${idx > 0 ? '<div class="question-divider"></div>' : ''}
                     <div class="task-question-block" data-question-id="${escapeAttr(q.id)}" data-task-id="${escapeAttr(taskId)}" data-question-type="${escapeAttr(q.type || 'singleChoice')}">
@@ -478,6 +485,49 @@ function clearTaskQuestionDraft(questionBlock) {
     if (Object.keys(taskDrafts).length === 0) {
         delete taskQuestionDrafts[taskId];
     }
+}
+
+/**
+ * Discard drafts that no longer match a pending question in the server payload.
+ *
+ * Question ids are only unique within a batch — Ensure-TaskInputPendingQuestionIds
+ * assigns `q1`, `q2`, … per batch — so a task that re-enters needs-input reuses the
+ * same ids for entirely different questions. A draft abandoned by an earlier batch
+ * (question answered from the CLI or another session, task resumed, new batch
+ * raised) would otherwise be re-applied to an unrelated question, and drafts for
+ * tasks that left needs-input would linger for the lifetime of the page.
+ * See taskQuestionDrafts / issue #622.
+ *
+ * @param {Array} items - Action items the panel is about to render
+ */
+function pruneTaskQuestionDrafts(items) {
+    const liveQuestionIds = {};   // { taskId: Set<questionId> }
+
+    (items || []).forEach(item => {
+        if (item?.type !== 'task-questions' || item.task_id == null) return;
+        const taskId = String(item.task_id);
+        if (!liveQuestionIds[taskId]) liveQuestionIds[taskId] = new Set();
+        (item.questions || []).forEach(q => {
+            if (q?.id != null) liveQuestionIds[taskId].add(String(q.id));
+        });
+    });
+
+    Object.keys(taskQuestionDrafts).forEach(taskId => {
+        const liveIds = liveQuestionIds[taskId];
+        if (!liveIds) {
+            delete taskQuestionDrafts[taskId];
+            return;
+        }
+
+        const taskDrafts = taskQuestionDrafts[taskId];
+        Object.keys(taskDrafts).forEach(questionId => {
+            if (!liveIds.has(questionId)) delete taskDrafts[questionId];
+        });
+
+        if (Object.keys(taskDrafts).length === 0) {
+            delete taskQuestionDrafts[taskId];
+        }
+    });
 }
 
 /**
