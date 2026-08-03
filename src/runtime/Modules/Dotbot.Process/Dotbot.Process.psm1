@@ -286,7 +286,13 @@ function Test-DotbotPreflightCommand {
     param([Parameter(Mandatory)][string]$Name)
 
     if (Get-Command Resolve-DotbotExternalCommand -ErrorAction SilentlyContinue) {
-        return Resolve-DotbotExternalCommand -Name $Name -RepairSessionPath
+        $resolution = Resolve-DotbotExternalCommand -Name $Name -RepairSessionPath
+        if ($resolution.Found -and $resolution.Scope -in @('Machine', 'User') -and -not $resolution.Repaired) {
+            $resolution.Found = $false
+            $resolution.RepairSkipped = $resolution.RepairBlocked -eq 'opt_out'
+            $resolution.RepairBlockedElevated = $resolution.RepairBlocked -eq 'elevated_user_path'
+        }
+        return $resolution
     }
     $cmd = Get-Command $Name -ErrorAction SilentlyContinue
     if ($cmd) { return @{ Found = $true; Name = $Name; Scope = 'Process' } }
@@ -317,7 +323,13 @@ function Test-Preflight {
     if ($gitRes.Found) {
         $checks += Get-DotbotPreflightCheckText -Name 'git' -Resolution $gitRes
     } else {
-        $checks += "git: MISSING - git not found on PATH"
+        $checks += if ($gitRes.RepairSkipped) {
+            "git: MISSING - found via $($gitRes.Scope) PATH, but session PATH repair is disabled by DOTBOT_SKIP_PATH_REPAIR"
+        } elseif ($gitRes.RepairBlockedElevated) {
+            "git: MISSING - found via User PATH, but user-writable PATH entries are not added to an elevated process; restart dotbot without elevation"
+        } else {
+            "git: MISSING - git not found on PATH"
+        }
         $allPassed = $false
     }
 
@@ -335,7 +347,13 @@ function Test-Preflight {
         if ($providerRes.Found) {
             $checks += Get-DotbotPreflightCheckText -Name $providerExe -Resolution $providerRes
         } else {
-            $checks += "${providerExe}: MISSING - $providerDisplay CLI not found on PATH"
+            $checks += if ($providerRes.RepairSkipped) {
+                "${providerExe}: MISSING - found via $($providerRes.Scope) PATH, but session PATH repair is disabled by DOTBOT_SKIP_PATH_REPAIR"
+            } elseif ($providerRes.RepairBlockedElevated) {
+                "${providerExe}: MISSING - found via User PATH, but user-writable PATH entries are not added to an elevated process; restart dotbot without elevation"
+            } else {
+                "${providerExe}: MISSING - $providerDisplay CLI not found on PATH"
+            }
             $allPassed = $false
         }
     } else {

@@ -26,7 +26,9 @@ if (-not (Test-Path $PlatformFunctionsModule)) {
 Import-Module $PlatformFunctionsModule -Force -ErrorAction Stop
 
 # Dotbot.Core provides Resolve-DotbotExternalCommand (split-PATH detection).
-Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
+if (-not (Get-Module Dotbot.Core)) {
+    Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -DisableNameChecking -Global
+}
 
 # Dotbot.Theme is optional here — it lights up the summary grid and separators.
 # If a project ships without it (e.g. doctor invoked before .bot is fully
@@ -114,9 +116,15 @@ foreach ($exe in @('claude', 'claude.exe', 'codex', 'codex.exe', 'agy', 'agy.exe
     $providerFound = $true
     break
 }
-if (-not $providerFound -and (Resolve-DotbotExternalCommand -Name 'gh').Found) {
-    Write-Check "Provider CLI" "gh found (can run preview 'gh copilot')" Pass
-    $providerFound = $true
+if (-not $providerFound) {
+    $ghRes = Resolve-DotbotExternalCommand -Name 'gh'
+    if ($ghRes.Found -and $ghRes.Scope -eq 'Process') {
+        Write-Check "Provider CLI" "gh found (can run preview 'gh copilot')" Pass
+        $providerFound = $true
+    } elseif ($ghRes.Found) {
+        Write-SplitPathCheck -Label "Provider CLI (gh)" -Resolution $ghRes
+        $providerFound = $true
+    }
 }
 if (-not $providerFound) {
     Write-Check "Provider CLI" "no provider CLI found (claude/codex/agy/opencode/copilot) in process, Machine, or User PATH" Fail

@@ -1502,7 +1502,8 @@ function Test-GitReadyForWorktree {
     # resolver is available (Windows split-PATH fix); repair the session PATH
     # on a registry hit so the `& git` calls below work.
     $gitAvailable = if (Get-Command Resolve-DotbotExternalCommand -ErrorAction SilentlyContinue) {
-        (Resolve-DotbotExternalCommand -Name 'git' -RepairSessionPath).Found
+        $gitResolution = Resolve-DotbotExternalCommand -Name 'git' -RepairSessionPath
+        $gitResolution.Found -and ($gitResolution.Scope -eq 'Process' -or $gitResolution.Repaired)
     } else {
         [bool](Get-Command git -ErrorAction SilentlyContinue)
     }

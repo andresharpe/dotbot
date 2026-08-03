@@ -41,16 +41,6 @@ Write-Host ""
 
 Reset-TestResults
 
-# ===================================================================
-# GUARDS
-# ===================================================================
-
-if (-not $IsWindows) {
-    Write-TestResult -Name "Dependency PATH resolution" -Status Skip -Message "Windows-only (registry Machine/User PATH scopes)"
-    Write-TestSummary -LayerName "Layer 2: Dependency PATH Resolution"
-    exit 0
-}
-
 $dotbotInstalled = Test-Path (Join-Path $dotbotDir "src")
 if (-not $dotbotInstalled) {
     Write-TestResult -Name "Layer 2 prerequisites" -Status Fail -Message "dotbot not installed globally - set DOTBOT_HOME to a dotbot checkout (src/ + content/ must exist)"
@@ -58,21 +48,31 @@ if (-not $dotbotInstalled) {
     exit 1
 }
 
+# Dotbot.Core provides the resolver and ConvertTo-SanitizedConsoleText.
+$coreModule = Import-Module (Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psd1") -Force -DisableNameChecking -PassThru
+
+# ===================================================================
+# GUARDS
+# ===================================================================
+
+if (-not $IsWindows) {
+    $before = $env:PATH
+    $resolution = Resolve-DotbotExternalCommand -Name "dotbot-command-that-does-not-exist-$PID" -RepairSessionPath
+    $appended = @(Repair-DotbotProcessPath -Force)
+    Assert-True -Name "non-Windows resolver reports registry-only command missing" -Condition (-not $resolution.Found)
+    Assert-Equal -Name "non-Windows repair is a no-op" -Expected 0 -Actual $appended.Count
+    Assert-Equal -Name "non-Windows repair does not mutate PATH" -Expected $before -Actual $env:PATH
+    $allPassed = Write-TestSummary -LayerName "Layer 2: Dependency PATH Resolution"
+    if (-not $allPassed) { exit 1 }
+    exit 0
+}
+
 # ===================================================================
 # HELPERS (file-private; only $env:PATH is ever modified, with restore)
 # ===================================================================
 
 $script:PwshExe = (Get-Command pwsh).Source
-$script:ProbeExtensions = @('exe', 'cmd', 'bat', 'ps1')
-
-function Get-RegistryPathDirectories {
-    param([Parameter(Mandatory)][ValidateSet('Machine', 'User')][string[]]$Scope)
-    $dirs = foreach ($s in $Scope) {
-        ([Environment]::GetEnvironmentVariable('Path', $s) -split ';') |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    }
-    return @($dirs)
-}
+$script:ProbeExtensions = @('ps1', 'com', 'exe', 'bat', 'cmd')
 
 function Find-CommandInDirectories {
     param(
@@ -137,21 +137,6 @@ function Test-AnyLineNamesToolAndScope {
     return $false
 }
 
-# Registry PATH preconditions (read-only probes)
-$registryDirs = Get-RegistryPathDirectories -Scope @('Machine', 'User')
-$gitInRegistry = Find-CommandInDirectories -Name 'git' -Directories $registryDirs
-if (-not $gitInRegistry) {
-    Write-TestResult -Name "Dependency PATH resolution" -Status Skip -Message "git not found in registry Machine/User PATH on this machine"
-    Write-TestSummary -LayerName "Layer 2: Dependency PATH Resolution"
-    exit 0
-}
-
-$userRegistryDirs = Get-RegistryPathDirectories -Scope @('User')
-$claudeInUserRegistry = Find-CommandInDirectories -Name 'claude' -Directories $userRegistryDirs
-
-# Dotbot.Core provides ConvertTo-SanitizedConsoleText (doctor output has ANSI escapes)
-Import-Module (Join-Path $dotbotDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psd1") -Force -DisableNameChecking
-
 # ===================================================================
 # SETUP: temp project fixture (bare .bot is enough for Test-Preflight
 # to resolve the framework-tier claude provider config via DOTBOT_HOME)
@@ -161,6 +146,91 @@ $proj = New-TestProject -Prefix "dotbot-test-pathres"
 $botRoot = Join-Path $proj ".bot"
 New-Item -ItemType Directory -Path $botRoot -Force | Out-Null
 
+$machineDir = Join-Path $proj 'machine-bin'
+$userDir = Join-Path $proj 'user-bin'
+$safeProcessDir = Join-Path $proj 'safe-process-bin'
+$ghUserDir = Join-Path $proj 'gh-user-bin'
+New-Item -ItemType Directory -Path $machineDir, $userDir, $safeProcessDir, $ghUserDir -Force | Out-Null
+'' | Set-Content -LiteralPath (Join-Path $machineDir 'git.exe')
+'"machine"' | Set-Content -LiteralPath (Join-Path $machineDir 'precedence.ps1')
+'@echo machine-custom' | Set-Content -LiteralPath (Join-Path $machineDir 'native.custom')
+'"user"' | Set-Content -LiteralPath (Join-Path $userDir 'claude.ps1')
+'"user"' | Set-Content -LiteralPath (Join-Path $userDir 'precedence.ps1')
+'' | Set-Content -LiteralPath (Join-Path $ghUserDir 'gh.exe')
+
+$global:DotbotTestRegistryPaths = @{
+    Machine = "`"$machineDir`";relative-bin"
+    User    = $userDir
+}
+$originalRegistryPathReader = $coreModule.SessionState.PSVariable.GetValue('DotbotRegistryPathReader')
+$originalElevationReader = $coreModule.SessionState.PSVariable.GetValue('DotbotProcessElevationReader')
+$coreModule.SessionState.PSVariable.Set('DotbotRegistryPathReader', {
+    param([string]$Scope)
+    $global:DotbotTestRegistryPaths[$Scope]
+})
+$coreModule.SessionState.PSVariable.Set('DotbotProcessElevationReader', { $false })
+
+Write-Host "  CORE: DETERMINISTIC PATH SCOPE + MUTATION RULES" -ForegroundColor Cyan
+Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
+
+$oldPath = $env:PATH
+$oldPathExt = $env:PATHEXT
+$oldSkipRepair = $env:DOTBOT_SKIP_PATH_REPAIR
+try {
+    $env:PATH = ''
+    $env:PATHEXT = '.CUSTOM;.EXE;.BAT;.CMD'
+    Remove-Item Env:DOTBOT_SKIP_PATH_REPAIR -ErrorAction SilentlyContinue
+
+    $beforeResolve = $env:PATH
+    $machineResolution = Resolve-DotbotExternalCommand -Name 'precedence'
+    Assert-Equal -Name "Machine PATH wins over User PATH" -Expected 'Machine' -Actual $machineResolution.Scope
+    Assert-Equal -Name "resolution without repair does not mutate PATH" -Expected $beforeResolve -Actual $env:PATH
+
+    $nativeResolution = Resolve-DotbotExternalCommand -Name 'native'
+    Assert-True -Name "resolver honors custom PATHEXT entries" -Condition ($nativeResolution.Found)
+    Assert-True -Name "resolver reports the PATHEXT-selected source" -Condition ($nativeResolution.Source -like '*.custom')
+
+    $repairResolution = Resolve-DotbotExternalCommand -Name 'precedence' -RepairSessionPath
+    Assert-True -Name "targeted registry resolution repairs the session" -Condition $repairResolution.Repaired
+    Assert-Equal -Name "empty PATH repair has no leading empty segment" -Expected $machineDir -Actual $env:PATH
+    Assert-True -Name "targeted repair does not add unrelated User PATH" -Condition ($env:PATH -notlike "*$userDir*")
+
+    $env:PATH = ''
+    $appended = @(Repair-DotbotProcessPath -Force)
+    $expectedMergedPath = "$machineDir;$userDir"
+    Assert-Equal -Name "full repair preserves Machine then User precedence" -Expected $expectedMergedPath -Actual $env:PATH
+    Assert-Equal -Name "full repair reports only accepted absolute directories" -Expected 2 -Actual $appended.Count
+    Assert-True -Name "relative registry entries are not added to PATH" -Condition ($env:PATH -notmatch 'relative-bin')
+
+    $env:PATH = $safeProcessDir
+    $env:DOTBOT_SKIP_PATH_REPAIR = '1'
+    $skipBefore = $env:PATH
+    $skippedResolution = Resolve-DotbotExternalCommand -Name 'claude' -RepairSessionPath
+    $skippedFullRepair = @(Repair-DotbotProcessPath -Force)
+    Assert-True -Name "opt-out still detects a User PATH command" -Condition ($skippedResolution.Found -and $skippedResolution.Scope -eq 'User')
+    Assert-True -Name "opt-out prevents targeted repair" -Condition (-not $skippedResolution.Repaired)
+    Assert-Equal -Name "opt-out prevents every PATH mutation path" -Expected $skipBefore -Actual $env:PATH
+    Assert-Equal -Name "opt-out full repair appends nothing" -Expected 0 -Actual $skippedFullRepair.Count
+
+    Remove-Item Env:DOTBOT_SKIP_PATH_REPAIR -ErrorAction SilentlyContinue
+    $coreModule.SessionState.PSVariable.Set('DotbotProcessElevationReader', { $true })
+    $env:PATH = $safeProcessDir
+    $elevatedResolution = Resolve-DotbotExternalCommand -Name 'claude' -RepairSessionPath
+    $elevatedRepair = @(Repair-DotbotProcessPath -Force)
+    Assert-True -Name "elevated process detects User PATH command without repairing" `
+        -Condition ($elevatedResolution.Found -and -not $elevatedResolution.Repaired -and $elevatedResolution.RepairBlocked -eq 'elevated_user_path')
+    Assert-True -Name "elevated full repair excludes User PATH" -Condition ($env:PATH -notlike "*$userDir*")
+    Assert-True -Name "elevated full repair may still add Machine PATH" -Condition ($elevatedRepair -contains $machineDir)
+} finally {
+    $env:PATH = $oldPath
+    $env:PATHEXT = $oldPathExt
+    if ($null -eq $oldSkipRepair) { Remove-Item Env:DOTBOT_SKIP_PATH_REPAIR -ErrorAction SilentlyContinue }
+    else { $env:DOTBOT_SKIP_PATH_REPAIR = $oldSkipRepair }
+    $coreModule.SessionState.PSVariable.Set('DotbotRegistryPathReader', $originalRegistryPathReader)
+    $coreModule.SessionState.PSVariable.Set('DotbotProcessElevationReader', $originalElevationReader)
+    Remove-Variable DotbotTestRegistryPaths -Scope Global -ErrorAction SilentlyContinue
+}
+
 # Child script: reports what Get-Command sees, runs Test-Preflight, writes JSON
 $childScript = Join-Path $proj "run-preflight.ps1"
 @'
@@ -168,14 +238,24 @@ param(
     [Parameter(Mandatory)][string]$DotbotHome,
     [Parameter(Mandatory)][string]$BotRoot,
     [Parameter(Mandatory)][string]$WorkDir,
-    [Parameter(Mandatory)][string]$ResultPath
+    [Parameter(Mandatory)][string]$ResultPath,
+    [Parameter(Mandatory)][string]$MachinePath,
+    [Parameter(Mandatory)][string]$UserPath,
+    [switch]$SkipRepair
 )
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $WorkDir
 "SANITY-GIT: $([bool](Get-Command git -ErrorAction SilentlyContinue))"
 "SANITY-CLAUDE: $([bool](Get-Command claude -ErrorAction SilentlyContinue))"
 $modules = Join-Path $DotbotHome 'src/runtime/Modules'
-Import-Module (Join-Path $modules 'Dotbot.Core/Dotbot.Core.psd1')         -Force -DisableNameChecking
+$core = Import-Module (Join-Path $modules 'Dotbot.Core/Dotbot.Core.psd1') -Force -DisableNameChecking -PassThru
+$global:DotbotTestRegistryPaths = @{ Machine = $MachinePath; User = $UserPath }
+$core.SessionState.PSVariable.Set('DotbotRegistryPathReader', {
+    param([string]$Scope)
+    $global:DotbotTestRegistryPaths[$Scope]
+})
+$core.SessionState.PSVariable.Set('DotbotProcessElevationReader', { $false })
+if ($SkipRepair) { $env:DOTBOT_SKIP_PATH_REPAIR = '1' }
 Import-Module (Join-Path $modules 'Dotbot.Settings/Dotbot.Settings.psd1') -Force -DisableNameChecking
 Import-Module (Join-Path $modules 'Dotbot.Logging/Dotbot.Logging.psd1')   -Force -DisableNameChecking
 Import-Module (Join-Path $modules 'Dotbot.Process/Dotbot.Process.psd1')   -Force -DisableNameChecking
@@ -184,22 +264,46 @@ $r = Test-Preflight -BotRoot $BotRoot
 '@ | Set-Content -Path $childScript
 
 function Invoke-PreflightChild {
-    param([Parameter(Mandatory)][string]$Path)
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$SkipRepair
+    )
     $resultPath = Join-Path $proj "preflight-result.json"
     Remove-Item $resultPath -Force -ErrorAction SilentlyContinue
-    $child = Invoke-ChildPwsh -Path $Path -ArgumentList @(
+    $childArgs = @(
         '-File', $childScript,
         '-DotbotHome', $dotbotDir,
         '-BotRoot', $botRoot,
         '-WorkDir', $proj,
-        '-ResultPath', $resultPath
+        '-ResultPath', $resultPath,
+        '-MachinePath', $machineDir,
+        '-UserPath', $userDir
     )
+    if ($SkipRepair) { $childArgs += '-SkipRepair' }
+    $child = Invoke-ChildPwsh -Path $Path -ArgumentList $childArgs
     $result = $null
     if (Test-Path $resultPath) {
         $result = Get-Content $resultPath -Raw | ConvertFrom-Json
     }
     return @{ Output = $child.Output; ExitCode = $child.ExitCode; Result = $result }
 }
+
+$doctorBootstrap = Join-Path $proj 'run-doctor.ps1'
+@'
+param(
+    [Parameter(Mandatory)][string]$DotbotHome,
+    [Parameter(Mandatory)][string]$BotRoot,
+    [Parameter(Mandatory)][string]$MachinePath,
+    [Parameter(Mandatory)][string]$UserPath
+)
+$core = Import-Module (Join-Path $DotbotHome 'src/runtime/Modules/Dotbot.Core/Dotbot.Core.psd1') -Force -DisableNameChecking -PassThru
+$global:DotbotTestRegistryPaths = @{ Machine = $MachinePath; User = $UserPath }
+$core.SessionState.PSVariable.Set('DotbotRegistryPathReader', {
+    param([string]$Scope)
+    $global:DotbotTestRegistryPaths[$Scope]
+})
+& (Join-Path $DotbotHome 'src/cli/doctor.ps1') -BotRoot $BotRoot
+'@ | Set-Content -LiteralPath $doctorBootstrap
 
 try {
 
@@ -212,9 +316,8 @@ try {
 Write-Host "  PREFLIGHT: GIT VIA REGISTRY PATH (process PATH stripped)" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-Assert-True -Name "git launcher present in registry Machine/User PATH" `
-    -Condition ([bool]$gitInRegistry) `
-    -Message "expected git in registry PATH (found: $gitInRegistry)"
+Assert-True -Name "mock git launcher present in Machine PATH fixture" `
+    -Condition (Test-Path -LiteralPath (Join-Path $machineDir 'git.exe'))
 
 $gitStrippedPath = (Get-ProcessPathWithoutCommands -Commands @('git', 'claude')) + ";$PSScriptRoot"
 $gitRun = Invoke-PreflightChild -Path $gitStrippedPath
@@ -249,29 +352,32 @@ Write-Host ""
 Write-Host "  PREFLIGHT: CLAUDE VIA REGISTRY USER PATH" -ForegroundColor Cyan
 Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
 
-if (-not $claudeInUserRegistry) {
-    Write-TestResult -Name "claude via registry User PATH" -Status Skip -Message "claude not found in registry User PATH on this machine"
-} else {
-    $claudeStrippedPath = Get-ProcessPathWithoutCommands -Commands @('claude')
-    $claudeRun = Invoke-PreflightChild -Path $claudeStrippedPath
+$claudeStrippedPath = $machineDir
+$claudeRun = Invoke-PreflightChild -Path $claudeStrippedPath
 
-    Assert-True -Name "stripped child resolves git but not claude (simulation sanity)" `
-        -Condition (($claudeRun.Output -contains 'SANITY-GIT: True') -and ($claudeRun.Output -contains 'SANITY-CLAUDE: False')) `
-        -Message "child output: $($claudeRun.Output -join ' | ')"
+Assert-True -Name "stripped child resolves git but not claude (simulation sanity)" `
+    -Condition (($claudeRun.Output -contains 'SANITY-GIT: True') -and ($claudeRun.Output -contains 'SANITY-CLAUDE: False')) `
+    -Message "child output: $($claudeRun.Output -join ' | ')"
 
-    Assert-True -Name "Test-Preflight passes when claude is only on registry User PATH" `
-        -Condition ($null -ne $claudeRun.Result -and $claudeRun.Result.passed -eq $true) `
-        -Message "checks: $(@($claudeRun.Result.checks) -join ' | ')"
+Assert-True -Name "Test-Preflight passes when claude is only on registry User PATH" `
+    -Condition ($null -ne $claudeRun.Result -and $claudeRun.Result.passed -eq $true) `
+    -Message "checks: $(@($claudeRun.Result.checks) -join ' | ')"
 
-    Assert-True -Name "Test-Preflight emits no 'claude: MISSING' when claude is in registry User PATH" `
-        -Condition ($null -ne $claudeRun.Result -and -not (@($claudeRun.Result.checks) -match 'claude:\s*MISSING')) `
-        -Message "checks: $(@($claudeRun.Result.checks) -join ' | ')"
+Assert-True -Name "Test-Preflight emits no 'claude: MISSING' when claude is in registry User PATH" `
+    -Condition ($null -ne $claudeRun.Result -and -not (@($claudeRun.Result.checks) -match 'claude:\s*MISSING')) `
+    -Message "checks: $(@($claudeRun.Result.checks) -join ' | ')"
 
-    $claudeLines = @($claudeRun.Result.checks) + @($claudeRun.Output | ForEach-Object { ConvertTo-SanitizedConsoleText $_ })
-    Assert-True -Name "preflight output names claude and the PATH scope it was found in" `
-        -Condition (Test-AnyLineNamesToolAndScope -Tool 'claude' -Lines $claudeLines) `
-        -Message "no line names both claude and Machine/User scope. Lines: $($claudeLines -join ' | ')"
-}
+$claudeLines = @($claudeRun.Result.checks) + @($claudeRun.Output | ForEach-Object { ConvertTo-SanitizedConsoleText $_ })
+Assert-True -Name "preflight output names claude and the PATH scope it was found in" `
+    -Condition (Test-AnyLineNamesToolAndScope -Tool 'claude' -Lines $claudeLines) `
+    -Message "no line names both claude and Machine/User scope. Lines: $($claudeLines -join ' | ')"
+
+$optOutRun = Invoke-PreflightChild -Path $machineDir -SkipRepair
+Assert-True -Name "preflight fails cleanly when User PATH repair is opted out" `
+    -Condition ($null -ne $optOutRun.Result -and $optOutRun.Result.passed -eq $false)
+Assert-True -Name "preflight explains the PATH-repair opt-out" `
+    -Condition ([bool](@($optOutRun.Result.checks) -match 'DOTBOT_SKIP_PATH_REPAIR')) `
+    -Message "checks: $(@($optOutRun.Result.checks) -join ' | ')"
 
 # ===================================================================
 # SECTION 4: 'dotbot doctor' must detect the split, not report MISSING
@@ -297,6 +403,22 @@ Assert-True -Name "doctor does not report git missing when git is in registry PA
 Assert-True -Name "doctor names git and the PATH scope it was found in (split detection)" `
     -Condition (Test-AnyLineNamesToolAndScope -Tool 'git' -Lines $doctorLines) `
     -Message "no doctor line names both git and Machine/User scope"
+
+$ghDoctorRun = Invoke-ChildPwsh -Path $safeProcessDir -ArgumentList @(
+    '-File', $doctorBootstrap,
+    '-DotbotHome', $dotbotDir,
+    '-BotRoot', $botRoot,
+    '-MachinePath', $machineDir,
+    '-UserPath', $ghUserDir
+)
+$ghDoctorLines = @($ghDoctorRun.Output | ForEach-Object { ConvertTo-SanitizedConsoleText $_ } | Where-Object { $_ })
+$ghDoctorText = $ghDoctorLines -join "`n"
+Assert-True -Name "doctor diagnoses registry-only gh as split PATH" `
+    -Condition ($ghDoctorText -match 'Provider CLI \(gh\).*split PATH detected') `
+    -Message "doctor output: $ghDoctorText"
+Assert-True -Name "doctor does not report registry-only gh as an ordinary pass" `
+    -Condition ($ghDoctorText -notmatch "Provider CLI.*gh found \(can run preview") `
+    -Message "doctor output: $ghDoctorText"
 
 # ===================================================================
 # SECTION 5: 'dotbot doctor' exit code must propagate through the CLI

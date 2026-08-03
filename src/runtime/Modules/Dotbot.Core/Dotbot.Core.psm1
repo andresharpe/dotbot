@@ -423,16 +423,76 @@ function Update-ProcessHeartbeatFields {
 # helpers resolve commands across all three scopes and can repair the session
 # PATH so downstream Get-Command calls and process spawns succeed.
 
-$script:ExternalCommandProbeExtensions = @('exe', 'cmd', 'bat', 'ps1')
+$script:DotbotRegistryPathReader = {
+    param([string]$Scope)
+    [Environment]::GetEnvironmentVariable('Path', $Scope)
+}
+$script:DotbotProcessElevationReader = {
+    $elevated = $false
+    if ($IsWindows) {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+        $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    return $elevated
+}
+
+function Test-DotbotPathRepairScopeAllowed {
+    param([Parameter(Mandatory)][ValidateSet('Machine', 'User')][string]$Scope)
+
+    if ($Scope -eq 'Machine') { return $true }
+    # Never introduce user-writable search directories into an elevated
+    # process. A non-elevated restart can safely pick up the User PATH.
+    return -not [bool](& $script:DotbotProcessElevationReader)
+}
+
+function ConvertTo-DotbotNormalizedPathDirectory {
+    param([string]$Directory)
+
+    if ([string]::IsNullOrWhiteSpace($Directory)) { return $null }
+    $expanded = [Environment]::ExpandEnvironmentVariables($Directory).Trim().Trim('"')
+    if ([string]::IsNullOrWhiteSpace($expanded)) { return $null }
+
+    # Registry PATH entries should be absolute. Refusing relative entries keeps
+    # a repaired PATH from making command resolution depend on the current
+    # working directory of a privileged or long-running dotbot process.
+    if (-not [IO.Path]::IsPathFullyQualified($expanded)) { return $null }
+    $root = [IO.Path]::GetPathRoot($expanded)
+    if ($expanded.Length -le $root.Length) { return $expanded }
+    return $expanded.TrimEnd('\', '/')
+}
+
+function Get-DotbotCommandProbeExtensions {
+    # PowerShell resolves .ps1 external scripts before native PATHEXT entries.
+    # Preserve the host's PATHEXT order rather than maintaining a partial,
+    # divergent list (notably .COM and administrator-defined extensions).
+    $extensions = @('.ps1')
+    $pathExt = if ([string]::IsNullOrWhiteSpace($env:PATHEXT)) {
+        @('.COM', '.EXE', '.BAT', '.CMD')
+    } else {
+        @($env:PATHEXT -split ';')
+    }
+    foreach ($extension in $pathExt) {
+        if ([string]::IsNullOrWhiteSpace($extension)) { continue }
+        $normalized = $extension.Trim()
+        if (-not $normalized.StartsWith('.')) { $normalized = ".$normalized" }
+        if ($extensions -inotcontains $normalized) { $extensions += $normalized }
+    }
+    return $extensions
+}
 
 function Get-DotbotRegistryPathDirectories {
     # Windows-only: PATH directories registered in a registry scope.
     param([Parameter(Mandatory)][ValidateSet('Machine', 'User')][string]$Scope)
 
     if (-not $IsWindows) { return @() }
-    $raw = [Environment]::GetEnvironmentVariable('Path', $Scope)
+    $raw = & $script:DotbotRegistryPathReader $Scope
     if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
-    return @($raw -split [IO.Path]::PathSeparator | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $directories = foreach ($entry in ($raw -split [IO.Path]::PathSeparator)) {
+        $normalized = ConvertTo-DotbotNormalizedPathDirectory -Directory $entry
+        if ($normalized) { $normalized }
+    }
+    return @($directories)
 }
 
 function Find-DotbotCommandInDirectory {
@@ -444,7 +504,7 @@ function Find-DotbotCommandInDirectory {
     $probes = if ([IO.Path]::GetExtension($Name)) {
         @($Name)
     } else {
-        @($script:ExternalCommandProbeExtensions | ForEach-Object { "$Name.$_" })
+        @(Get-DotbotCommandProbeExtensions | ForEach-Object { "$Name$_" })
     }
     foreach ($probe in $probes) {
         try {
@@ -498,14 +558,15 @@ function Resolve-DotbotExternalCommand {
             if (-not $hit) { continue }
 
             $repaired = $false
+            $repairBlocked = $null
             if ($RepairSessionPath) {
-                $normalized = $dir.TrimEnd('\', '/')
-                $present = @($env:PATH -split [IO.Path]::PathSeparator) |
-                    Where-Object { $_ -and ($_.TrimEnd('\', '/') -ieq $normalized) }
-                if (-not $present) {
-                    $env:PATH = $env:PATH + [IO.Path]::PathSeparator + $dir
+                if ($env:DOTBOT_SKIP_PATH_REPAIR) {
+                    $repairBlocked = 'opt_out'
+                } elseif (-not (Test-DotbotPathRepairScopeAllowed -Scope $scope)) {
+                    $repairBlocked = 'elevated_user_path'
+                } else {
+                    $repaired = Add-DotbotProcessPathDirectory -Directory $dir -Scope $scope
                 }
-                $repaired = $true
             }
 
             return @{
@@ -515,11 +576,36 @@ function Resolve-DotbotExternalCommand {
                 Directory = $dir
                 Scope     = $scope
                 Repaired  = $repaired
+                RepairBlocked = $repairBlocked
             }
         }
     }
 
     return @{ Found = $false; Name = $Name }
+}
+
+function Add-DotbotProcessPathDirectory {
+    param(
+        [Parameter(Mandatory)][string]$Directory,
+        [Parameter(Mandatory)][ValidateSet('Machine', 'User')][string]$Scope
+    )
+
+    if ($env:DOTBOT_SKIP_PATH_REPAIR) { return $false }
+    if (-not (Test-DotbotPathRepairScopeAllowed -Scope $Scope)) { return $false }
+    $normalized = ConvertTo-DotbotNormalizedPathDirectory -Directory $Directory
+    if (-not $normalized) { return $false }
+
+    $present = @($env:PATH -split [IO.Path]::PathSeparator) | ForEach-Object {
+        ConvertTo-DotbotNormalizedPathDirectory -Directory $_
+    } | Where-Object { $_ -and ($_ -ieq $normalized) }
+    if ($present) { return $true }
+
+    if ([string]::IsNullOrWhiteSpace($env:PATH)) {
+        $env:PATH = $normalized
+    } else {
+        $env:PATH = $env:PATH + [IO.Path]::PathSeparator + $normalized
+    }
+    return $true
 }
 
 function Repair-DotbotProcessPath {
@@ -540,17 +626,13 @@ function Repair-DotbotProcessPath {
     if ($script:DotbotProcessPathRepaired -and -not $Force) { return @() }
     $script:DotbotProcessPathRepaired = $true
 
-    $processDirs = @($env:PATH -split [IO.Path]::PathSeparator |
-        Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\', '/') })
     $appended = @()
     foreach ($scope in @('Machine', 'User')) {
         foreach ($dir in (Get-DotbotRegistryPathDirectories -Scope $scope)) {
-            $normalized = $dir.TrimEnd('\', '/')
-            $known = @($processDirs) | Where-Object { $_ -ieq $normalized }
-            if ($known) { continue }
-            $env:PATH = $env:PATH + [IO.Path]::PathSeparator + $dir
-            $processDirs += $normalized
-            $appended += $dir
+            $before = $env:PATH
+            if ((Add-DotbotProcessPathDirectory -Directory $dir -Scope $scope) -and $env:PATH -ne $before) {
+                $appended += $dir
+            }
         }
     }
     return $appended
