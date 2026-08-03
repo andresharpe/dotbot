@@ -138,6 +138,27 @@ Scans codebase for mock data patterns:
 **Required**: Yes
 **Skip for**: infrastructure (database setup may have seed data)
 
+## Quality Gate (#656)
+
+`05-verify-quality.ps1` is a framework-shipped, opt-in check: it runs a
+project's configured `quality_gate.test_command` / `quality_gate.lint_command`
+and blocks the `done` transition if either exits non-zero. Off by default
+(`quality_gate.enabled: false` in `content/settings/settings.default.json`);
+a project opts in by setting `quality_gate.enabled: true` plus one or both
+commands in its own settings override (e.g. `.bot/.control/settings.json`):
+
+```json
+{
+  "quality_gate": {
+    "enabled": true,
+    "test_command": "npm test",
+    "lint_command": "npm run lint"
+  }
+}
+```
+
+With neither `enabled` nor the commands set, the script is a no-op.
+
 ## Adding Custom Scripts
 
 1. **Create script file**: `##-your-script.ps1` (## = execution order)
