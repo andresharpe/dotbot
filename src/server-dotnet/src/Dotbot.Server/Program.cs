@@ -167,6 +167,10 @@ try
     // Administrator service
     builder.Services.AddSingleton<IAdministratorService, AdministratorService>();
 
+    // Fleet dashboard (#547): mock-data source. #598 swaps this line for the live
+    // HTTP-backed implementation (config-selected, per the attachment-storage precedent).
+    builder.Services.AddSingleton<IFleetService, MockFleetService>();
+
     // Azure AD authentication for dashboard (reuses bot app registration)
     if (environmentName != "Development")
     {
@@ -883,6 +887,15 @@ try
         await context.SignOutAsync();
         context.Response.Redirect("/");
     });
+
+    // ── Fleet API endpoints (#547, mock data) ──────────────────────────────
+    // Admin-gated by DashboardAuthMiddleware (same as /api/dashboard/*). #598 swaps
+    // the backing IFleetService to live data; these signatures stay fixed.
+    app.MapGet("/api/fleet/instances", async (IFleetService fleet) =>
+        Results.Ok(await fleet.GetInstancesAsync()));
+
+    app.MapGet("/api/fleet/alerts", async (IFleetService fleet, string? status) =>
+        Results.Ok(await fleet.GetAlertsAsync(status)));
 
     // Health check endpoint
     app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));

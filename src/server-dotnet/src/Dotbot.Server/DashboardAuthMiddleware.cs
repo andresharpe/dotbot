@@ -4,7 +4,8 @@ using System.Security.Claims;
 namespace Dotbot.Server;
 
 /// <summary>
-/// Intercepts requests to / and /api/dashboard/* routes.
+/// Intercepts requests to the admin dashboard routes (/, /decisions,
+/// /api/dashboard/* and /api/fleet/*).
 /// After authentication, checks the user's email against the administrator list.
 /// Returns 403 if the user is not an administrator.
 /// </summary>
@@ -22,7 +23,9 @@ public class DashboardAuthMiddleware
         var path = context.Request.Path.Value ?? "";
 
         var isDashboardRoute = path == "/"
-            || path.StartsWith("/api/dashboard/", StringComparison.OrdinalIgnoreCase);
+            || path == "/decisions"
+            || path.StartsWith("/api/dashboard/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/fleet/", StringComparison.OrdinalIgnoreCase);
 
         if (!isDashboardRoute)
         {

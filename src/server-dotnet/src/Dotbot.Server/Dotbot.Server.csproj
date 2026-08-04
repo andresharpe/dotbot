@@ -39,4 +39,13 @@
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Fleet dashboard mock fixtures (#547). Read at runtime by MockFleetService from
+       ContentRootPath/Mock; copied to output/publish so they ship with the app.
+       Update (not Include) because the Web SDK already globs **/*.json as Content. -->
+  <ItemGroup>
+    <Content Update="Mock\*.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
