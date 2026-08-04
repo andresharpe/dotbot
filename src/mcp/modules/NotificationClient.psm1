@@ -1,14 +1,10 @@
 <#
 .SYNOPSIS
-Compatibility shim for runtime-owned notification helpers.
+Deprecated: use MothershipClient.psm1 instead.
 
 .DESCRIPTION
-Notification client logic now lives in Dotbot.Notification. Existing MCP and
-UI callers can keep importing this module — it forwards to Dotbot.Notification
-via a global import so the same function names remain available.
+This shim is kept for backward compatibility. It forwards to MothershipClient.psm1.
+New callers should import MothershipClient.psm1 directly.
 #>
 
-$notifModule = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'runtime' 'Modules' 'Dotbot.Notification' 'Dotbot.Notification.psd1'
-if (-not (Get-Module Dotbot.Notification)) {
-    Import-Module $notifModule -DisableNameChecking -Global
-}
+Import-Module (Join-Path $PSScriptRoot 'MothershipClient.psm1') -Force -Global
