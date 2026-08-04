@@ -138,6 +138,16 @@ function Initialize-DotbotTaskWorktreeForProcess {
         }
     }
 
+    # Fresh `git init` leaves HEAD unborn, which breaks base-branch resolution
+    # and the first `git worktree add` (see issue #659). Seed an empty commit
+    # so downstream git operations have a real branch to attach to. Idempotent
+    # — no-op when the repo already has commits.
+    $seed = Initialize-UnbornRepositoryForWorktree -ProjectRoot $ProjectRoot
+    if ($seed.created) {
+        Write-Status "Seeded initial commit on '$($seed.branch)' — required by worktree setup on a fresh repo." -Type Info
+    } elseif ($seed.error) {
+        Write-Status "Could not seed initial commit on unborn repo: $($seed.error)" -Type Warn
+    }
     $guardArgs = @{ ProjectRoot = $ProjectRoot }
     if (-not [string]::IsNullOrWhiteSpace($BaseBranch)) { $guardArgs.BranchName = $BaseBranch }
     try { Assert-OnBaseBranch @guardArgs | Out-Null } catch {
