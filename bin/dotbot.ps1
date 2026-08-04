@@ -85,6 +85,14 @@ foreach ($arg in $RawArgs) {
 $Command = $FilteredArgs[0]
 [array]$SubArgs = if ($FilteredArgs.Count -gt 1) { $FilteredArgs[1..($FilteredArgs.Count-1)] } else { @() }
 
+# Merge registry Machine/User PATH into this process (Windows split-PATH fix).
+# Skipped for 'doctor': doctor must observe the raw inherited PATH to detect
+# and report the split. Guarded because a project-vendored runtime may ship an
+# older Dotbot.Core without the repair function.
+if ($Command -ne 'doctor' -and (Get-Command Repair-DotbotProcessPath -ErrorAction SilentlyContinue)) {
+    $null = Repair-DotbotProcessPath
+}
+
 # Convert CLI args to a hashtable for proper named-parameter splatting.
 # Array splatting only does positional binding; hashtable splatting is
 # required for named parameters like -Workflow / -Stack.
@@ -141,6 +149,7 @@ function Show-Help {
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
     Write-DotbotLabel "    serve             " "Start only the low-level HTTP runtime in the foreground"
     Write-DotbotLabel "    runtime-status    " "Show runtime PID, URL, and active workflow runs"
+    Write-DotbotLabel "    logs              " "Show recent activity, or the last crash (--last, --follow)"
     Write-DotbotLabel "    prune-branches    " "Delete stale workflow/* and task/* branches"
     Write-DotbotLabel "    help              " "Show this help message"
     Write-BlankLine
@@ -727,9 +736,14 @@ switch ($Command) {
 
         & pwsh -NoProfile -File $serverScript
     }
-    "doctor" { & (Join-Path $ScriptsDir 'doctor.ps1') @SplatArgs }
+    "doctor" {
+        $global:LASTEXITCODE = 0
+        & (Join-Path $ScriptsDir 'doctor.ps1') @SplatArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
     "serve"          { & (Join-Path $ScriptsDir 'serve.ps1')          @SplatArgs }
     "runtime-status" { & (Join-Path $ScriptsDir 'runtime-status.ps1') @SplatArgs }
+    "logs"           { & (Join-Path $ScriptsDir 'logs.ps1')           @SplatArgs }
     "prune-branches" { & (Join-Path $ScriptsDir 'prune-branches.ps1') @SplatArgs }
     "update" { Invoke-Update }
     "help" { Show-Help }

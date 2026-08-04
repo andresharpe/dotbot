@@ -278,17 +278,58 @@ function Remove-ProcessLock {
     Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
 }
 
+function Test-DotbotPreflightCommand {
+    # Resolves a dependency across process + registry Machine/User PATH scopes
+    # (Windows split-PATH fix), repairing the session PATH on a registry hit so
+    # downstream spawns work. Falls back to plain Get-Command when the resolver
+    # is unavailable (stale vendored Dotbot.Core).
+    param([Parameter(Mandatory)][string]$Name)
+
+    if (Get-Command Resolve-DotbotExternalCommand -ErrorAction SilentlyContinue) {
+        $resolution = Resolve-DotbotExternalCommand -Name $Name -RepairSessionPath
+        if ($resolution.Found -and $resolution.Scope -in @('Machine', 'User') -and -not $resolution.Repaired) {
+            $resolution.Found = $false
+            $resolution.RepairSkipped = $resolution.RepairBlocked -eq 'opt_out'
+            $resolution.RepairBlockedElevated = $resolution.RepairBlocked -eq 'elevated_user_path'
+        }
+        return $resolution
+    }
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) { return @{ Found = $true; Name = $Name; Scope = 'Process' } }
+    return @{ Found = $false; Name = $Name }
+}
+
+function Get-DotbotPreflightCheckText {
+    # Check line for a resolved dependency. Registry-scope hits name the tool,
+    # the PATH scope it was found in, and how to fix the split permanently.
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][hashtable]$Resolution
+    )
+
+    if ($Resolution.Scope -in @('Machine', 'User')) {
+        return "${Name}: OK (found via $($Resolution.Scope) PATH: $($Resolution.Directory); missing from this process PATH - session PATH repaired; restart your terminal to fix it permanently)"
+    }
+    return "${Name}: OK"
+}
+
 function Test-Preflight {
     param([string]$BotRoot)
     $root = Resolve-DotbotBotRoot -BotRoot $BotRoot
     $checks = @()
     $allPassed = $true
 
-    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-    if ($gitCmd) {
-        $checks += "git: OK"
+    $gitRes = Test-DotbotPreflightCommand -Name 'git'
+    if ($gitRes.Found) {
+        $checks += Get-DotbotPreflightCheckText -Name 'git' -Resolution $gitRes
     } else {
-        $checks += "git: MISSING - git not found on PATH"
+        $checks += if ($gitRes.RepairSkipped) {
+            "git: MISSING - found via $($gitRes.Scope) PATH, but session PATH repair is disabled by DOTBOT_SKIP_PATH_REPAIR"
+        } elseif ($gitRes.RepairBlockedElevated) {
+            "git: MISSING - found via User PATH, but user-writable PATH entries are not added to an elevated process; restart dotbot without elevation"
+        } else {
+            "git: MISSING - git not found on PATH"
+        }
         $allPassed = $false
     }
 
@@ -302,11 +343,17 @@ function Test-Preflight {
     if ($providerConfig) {
         $providerExe = $providerConfig.executable
         $providerDisplay = $providerConfig.display_name
-        $providerCmd = Get-Command $providerExe -ErrorAction SilentlyContinue
-        if ($providerCmd) {
-            $checks += "${providerExe}: OK"
+        $providerRes = Test-DotbotPreflightCommand -Name $providerExe
+        if ($providerRes.Found) {
+            $checks += Get-DotbotPreflightCheckText -Name $providerExe -Resolution $providerRes
         } else {
-            $checks += "${providerExe}: MISSING - $providerDisplay CLI not found on PATH"
+            $checks += if ($providerRes.RepairSkipped) {
+                "${providerExe}: MISSING - found via $($providerRes.Scope) PATH, but session PATH repair is disabled by DOTBOT_SKIP_PATH_REPAIR"
+            } elseif ($providerRes.RepairBlockedElevated) {
+                "${providerExe}: MISSING - found via User PATH, but user-writable PATH entries are not added to an elevated process; restart dotbot without elevation"
+            } else {
+                "${providerExe}: MISSING - $providerDisplay CLI not found on PATH"
+            }
             $allPassed = $false
         }
     } else {
@@ -942,6 +989,262 @@ function Start-DotbotChildProcess {
     Start-Process @params
 }
 
+function Write-DotbotCrashSummary {
+    <#
+    .SYNOPSIS
+    Persist a best-effort crash summary for `dotbot logs --last` and
+    `dotbot runtime-status`.
+
+    .DESCRIPTION
+    Writes <BotRoot>/.control/last-crash.json with the exit reason, the last
+    task, and the tail of the crashed process's activity log so an operator can
+    see what happened after the terminal window has closed. Overwrites any
+    previous summary — only the most recent crash is kept. Never throws: it runs
+    from the process crash trap, where a secondary failure must not mask the
+    original error.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$ProcessId,
+        [object]$Process,
+        [string]$Reason,
+        [ValidateRange(1, 1000)]
+        [int]$MaxEvents = 20,
+        [string]$BotRoot
+    )
+
+    try {
+        $controlDir   = Get-ProcessControlDir -BotRoot $BotRoot
+        $processesDir = Get-ProcessesDir -BotRoot $BotRoot
+
+        $lastEvents = @()
+        $activityPath = Join-Path $processesDir "$ProcessId.activity.jsonl"
+        if (Test-Path -LiteralPath $activityPath) {
+            try {
+                $stream = [System.IO.FileStream]::new($activityPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                try {
+                    $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8)
+                    try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+                } finally { $stream.Dispose() }
+
+                $lines = @($text -split "`n" | Where-Object { $_.Trim() })
+                $tail = if ($lines.Count -gt $MaxEvents) { $lines[($lines.Count - $MaxEvents)..($lines.Count - 1)] } else { $lines }
+                foreach ($ln in $tail) {
+                    try { $lastEvents += ($ln | ConvertFrom-Json) } catch { $null = $_ }
+                }
+            } catch { $null = $_ }
+        }
+
+        $summary = [ordered]@{
+            timestamp   = (Get-Date).ToUniversalTime().ToString("o")
+            process_id  = $ProcessId
+            run_id      = if ($Process -and $Process.run_id) { $Process.run_id } else { $null }
+            exit_reason = $Reason
+            last_task   = [ordered]@{
+                id     = if ($Process) { $Process.task_id } else { $null }
+                name   = if ($Process) { $Process.task_name } else { $null }
+                status = if ($Process) { $Process.status } else { $null }
+            }
+            last_events = @($lastEvents)
+        }
+
+        if (-not (Test-Path -LiteralPath $controlDir)) {
+            New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
+        }
+        $crashPath = Join-Path $controlDir "last-crash.json"
+        $json = $summary | ConvertTo-Json -Depth 8
+        [System.IO.File]::WriteAllText($crashPath, $json, [System.Text.UTF8Encoding]::new($false))
+    } catch {
+        # Best-effort only — never let crash-summary writing mask the original failure.
+        $null = $_
+    }
+}
+
+#endregion
+
+#region Kill-on-close Job Object (Windows)
+
+# Sole handle to the process's kill-on-close job, held open for the whole
+# process lifetime. IntPtr::Zero means "not bound yet". Never CloseHandle this:
+# the OS closing it on process death is precisely what reaps the subtree.
+$script:DotbotKillJobHandle = [IntPtr]::Zero
+
+function Register-DotbotKillOnCloseJob {
+    <#
+    .SYNOPSIS
+    Bind the current process's child subtree to its own lifetime via a Windows
+    kill-on-close Job Object, so an abrupt death of this process reaps every
+    descendant instead of orphaning them (#645).
+
+    .DESCRIPTION
+    Creates a Job Object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, assigns the
+    current process to it, and keeps the sole job handle open for the process
+    lifetime. Child processes automatically inherit job membership, so when this
+    process dies -- however abruptly (console close, Stop-Process -Force, crash)
+    -- the OS closes the handle and the kernel terminates the whole subtree.
+
+    This is a belt-and-braces backstop for the in-process 'finally' cleanup in
+    the harness adapters (ClaudeCodeAdapter.ps1), which is skipped entirely on
+    abrupt termination. Graceful teardown keeps using that existing cleanup path.
+
+    Windows-only and strictly best-effort: on a non-Windows OS, or on any failure
+    (P/Invoke unavailable, incompatible existing job membership), it logs at debug
+    level and returns $false. Callers must treat $false as "not bound -- existing
+    cleanup paths still apply" and must never fail because of it.
+
+    Idempotent: a second call after a successful bind is a no-op that returns
+    $true.
+
+    .OUTPUTS
+    [bool] $true when the current process is bound to a kill-on-close job,
+    otherwise $false.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    # Job Objects are a Windows kernel construct. On Linux/macOS a force-killed
+    # parent's children re-parent to init and are reachable via pkill at teardown,
+    # so this returns $false there and the existing cleanup path stands.
+    if (-not $IsWindows) { return $false }
+    # Fast path: already bound in this module instance.
+    if ($script:DotbotKillJobHandle -ne [IntPtr]::Zero) { return $true }
+
+    try {
+        if (-not ('Dotbot.JobObjectNative' -as [type])) {
+            # Add-Type -MemberDefinition already injects `using System;` and
+            # `using System.Runtime.InteropServices;` -- passing -UsingNamespace
+            # for either would duplicate the directive and fail to compile (CS0105).
+            Add-Type -Namespace 'Dotbot' -Name 'JobObjectNative' -MemberDefinition @'
+[StructLayout(LayoutKind.Sequential)]
+public struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+    public long PerProcessUserTimeLimit;
+    public long PerJobUserTimeLimit;
+    public uint LimitFlags;
+    public UIntPtr MinimumWorkingSetSize;
+    public UIntPtr MaximumWorkingSetSize;
+    public uint ActiveProcessLimit;
+    public UIntPtr Affinity;
+    public uint PriorityClass;
+    public uint SchedulingClass;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct IO_COUNTERS {
+    public ulong ReadOperationCount;
+    public ulong WriteOperationCount;
+    public ulong OtherOperationCount;
+    public ulong ReadTransferCount;
+    public ulong WriteTransferCount;
+    public ulong OtherTransferCount;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+    public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+    public IO_COUNTERS IoInfo;
+    public UIntPtr ProcessMemoryLimit;
+    public UIntPtr JobMemoryLimit;
+    public UIntPtr PeakProcessMemoryUsed;
+    public UIntPtr PeakJobMemoryUsed;
+}
+
+private const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
+private const int JobObjectExtendedLimitInformation = 9;
+
+// Win32 error captured at the point a P/Invoke below failed, so the
+// best-effort PowerShell caller can log *why* the OS declined to bind.
+public static int LastError;
+
+// Set once the current process is bound. Lives on the type, so it survives an
+// Import-Module -Force (which recreates the module's $script: scope but leaves
+// the compiled type in the AppDomain), keeping the bind truly idempotent.
+public static bool Bound;
+
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+private static extern IntPtr CreateJobObjectW(IntPtr lpJobAttributes, string lpName);
+
+[DllImport("kernel32.dll", SetLastError = true)]
+private static extern bool SetInformationJobObject(IntPtr hJob, int JobObjectInfoClass, IntPtr lpJobObjectInfo, uint cbJobObjectInfoLength);
+
+[DllImport("kernel32.dll", SetLastError = true)]
+private static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+[DllImport("kernel32.dll")]
+private static extern IntPtr GetCurrentProcess();
+
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool CloseHandle(IntPtr hObject);
+
+public static IntPtr CreateKillOnCloseJob() {
+    LastError = 0;
+    IntPtr job = CreateJobObjectW(IntPtr.Zero, null);
+    if (job == IntPtr.Zero) { LastError = Marshal.GetLastWin32Error(); return IntPtr.Zero; }
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    int length = Marshal.SizeOf(info);
+    IntPtr ptr = Marshal.AllocHGlobal(length);
+    try {
+        Marshal.StructureToPtr(info, ptr, false);
+        if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, ptr, (uint)length)) {
+            // Capture the failure code before CloseHandle overwrites it.
+            LastError = Marshal.GetLastWin32Error();
+            CloseHandle(job);
+            return IntPtr.Zero;
+        }
+    } finally {
+        Marshal.FreeHGlobal(ptr);
+    }
+    return job;
+}
+
+public static bool AssignCurrentProcess(IntPtr job) {
+    LastError = 0;
+    bool ok = AssignProcessToJobObject(job, GetCurrentProcess());
+    if (!ok) { LastError = Marshal.GetLastWin32Error(); }
+    return ok;
+}
+'@
+        }
+
+        # Survives Import-Module -Force: the flag lives on the type, which stays in
+        # the AppDomain even though the fast-path $script: var above was reset.
+        if ([Dotbot.JobObjectNative]::Bound) { return $true }
+
+        $job = [Dotbot.JobObjectNative]::CreateKillOnCloseJob()
+        if ($job -eq [IntPtr]::Zero) {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message "Kill-on-close job: CreateJobObject/SetInformationJobObject failed (Win32 error $([Dotbot.JobObjectNative]::LastError)); relying on existing cleanup"
+            }
+            return $false
+        }
+
+        if (-not [Dotbot.JobObjectNative]::AssignCurrentProcess($job)) {
+            [void][Dotbot.JobObjectNative]::CloseHandle($job)
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message "Kill-on-close job: AssignProcessToJobObject failed (Win32 error $([Dotbot.JobObjectNative]::LastError)); relying on existing cleanup"
+            }
+            return $false
+        }
+
+        # Keep the handle open for the whole process lifetime. Do NOT close it:
+        # the OS closes it on process death (however abrupt), and that is exactly
+        # what fires KILL_ON_JOB_CLOSE and reaps the subtree. The OS owns the
+        # handle's lifetime; the script-scoped var is the in-session idempotency
+        # marker (a raw IntPtr is not GC-tracked, so no strong ref is needed).
+        [Dotbot.JobObjectNative]::Bound = $true
+        $script:DotbotKillJobHandle = $job
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "Kill-on-close job: current process (PID $PID) bound; descendants reaped on exit"
+        }
+        return $true
+    } catch {
+        if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+            Write-BotLog -Level Debug -Message "Kill-on-close job: setup failed; relying on existing cleanup" -Exception $_
+        }
+        return $false
+    }
+}
+
 #endregion
 
 Export-ModuleMember -Function @(
@@ -961,4 +1264,8 @@ Export-ModuleMember -Function @(
     'Test-WorkflowComplete'
     # Child process spawning (low-level)
     'Start-DotbotChildProcess'
+    # Process-tree lifetime binding (Windows)
+    'Register-DotbotKillOnCloseJob'
+    # Crash diagnostics
+    'Write-DotbotCrashSummary'
 )

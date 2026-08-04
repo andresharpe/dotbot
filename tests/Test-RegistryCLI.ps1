@@ -54,6 +54,17 @@ Assert-True -Name "registry-remove.ps1 exists on disk" `
     -Condition (Test-Path $registryRemovePath) `
     -Message "Not found: $registryRemovePath"
 
+$registryUpdateSource = Get-Content (Join-Path $dotbotDir 'src/cli/registry-update.ps1') -Raw
+$gitUpdateOrder = [regex]::Match(
+    $registryUpdateSource,
+    'reset\s+--hard[\s\S]{0,3500}?Invoke-DotbotSingleRegistryYamlMigration[\s\S]{0,500}?Invoke-RegistryValidation')
+Assert-True -Name "registry update force-reset migrates after reset and before validation" `
+    -Condition $gitUpdateOrder.Success `
+    -Message "Expected reset -> YAML migration -> validation ordering in registry-update.ps1"
+Assert-True -Name "registry update explicitly permits linked-source migration" `
+    -Condition ($registryUpdateSource -match 'Invoke-DotbotSingleRegistryYamlMigration[^\r\n]+-AllowExternalLink') `
+    -Message "Local registry update must be the explicit opt-in path for linked source mutation"
+
 # Load a platform-functions stub so Write-DotbotWarning doesn't break module load
 $platformFunctions = Join-Path $dotbotDir "src/cli/Platform-Functions.psm1"
 if (Test-Path $platformFunctions) {
@@ -64,6 +75,7 @@ if (Test-Path $platformFunctions) {
 
 try {
     Import-Module $registryManagerPath -Force -DisableNameChecking
+    Import-Module (Join-Path $dotbotDir 'src/runtime/Modules/Dotbot.LegacyYaml/Dotbot.LegacyYaml.psd1') -Force -DisableNameChecking
     Write-TestResult -Name "RegistryManager.psm1 imports without error" -Status Pass
 } catch {
     Write-TestResult -Name "RegistryManager.psm1 imports without error" -Status Fail -Message $_.Exception.Message
@@ -316,6 +328,76 @@ Assert-True -Name "registry-remove.ps1 exits non-zero for unregistered name" `
     -Message "Expected non-zero exit for unknown registry, got $LASTEXITCODE"
 
 Restore-RegistriesJson
+
+# ===================================================================
+# Update-StaleRegistries — legacy registry.yaml migration hook
+# ===================================================================
+
+Write-Host ""
+Write-Host "  UPDATE-STALEREGISTRIES (legacy YAML migration)" -ForegroundColor Cyan
+Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
+
+$legacyHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-regyaml-$(Get-Random)"
+$legacyOrg = Join-Path $legacyHome "registries/legacyorg"
+New-Item -Path (Join-Path $legacyOrg "workflows/deploy") -ItemType Directory -Force | Out-Null
+@"
+name: legacyorg
+version: "1.0"
+content:
+  workflows: [deploy]
+"@ | Set-Content (Join-Path $legacyOrg "registry.yaml")
+"name: deploy" | Set-Content (Join-Path $legacyOrg "workflows/deploy/workflow.yaml")
+
+$null = & git -C $legacyOrg init -b main 2>&1
+$null = & git -C $legacyOrg config user.email 'dotbot-tests@example.invalid' 2>&1
+$null = & git -C $legacyOrg config user.name 'dotbot tests' 2>&1
+$null = & git -C $legacyOrg add . 2>&1
+$null = & git -C $legacyOrg commit -m 'legacy registry fixture' 2>&1
+$legacyRemote = Join-Path $legacyHome 'legacyorg-remote.git'
+$null = & git clone --bare $legacyOrg $legacyRemote 2>&1
+$null = & git -C $legacyOrg remote add origin $legacyRemote 2>&1
+@{ registries = @(@{
+    name = 'legacyorg'; type = 'git'; source = $legacyRemote; branch = 'main'; auto_update = $true
+}) } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $legacyHome 'registries.json')
+
+Update-StaleRegistries -DotbotBase $legacyHome *>&1 | Out-Null
+
+Assert-PathExists -Name "Update-StaleRegistries converts legacy registry.yaml" `
+    -Path (Join-Path $legacyOrg "registry.json")
+Assert-PathExists -Name "Legacy registry.yaml kept as .migrated" `
+    -Path (Join-Path $legacyOrg "registry.yaml.migrated")
+Assert-PathExists -Name "Nested legacy workflow.yaml converted" `
+    -Path (Join-Path $legacyOrg "workflows/deploy/workflow.json")
+
+$regMeta = Get-Content (Join-Path $legacyOrg "registry.json") -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -AsHashtable -ErrorAction SilentlyContinue
+Assert-True -Name "Converted registry.json carries YAML content map" `
+    -Condition ($null -ne $regMeta -and $regMeta.name -eq "legacyorg" -and $regMeta.content.workflows[0] -eq "deploy") `
+    -Message "registry.json missing or does not match the source YAML"
+
+Remove-Item $legacyHome -Recurse -Force -ErrorAction SilentlyContinue
+
+$ambigHome = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-regambig-$(Get-Random)"
+$ambigOrg = Join-Path $ambigHome "registries/ambigorg"
+New-Item -Path $ambigOrg -ItemType Directory -Force | Out-Null
+'{"name":"ambigorg","content":{"workflows":["a"]}}' | Set-Content (Join-Path $ambigOrg "registry.json")
+"name: ambigorg" | Set-Content (Join-Path $ambigOrg "registry.yaml")
+@{ registries = @(@{
+    name = 'ambigorg'; type = 'git'; source = 'test'; branch = 'main'; auto_update = $false
+}) } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $ambigHome 'registries.json')
+$jsonBefore = (Get-Item (Join-Path $ambigOrg "registry.json")).LastWriteTimeUtc
+
+$ambigOutput = Invoke-DotbotRegistryYamlMigration -DotbotBase $ambigHome -Force *>&1 | ForEach-Object { "$_" } | Out-String
+
+Assert-True -Name "Ambiguous registry.yaml + registry.json warns loudly" `
+    -Condition ($ambigOutput -match 'reads only registry.json') `
+    -Message "Expected ambiguity warning, got: $ambigOutput"
+Assert-True -Name "Ambiguous registry.json left untouched" `
+    -Condition ((Get-Item (Join-Path $ambigOrg "registry.json")).LastWriteTimeUtc -eq $jsonBefore) `
+    -Message "registry.json was modified in ambiguous state"
+Assert-PathExists -Name "Ambiguous registry.yaml left in place" `
+    -Path (Join-Path $ambigOrg "registry.yaml")
+
+Remove-Item $ambigHome -Recurse -Force -ErrorAction SilentlyContinue
 
 # ===================================================================
 # CLEANUP

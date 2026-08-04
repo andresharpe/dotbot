@@ -244,6 +244,8 @@ function Find-Workflow {
         [string]$Name
     )
 
+    Invoke-DotbotWorkflowYamlMigration -BotRoot $BotRoot
+
     $roots = Get-WorkflowTierRoots -BotRoot $BotRoot
     $tried = @()
 
@@ -301,13 +303,17 @@ function Discover-Workflows {
             icon        = <string>
         }
 
-    Entries are sorted by name. Workflow folders without a valid workflow.json
-    are silently skipped — Test-ValidWorkflowDir filters them out.
+    Entries are sorted by name. Legacy v3.5 YAML manifests are migrated to the
+    v4 JSON layout (with an operator warning) before scanning; folders without
+    a valid workflow.json after that are skipped — Test-ValidWorkflowDir
+    filters them out.
     #>
     param(
         [Parameter(Mandatory)]
         [string]$BotRoot
     )
+
+    Invoke-DotbotWorkflowYamlMigration -BotRoot $BotRoot
 
     $roots = Get-WorkflowTierRoots -BotRoot $BotRoot
     $byName = [ordered]@{}
@@ -1498,8 +1504,16 @@ function Test-GitReadyForWorktree {
         }
     }
 
-    $gitExe = Get-Command git -ErrorAction SilentlyContinue
-    if (-not $gitExe) {
+    # Resolve git across process + registry Machine/User PATH scopes when the
+    # resolver is available (Windows split-PATH fix); repair the session PATH
+    # on a registry hit so the `& git` calls below work.
+    $gitAvailable = if (Get-Command Resolve-DotbotExternalCommand -ErrorAction SilentlyContinue) {
+        $gitResolution = Resolve-DotbotExternalCommand -Name 'git' -RepairSessionPath
+        $gitResolution.Found -and ($gitResolution.Scope -eq 'Process' -or $gitResolution.Repaired)
+    } else {
+        [bool](Get-Command git -ErrorAction SilentlyContinue)
+    }
+    if (-not $gitAvailable) {
         return @{
             ok      = $false
             reason  = 'git_unavailable'

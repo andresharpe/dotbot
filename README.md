@@ -186,6 +186,7 @@ dotbot doctor                  # Run project health checks
 dotbot go                      # Launch runtime + dashboard for an initialized project
 dotbot serve                   # Launch only the low-level runtime
 dotbot runtime-status          # Show runtime PID, URL, active workflow runs
+dotbot logs                    # Show recent activity, or the last crash (--last, --follow)
 ```
 
 To upgrade a source checkout, run `git pull` inside that checkout. For packaged installs, use `brew upgrade dotbot` or `scoop update dotbot`. Vendored project runtimes are refreshed explicitly with `dotbot install runtime`.

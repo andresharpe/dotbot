@@ -97,6 +97,9 @@ $env:DOTBOT_CURRENT_PHASE = $phaseMap[$Type]
 
 # Resolve paths
 Import-Module (Join-Path $PSScriptRoot ".." "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
+# Merge registry Machine/User PATH into this process before any preflight
+# check or provider spawn (Windows split-PATH fix).
+$null = Repair-DotbotProcessPath
 $botRoot = Get-DotbotProjectBotPath
 $controlDir = Join-Path $botRoot ".control"
 $processesDir = Join-Path $controlDir "processes"
@@ -255,6 +258,16 @@ $env:DOTBOT_MODEL_TIER = $modelTier
 # Callers may pass -BotRoot to override.
 Import-Module "$PSScriptRoot\..\Modules\Dotbot.Process\Dotbot.Process.psd1" -Force
 
+# Bind this worker's whole child subtree (claude.exe -> MCP server -> tool
+# children, plus git/preflight helpers) to the worker's lifetime via a Windows
+# kill-on-close Job Object (#645). The harness adapters clean up their process
+# tree in a 'finally' block, but that is skipped on an abrupt worker death
+# (console close, Stop-Process -Force, crash), leaking orphans that keep running
+# and consuming tokens. The job guarantees the kernel reaps the subtree however
+# the worker dies. Best-effort: a $false return means the OS wouldn't bind the
+# job, and the existing finally cleanup remains the graceful-exit path.
+$null = Register-DotbotKillOnCloseJob
+
 # InterviewLoop is imported from Invoke-WorkflowProcess.ps1 (the only consumer
 # after the legacy execution engine was removed), so it does not need to be loaded here.
 
@@ -318,6 +331,7 @@ trap {
         $processData.error = "Unexpected termination: $($_.Exception.Message)"
         try { Write-ProcessFile -Id $procId -Data $processData } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
         try { Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Process terminated unexpectedly: $($_.Exception.Message)" } catch { Write-BotLog -Level Warn -Message "Failed to write process activity" -Exception $_ }
+        try { Write-DotbotCrashSummary -BotRoot $botRoot -ProcessId $procId -Process $processData -Reason $processData.error } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
     }
     if (Test-Path variable:lockKey) {
         try { Remove-ProcessLock -LockType $lockKey } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }

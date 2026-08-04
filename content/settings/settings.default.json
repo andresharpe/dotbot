@@ -56,6 +56,11 @@
   "git": {
     "base_branch": null
   },
+  "quality_gate": {
+    "enabled": false,
+    "test_command": null,
+    "lint_command": null
+  },
   "editor": {
     "name": "off",
     "custom_command": ""
