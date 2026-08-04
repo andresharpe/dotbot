@@ -2,9 +2,8 @@ import { test, expect, Page } from "@playwright/test";
 
 const TABS = [
   "overview",
+  "tasks",
   "product",
-  "pipeline",
-  "processes",
   "decisions",
   "workflow",
   "settings",

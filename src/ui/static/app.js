@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     initTabs();
     initShell();
     initLogoClick();
-    initHamburgerMenu();
     initSidebarCollapse();
     await initSidebar();
     initControlButtons();
@@ -40,15 +39,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     initSettingsToggles();
     initTaskClicks();
     initRoadmapTaskActions();
-    initSidebarItemClicks();
     await initProductNav();
     initModalClose();
-    initPipelineInfiniteScroll();
+    initTasksSurface();
 
-    // Pipeline workflow filter
+    // Tasks workflow filter
     document.getElementById('pipeline-workflow-filter')?.addEventListener('change', (e) => {
         pipelineWorkflowFilter = e.target.value || null;
-        if (lastState?.tasks) updatePipelineView(lastState.tasks);
+        if (lastState?.tasks) updateTasksSurface(lastState.tasks);
     });
     initActions();
     initNotifications();

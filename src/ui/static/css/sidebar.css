@@ -1,14 +1,8 @@
-/* DOTBOT Control Panel - Sidebar
- * Left sidebar, right sidebar, context panels
+/* DOTBOT Control Panel - Pane navigation + cockpit modules
+ * The 280px contextual sidebar chassis was removed in #606; these section/
+ * item/folder rules now style the per-pane navigation columns (.pane-nav)
+ * and the Overview cockpit, plus app-wide bits like .ctrl-btn-sm.
  */
-
-/* ========== LEFT SIDEBAR ========== */
-.sidebar-left {
-    background: var(--bg-panel);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-}
 
 .sidebar-section {
     border-bottom: 1px solid var(--bezel-edge);
@@ -172,16 +166,6 @@
 
 .sidebar-item.indented {
     margin-left: 18px;
-}
-
-/* ========== CONTEXT PANELS ========== */
-.context-panel {
-    display: flex;
-    flex-direction: column;
-}
-
-.context-panel.hidden {
-    display: none;
 }
 
 /* Left Module (same as right-module) */

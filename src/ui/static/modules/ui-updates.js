@@ -19,18 +19,13 @@ function updateUI(state) {
     updateCurrentTask(state.tasks.current);
     updateUpcomingTasks(state.tasks.upcoming);
     updateCompletedTasks(state.tasks.recent_completed, state.tasks.skipped_list);
-    updatePipelineView(state.tasks);
+    updateTasksSurface(state.tasks);
     updateControlSignalStatus(state.control);
     updateControlButtonStates(state.session, state.control, state.loops);
 
     // Update steering panel with instance info
     if (state.instances) {
         updateSteeringPanel(state.instances);
-    }
-
-    // Update task summary in pipeline context panel
-    if (state.tasks) {
-        updateTaskSummary(state.tasks);
     }
 
     // Update per-workflow control LEDs/buttons
@@ -76,25 +71,17 @@ function updateTimestamp(instanceId) {
  * @param {Object} tasks - Tasks object from state
  */
 function updateTaskCounts(tasks) {
-    // Overview stats
+    // Tasks-surface chip badges (#606)
     setElementText('todo-count', tasks.todo);
     setElementText('progress-count', tasks.in_progress);
     setElementText('done-count', getCompletedTaskCount(tasks));
     setElementText('analysing-count', tasks.analysing || 0);
-    setElementText('needs-input-count', tasks.needs_input || 0);
+    // Needs input combines input- and review-waiting, matching the chip's list (#500)
+    setElementText('needs-input-count', (tasks.needs_input || 0) + (tasks.needs_review || 0));
     setElementText('analysed-count', tasks.analysed || 0);
+    setElementText('skipped-count', tasks.skipped || 0);
+    setElementText('cancelled-count', tasks.cancelled || 0);
 
-    // Pipeline counts - Unified pipeline
-    setElementText('pipeline-todo-count', tasks.todo);
-    setElementText('pipeline-working-count', (tasks.analysing || 0) + (tasks.in_progress || 0));
-    setElementText('pipeline-needs-input-count', (tasks.needs_input || 0) + (tasks.needs_review || 0));
-    setElementText('pipeline-done-count', getCompletedTaskCount(tasks));
-    // Legacy pipeline counts (kept for backward compat)
-    setElementText('pipeline-analysing-count', tasks.analysing || 0);
-    setElementText('pipeline-analysed-count', tasks.analysed || 0);
-    setElementText('pipeline-ready-count', tasks.analysed || 0);
-    setElementText('pipeline-progress-count', tasks.in_progress);
-    
     // Update action widget
     if (typeof updateActionWidget === 'function') {
         updateActionWidget(tasks.action_required || 0, { fromPoll: true });
@@ -394,169 +381,6 @@ function updateCompletedTasks(tasks, skippedTasks) {
 }
 
 /**
- * Update pipeline view
- * @param {Object} tasks - Tasks object from state
- */
-function updatePipelineView(tasks) {
-    let upcoming = Array.isArray(tasks.upcoming) ? tasks.upcoming : [];
-    let completed = Array.isArray(tasks.recent_completed) ? tasks.recent_completed : [];
-    let analysing = Array.isArray(tasks.analysing_list) ? tasks.analysing_list : [];
-    let needsInput = Array.isArray(tasks.needs_input_list) ? tasks.needs_input_list : [];
-    let needsReview = Array.isArray(tasks.needs_review_list) ? tasks.needs_review_list : [];
-    let analysed = Array.isArray(tasks.analysed_list) ? tasks.analysed_list : [];
-    let inProgress = Array.isArray(tasks.in_progress_list)
-        ? tasks.in_progress_list
-        : (tasks.current ? [tasks.current] : []);
-
-    // Apply workflow filter if set
-    if (pipelineWorkflowFilter) {
-        const wf = pipelineWorkflowFilter;
-        upcoming = upcoming.filter(t => t.workflow === wf);
-        completed = completed.filter(t => t.workflow === wf);
-        analysing = analysing.filter(t => t.workflow === wf);
-        needsInput = needsInput.filter(t => t.workflow === wf);
-        needsReview = needsReview.filter(t => t.workflow === wf);
-        analysed = analysed.filter(t => t.workflow === wf);
-        inProgress = inProgress.filter(t => t.workflow === wf);
-    }
-
-    // Update filter dropdown options from state.workflows
-    updatePipelineFilterOptions();
-
-    // Unified pipeline columns
-    updatePipelineColumn('pipeline-todo', upcoming, 'todo');
-
-    // "Working" combines analysing + analysed + in-progress (all actively being processed)
-    const working = [...analysing, ...analysed, ...inProgress];
-    // Tag each task with its phase for sub-label display
-    working.forEach(t => {
-        if (analysing.includes(t)) t._phase = 'analysing';
-        else if (analysed.includes(t)) t._phase = 'ready';
-        else t._phase = 'executing';
-    });
-    updatePipelineColumn('pipeline-working', working, 'active');
-
-    // "Needs Input" surfaces everything waiting on a person: tasks parked for
-    // human input plus tasks parked for human review. Tag review tasks so the
-    // card renders a distinct chip (#500). The Review Required panel is unchanged.
-    needsReview.forEach(t => { t._waitKind = 'review'; });
-    const waitingOnPerson = [...needsInput, ...needsReview];
-    updatePipelineColumn('pipeline-needs-input', waitingOnPerson, 'needs-input');
-    const skipped = Array.isArray(tasks.skipped_list) ? tasks.skipped_list : [];
-    const doneAndSkipped = [...completed, ...skipped];
-    updatePipelineColumn('pipeline-done', doneAndSkipped, 'done');
-
-    // Legacy columns (for backward compat if old HTML is cached)
-    updatePipelineColumn('pipeline-analysing', analysing, 'analysing');
-    updatePipelineColumn('pipeline-analysed', analysed, 'analysed');
-    updatePipelineColumn('pipeline-ready', analysed, 'ready');
-    updatePipelineColumn('pipeline-progress', inProgress, 'active');
-}
-
-/**
- * Update a pipeline column
- * @param {string} containerId - Container element ID
- * @param {Array} tasks - Tasks to display
- * @param {string} type - Column type (todo, active, done)
- */
-function updatePipelineColumn(containerId, tasks, type) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    // Ensure tasks is an array
-    const taskList = Array.isArray(tasks) ? tasks : [];
-
-    // Track total task count for infinite scroll
-    pipelineTaskCounts[containerId] = taskList.length;
-
-    if (taskList.length === 0) {
-        container.innerHTML = `<div class="empty-state">No tasks</div>`;
-        return;
-    }
-
-    // Get display limit for this column
-    const limit = pipelineDisplayLimits[containerId] || 10;
-    const visibleTasks = taskList.slice(0, limit);
-
-    const taskMarkup = visibleTasks.map(task => {
-        const priorityClass = task.priority == 1 ? 'priority-high' :
-                              task.priority == 2 ? 'priority-med' : '';
-        const ignoreState = task.ignore_state || {};
-        const roadmapClasses = [
-            ignoreState.effective ? 'ignored' : '',
-            ignoreState.manual ? 'manual-ignored' : '',
-            ignoreState.auto ? 'blocked' : ''
-        ].filter(Boolean).join(' ');
-
-        // Format duration or completed date for done items
-        let completedBadge = '';
-        if (type === 'done' && task.status === 'skipped') {
-            completedBadge = `<span class="task-tag phase-tag">skipped</span>`;
-        } else if (type === 'done' && task.completed_at) {
-            const duration = formatTaskDuration(task) || formatCompactDate(task.completed_at);
-            completedBadge = `<span class="task-tag completed-date">${duration}</span>`;
-        }
-
-        // Show phase sub-label for tasks in the "Working" column
-        const phaseLabel = task._phase ? `<span class="task-tag phase-tag">${escapeHtml(task._phase)}</span>` : '';
-        // Distinguish review-waiting tasks from input-waiting tasks in the
-        // shared "Needs Input" column (#500).
-        const waitKindLabel = task._waitKind === 'review'
-            ? `<span class="task-tag tag-review">⚲ review</span>`
-            : '';
-        const roadmapStateTags = typeof buildRoadmapTaskStatusTags === 'function'
-            ? buildRoadmapTaskStatusTags(task, type)
-            : '';
-        const roadmapIgnoreHint = typeof buildRoadmapTaskIgnoreHint === 'function'
-            ? buildRoadmapTaskIgnoreHint(task, type)
-            : '';
-        const roadmapActions = typeof buildRoadmapTaskActionsMarkup === 'function'
-            ? buildRoadmapTaskActionsMarkup(task, type)
-            : '';
-
-        return `
-            <div class="pipeline-task ${type === 'active' ? 'active' : ''} ${priorityClass} ${roadmapClasses}" data-task-id="${escapeHtml(task.id || '')}">
-                <div class="task-id">${escapeHtml(task.id || '')}</div>
-                <div class="task-title">${escapeHtml(task.name || task.id || 'Unknown')}</div>
-                <div class="task-tags">
-                    ${task.category ? `<span class="task-tag">${escapeHtml(task.category)}</span>` : ''}
-                    ${task.workflow ? `<span class="task-tag tag-workflow">${escapeHtml(task.workflow)}</span>` : ''}
-                    ${task.type && task.type !== 'prompt' ? `<span class="task-tag tag-type">${escapeHtml(task.type)}</span>` : ''}
-                    ${phaseLabel}
-                    ${waitKindLabel}
-                    ${type === 'active' && !task._phase ? '<span class="task-tag">↻ agent</span>' : ''}
-                    ${roadmapStateTags}
-                </div>
-                ${roadmapIgnoreHint}
-                ${roadmapActions}
-                ${completedBadge}
-            </div>
-        `;
-    }).join('');
-
-    // Reveal-more affordance. The column caps rendering at `limit` and relies on
-    // the scroll handler to load more, but a column that doesn't overflow never
-    // fires a scroll event — leaving the remaining tasks hidden while the count
-    // claims otherwise (#454). A visible button guarantees every task is reachable
-    // regardless of whether the column scrolls.
-    const remaining = taskList.length - visibleTasks.length;
-    const loadMoreMarkup = remaining > 0
-        ? `<button type="button" class="pipeline-load-more">Show ${remaining} more</button>`
-        : '';
-
-    container.innerHTML = taskMarkup + loadMoreMarkup;
-
-    if (remaining > 0) {
-        const loadMoreBtn = container.querySelector('.pipeline-load-more');
-        if (loadMoreBtn) {
-            loadMoreBtn.addEventListener('click', () => {
-                pipelineDisplayLimits[containerId] = (pipelineDisplayLimits[containerId] || 10) + remaining;
-                if (lastState?.tasks) updatePipelineView(lastState.tasks);
-            });
-        }
-    }
-}
-/**
  * Update pipeline filter dropdown options from latest state
  */
 function updatePipelineFilterOptions() {
@@ -570,38 +394,6 @@ function updatePipelineFilterOptions() {
     const current = select.value;
     select.innerHTML = '<option value="">All Workflows</option>' +
         workflows.map(name => `<option value="${escapeHtml(name)}"${name === current ? ' selected' : ''}>${escapeHtml(name)}</option>`).join('');
-}
-
-function initPipelineInfiniteScroll() {
-    const columnIds = [
-        'pipeline-todo', 'pipeline-working', 'pipeline-needs-input', 'pipeline-done',
-        // Legacy columns (backward compat)
-        'pipeline-analysing', 'pipeline-analysed', 'pipeline-ready', 'pipeline-progress'
-    ];
-
-    columnIds.forEach(containerId => {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-
-        container.addEventListener('scroll', () => {
-            // Check if scrolled near bottom (within 50px)
-            const scrollBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-            if (scrollBottom < 50) {
-                const currentLimit = pipelineDisplayLimits[containerId] || 10;
-                const totalTasks = pipelineTaskCounts[containerId] || 0;
-
-                // Load more if there are more tasks available
-                if (currentLimit < totalTasks) {
-                    pipelineDisplayLimits[containerId] = currentLimit + 5;
-
-                    // Re-render with updated limit
-                    if (lastState?.tasks) {
-                        updatePipelineView(lastState.tasks);
-                    }
-                }
-            }
-        });
-    });
 }
 
 /**
@@ -766,7 +558,9 @@ async function initProjectName() {
         const workflowName = info.workflow || null;
         currentWorkflowName = workflowName;
         updateWorkflowBadge(workflowName);
-        updateWorkflowPills(info.installed_workflows || []);
+        // Topbar pills were dropped in #606 (spec #7.3 topbar has no pills);
+        // the installed list still feeds the workflow-launch CTA.
+        installedWorkflows = info.installed_workflows || [];
         updateFrameworkBanner(info.framework || null);
     } else {
         projectName = 'autonomous';
@@ -855,29 +649,6 @@ function updateFrameworkBanner(framework) {
         tooltipLines.push('Git: not a repo (likely installed copy)');
     }
     banner.title = tooltipLines.join('\n');
-}
-
-/**
- * Update workflow pills in header from installed_workflows
- * @param {Array} workflows - Array of workflow name strings
- */
-function updateWorkflowPills(workflows) {
-    const container = document.getElementById('workflow-pills');
-    if (!container) return;
-    installedWorkflows = workflows || [];
-    if (workflows && workflows.length > 0) {
-        // Strip the registry prefix (e.g. "iwg:iwg-bs-scoring" -> "iwg-bs-scoring")
-        // so we can de-duplicate against the active workflow badge
-        const activeBase = currentWorkflowName
-            ? currentWorkflowName.replace(/^[^:]+:/, '')
-            : null;
-        const filtered = workflows.filter(name => name !== currentWorkflowName && name !== activeBase);
-        container.innerHTML = filtered.map(name =>
-            `<span class="workflow-pill" title="Installed workflow: ${escapeHtml(name)}">${escapeHtml(name)}</span>`
-        ).join('');
-    } else {
-        container.innerHTML = '';
-    }
 }
 
 /**

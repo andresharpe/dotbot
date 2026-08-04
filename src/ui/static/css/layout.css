@@ -4,20 +4,22 @@
 /* ========== LAYOUT ==========
  * Page chrome (topbar/rail/ticker) comes from /shared/css/dotbot-shell.css
  * (#551/#605). This file keeps app-side pieces that live inside the shell:
- * context group, badges, pickers, LEDs, editor button, main-layout/sidebar. */
+ * context group, badges, pickers, LEDs, editor button, main content. */
 
-/* Glue: the cockpit layout fills the shell content area without the 1280px
- * reading cap — resizable sidebar + pipeline columns need full width. */
-.shell-content > .main-layout {
+/* Glue: the operator cockpit fills the shell content area without the 1280px
+ * reading cap — pane navigation columns need full width. */
+.shell-content > .main-content {
     height: 100%;
 }
 
-/* App-side topbar group: project badge + runtime picker + workflow badges */
+/* App-side topbar group: project badge + runtime picker + workflow badge.
+ * Never shrinks below content — identity values keep full text; the search
+ * pill is the flexible element that absorbs width pressure. */
 .shell-context-group {
     display: flex;
     align-items: center;
     gap: 12px;
-    min-width: 0;
+    flex-shrink: 0;
 }
 
 .logo {
@@ -32,47 +34,6 @@
 .logo:hover {
     text-shadow: 0 0 20px var(--primary-glow);
     opacity: 0.8;
-}
-
-.hamburger-menu {
-    display: none;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-    width: 32px;
-    height: 32px;
-    background: transparent;
-    border: 1px solid var(--bezel-edge);
-    border-radius: 4px;
-    cursor: pointer;
-    padding: 6px;
-    transition: all 0.2s ease;
-}
-
-.hamburger-menu span {
-    display: block;
-    width: 100%;
-    height: 2px;
-    background: var(--color-primary);
-    transition: all 0.3s ease;
-    border-radius: 1px;
-}
-
-.hamburger-menu:hover {
-    border-color: var(--color-primary);
-    background: var(--primary-10);
-}
-
-.hamburger-menu.active span:nth-child(1) {
-    transform: rotate(45deg) translate(5px, 5px);
-}
-
-.hamburger-menu.active span:nth-child(2) {
-    opacity: 0;
-}
-
-.hamburger-menu.active span:nth-child(3) {
-    transform: rotate(-45deg) translate(5px, -5px);
 }
 
 .project-badge {
@@ -136,34 +97,13 @@
     display: none;
 }
 
-/* Workflow pills container (header, next to workflow badge) */
-.workflow-pills {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-
-.workflow-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 3px 10px;
-    background: rgb(var(--color-info-rgb) / 0.15);
-    border: 1px solid rgb(var(--color-info-rgb) / 0.4);
-    border-radius: 10px;
-    font-family: var(--font-ui);
-    font-size: 9px;
-    font-weight: 600;
-    color: var(--color-info);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
 /* Editor launch button (tab bar) */
 .editor-btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
+    flex-shrink: 0;
+    white-space: nowrap;
     padding: 4px 10px;
     background: var(--primary-10);
     border: 1px solid var(--primary-30);
@@ -305,47 +245,14 @@
     opacity: 0.6;
 }
 
-/* ========== MAIN LAYOUT ========== */
-:root {
-    --sidebar-width: 280px;
-}
-
-.main-layout {
-    display: grid;
-    grid-template-columns: var(--sidebar-width) 4px 1fr;
-    flex: 1;
-    overflow: hidden;
-    background: var(--bezel-edge);
-}
-
-.panel-splitter {
-    background: var(--bezel-edge);
-    cursor: col-resize;
-    transition: background 0.15s ease;
-    position: relative;
-    z-index: 10;
-}
-
-.panel-splitter:hover,
-.panel-splitter.dragging {
-    background: var(--color-primary-dim);
-}
-
-.panel-splitter::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -4px;
-    right: -4px;
-    bottom: 0;
-}
-
-/* ========== MAIN CONTENT ========== */
+/* ========== MAIN CONTENT ==========
+ * Contextual sidebar + splitter removed in #606 — panes own their navigation. */
 .main-content {
     background: var(--bg-panel);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    height: 100%;
 }
 
 /* Tab bar chrome removed in #605 — navigation lives in the shell rail
@@ -373,16 +280,8 @@
 
 /* Topbar density: nothing wraps in the 44px bar. Priority under pressure:
  * identity values (project, workflow, DOTBOT_HOME SHA) keep full text; the
- * inert search pill compresses first; workflow pills ellipsize last — the
- * full list lives on the Workflows tab. */
-.shell-topbar .workflow-pills {
-    flex-wrap: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-}
-
+ * inert search pill compresses first. (Installed-workflow pills were dropped
+ * in #606 — spec #7.3 topbar carries only the current-workflow badge.) */
 .shell-topbar .project-badge,
 .shell-topbar .workflow-badge,
 .shell-topbar .framework-banner {
@@ -394,15 +293,8 @@
     white-space: nowrap;
 }
 
-.shell-topbar .shell-search {
-    min-width: 120px;
-    flex-shrink: 1;
-    overflow: hidden;
-}
-
 @media (max-width: 1200px) {
-    .shell-topbar .shell-search,
-    .shell-topbar .workflow-pills {
+    .shell-topbar .shell-search {
         display: none;
     }
 }
