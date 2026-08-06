@@ -66,6 +66,7 @@
         wireTabSwitching();
         wireFilters();
         wireSorting();
+        initTicker();
         fetchData();
         refreshTimer = setInterval(fetchData, 30000);
     });
@@ -83,6 +84,7 @@
             }
             allInstances = await resp.json();
             buildDerivedData();
+            buildTickerLines();
             render();
             updateRefreshTime();
         } catch (err) {
@@ -844,5 +846,125 @@
     function updateRefreshTime() {
         const el = document.getElementById('last-refresh');
         el.textContent = `Last refresh: ${formatDashboardTime(new Date())}`;
+    }
+
+    // --- Dispatch ticker (#607 interim: derived from instance polling;
+    //     replaced by the #599 outpost-to-mothership event feed) ---
+    const TICKER_MODE_KEY = 'dotbot:shell:tickerMode';
+    const TICKER_MIN_CYCLE_S = 20;
+    const TICKER_PX_PER_S = 60;
+    let tickerLines = [];
+    let tickerRendered = '';
+    let tickerRebuildQueued = false;
+    // Explicit click choice — authoritative over localStorage so the stored
+    // read can't force feed mode back on when storage is unavailable.
+    let userTickerMode = null;
+
+    function initTicker() {
+        const el = document.getElementById('shell-ticker');
+        if (!el) return;
+        el.addEventListener('click', () => {
+            const feed = el.dataset.mode === 'feed';
+            if (feed) {
+                delete el.dataset.mode;
+            } else {
+                el.dataset.mode = 'feed';
+            }
+            userTickerMode = feed ? 'static' : 'feed';
+            try { localStorage.setItem(TICKER_MODE_KEY, userTickerMode); } catch { /* ignore */ }
+            tickerRendered = '';
+            renderTicker();
+            el.blur();
+        });
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
+        });
+        window.matchMedia('(prefers-reduced-motion: reduce)')
+            .addEventListener('change', () => { tickerRendered = ''; renderTicker(); });
+    }
+
+    function buildTickerLines() {
+        const recent = [...allInstances]
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 8);
+        tickerLines = recent.map(inst => {
+            const title = `"${inst.questionTitle}"`;
+            if (inst.respondedCount >= inst.totalRecipients && inst.totalRecipients > 0) {
+                return `question ${title} responded — M`;
+            }
+            if (inst.respondedCount > 0) {
+                return `question ${title} ${inst.respondedCount}/${inst.totalRecipients} responded · stop`;
+            }
+            return `question ${title} dispatched · stop`;
+        });
+        tickerLines.push(`refreshed ${formatDashboardTime(new Date())} · stop`);
+
+        // Expanded is the dashboard default (Decision #3) — set behaviourally,
+        // not in markup, so shared-layout pages without this script keep a
+        // working static footer. Respect a stored user preference.
+        const el = document.getElementById('shell-ticker');
+        if (el && !el.dataset.mode && tickerLines.length > 1 && userTickerMode !== 'static') {
+            let stored = null;
+            try { stored = localStorage.getItem(TICKER_MODE_KEY); } catch { /* ignore */ }
+            if (stored !== 'static') el.dataset.mode = 'feed';
+        }
+        queueTickerRender();
+    }
+
+    /** Defer rebuilds to the animation loop boundary (translateX is back at 0
+     *  there, so replaceChildren is seamless) — a mid-cycle rebuild every 30s
+     *  fetch would snap the scroll and the feed tail would never be seen. */
+    function queueTickerRender() {
+        const el = document.getElementById('shell-ticker');
+        const track = document.getElementById('ticker-feed-track');
+        if (!el || !track || el.dataset.mode !== 'feed') return;
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduced || !track.childElementCount) {
+            renderTicker();
+            return;
+        }
+        if (tickerRebuildQueued) return;
+        tickerRebuildQueued = true;
+        track.addEventListener('animationiteration', () => {
+            tickerRebuildQueued = false;
+            renderTicker();
+        }, { once: true });
+    }
+
+    function renderTicker() {
+        const el = document.getElementById('shell-ticker');
+        const track = document.getElementById('ticker-feed-track');
+        if (!el || !track || el.dataset.mode !== 'feed') return;
+
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const content = tickerLines.join('   ·   ') || 'no transmissions. standing by.';
+        const signature = `${reduced ? 'R' : 'S'}|${content}`;
+        if (signature === tickerRendered) return;
+        tickerRendered = signature;
+
+        track.replaceChildren();
+        track.style.removeProperty('--ticker-duration');
+
+        const addEntry = (text) => {
+            const span = document.createElement('span');
+            span.className = 'shell-ticker-entry'; // same DOM as ticker.js appendEntry
+            span.textContent = text; // textContent — titles are user content (XSS)
+            track.appendChild(span);
+        };
+
+        if (reduced) {
+            addEntry(tickerLines[0] || content);
+            return;
+        }
+
+        const containerWidth = el.querySelector('.shell-ticker-feed').clientWidth || 800;
+        addEntry(content);
+        while (track.scrollWidth < containerWidth) addEntry(content);
+        const blockCount = track.childElementCount;
+        for (let i = 0; i < blockCount; i++) {
+            track.appendChild(track.children[i].cloneNode(true));
+        }
+        const duration = Math.max(TICKER_MIN_CYCLE_S, (track.scrollWidth / 2) / TICKER_PX_PER_S);
+        track.style.setProperty('--ticker-duration', `${duration}s`);
     }
 })();

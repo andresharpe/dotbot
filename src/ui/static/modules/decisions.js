@@ -8,6 +8,7 @@
 let _decisions          = [];
 let _expandedDecisionId = null;
 let _editingDecisionId  = null;   // null = create mode
+let _decisionFilter     = 'all';  // status filter driven by the header chips (#606)
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -15,7 +16,20 @@ async function initDecisions() {
     _bindCreateButton();
     _bindModal();
     _bindListDelegation();
+    _bindFilterChips();
     await _loadDecisions();
+}
+
+function _bindFilterChips() {
+    const chips = document.getElementById('decision-filter-chips');
+    if (!chips) return;
+    chips.addEventListener('click', (e) => {
+        const chip = e.target.closest('.filter-chip');
+        if (!chip) return;
+        _decisionFilter = chip.dataset.decisionFilter || 'all';
+        chips.querySelectorAll('.filter-chip').forEach(c => c.classList.toggle('active', c === chip));
+        _renderList();
+    });
 }
 
 function _bindListDelegation() {
@@ -72,11 +86,20 @@ function _renderList() {
         return;
     }
 
+    const visible = _decisionFilter === 'all'
+        ? _decisions
+        : _decisions.filter(d => (d.status || 'proposed') === _decisionFilter);
+
+    if (visible.length === 0) {
+        container.innerHTML = '<div class="empty-state">No decisions for this filter</div>';
+        return;
+    }
+
     const statusOrder  = ['proposed', 'accepted', 'deprecated', 'superseded'];
     const statusLabels = { proposed: 'Proposed', accepted: 'Accepted', deprecated: 'Deprecated', superseded: 'Superseded' };
 
     const groups = {};
-    for (const dec of _decisions) {
+    for (const dec of visible) {
         const s = dec.status || 'proposed';
         if (!groups[s]) groups[s] = [];
         groups[s].push(dec);

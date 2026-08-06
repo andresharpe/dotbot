@@ -136,6 +136,31 @@ export function seedProcess(
   return { id, filePath };
 }
 
+export function seedActivityEvent(
+  type: string,
+  fields: Record<string, unknown> = {},
+): string {
+  // Get-ActivityTail (ControlAPI.psm1) streams raw JSONL lines from
+  // .control/activity.jsonl — appending a line is all it takes for the
+  // event to reach /api/activity/tail and the polling loop.
+  const id = `evt_${randomUUID().slice(0, 8)}`;
+  const event = {
+    id,
+    type,
+    timestamp: _IsoTimestamp(),
+    source: "e2e",
+    ...fields,
+  };
+  const controlDir = path.join(BOT_DIR, ".control");
+  fs.mkdirSync(controlDir, { recursive: true });
+  fs.appendFileSync(
+    path.join(controlDir, "activity.jsonl"),
+    JSON.stringify(event) + "\n",
+    "utf8",
+  );
+  return id;
+}
+
 export function removeProcess(proc: SeededProcess): void {
   if (fs.existsSync(proc.filePath)) {
     fs.unlinkSync(proc.filePath);

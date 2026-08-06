@@ -2,35 +2,322 @@
  * Tab content views: pipeline, workflow, product, settings
  */
 
-/* ========== PIPELINE VIEW ========== */
-.pipeline-wrapper {
+/* ========== PERSONA DATA RE-MONO (#607, PRD 5.7) ========== */
+/* Inside stakeholder panes prose inherits Inter 14px from the shell rule;
+ * these data elements inherit too and must stay mono 12px. Elements with
+ * explicit font-family rules (badges, chips, doc-viewer, buttons) are
+ * unaffected by inheritance and are deliberately absent here. */
+[data-persona="stakeholder"] code,
+[data-persona="stakeholder"] .chip-count,
+[data-persona="stakeholder"] .task-status-word,
+[data-persona="stakeholder"] .task-list-item-meta,
+[data-persona="stakeholder"] .tasks-progress-label,
+[data-persona="stakeholder"] .tasks-processes-counts,
+[data-persona="stakeholder"] .chips-extra,
+[data-persona="stakeholder"] .decision-row-date,
+[data-persona="stakeholder"] .decision-meta-item,
+[data-persona="stakeholder"] .task-meta-value,
+[data-persona="stakeholder"] .task-badge,
+[data-persona="stakeholder"] .process-name,
+[data-persona="stakeholder"] .process-time,
+[data-persona="stakeholder"] .process-meta-item {
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+/* ========== PANE NAV (#606 — former sidebar context panels) ========== */
+.pane-with-nav {
+    display: grid;
+    grid-template-columns: minmax(220px, 280px) 1fr;
+    gap: 16px;
+    /* min-height (not height): the grid must grow with content so the
+     * scrolling .tab-pane can actually scroll it */
+    min-height: 100%;
+}
+
+.pane-nav {
+    min-width: 0;
+    /* Independent scroll, like the old sidebar: the column sticks to the
+     * viewport and scrolls internally, so expanding nav items never inflates
+     * the pane (which stretched the viewer into an empty void) */
+    align-self: start;
+    position: sticky;
+    top: 0;
+    max-height: calc(100vh - 44px - 28px - 32px);
+    overflow-y: auto;
+}
+
+.pane-body {
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
+}
+
+/* Runs panel keeps its natural height; the viewer takes the remainder
+ * (its own height:100% would otherwise squeeze the panel and clip tasks) */
+.pane-body > .workflow-runs-panel {
+    flex-shrink: 0;
+}
+
+.pane-body > .workflow-viewer {
+    height: auto;
+    flex: 1;
+    min-height: 240px;
+}
+
+.decisions-header-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.decisions-header-strip .decision-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Decision filter chips: counts keep the .decision-status-* palette */
+.filter-chip[data-decision-filter="proposed"] .chip-count { color: var(--color-primary); }
+.filter-chip[data-decision-filter="accepted"] .chip-count { color: var(--color-success); }
+.filter-chip[data-decision-filter="deprecated"] .chip-count,
+.filter-chip[data-decision-filter="superseded"] .chip-count { color: var(--color-muted); }
+
+@media (max-width: 900px) {
+    .pane-with-nav {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ========== TASKS SURFACE (#606) ========== */
+.tasks-surface {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     height: 100%;
 }
 
-.pipeline-stage {
-    flex: 1;
+.tasks-toolbar {
     display: flex;
-    flex-direction: column;
-    min-height: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
-.pipeline-stage-header {
+.filter-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 12px;
+    background: transparent;
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.filter-chip:hover {
+    color: var(--color-primary);
+    background: var(--primary-05);
+}
+
+.filter-chip.active {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    background: var(--primary-10);
+}
+
+.chip-count {
+    font-size: 10px;
+    color: var(--color-primary-dim);
+}
+
+.chips-extra {
+    margin-left: 8px;
+    font-size: 10px;
+    color: var(--color-muted);
+}
+
+.tasks-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tasks-progress-strip {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 8px 12px;
+}
+
+.tasks-progress-track {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-screen);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.tasks-progress-bar {
+    height: 100%;
+    width: 0;
+    background: var(--color-primary);
+    box-shadow: 0 0 6px var(--primary-glow);
+    transition: width 0.3s ease;
+}
+
+.tasks-progress-label {
+    font-size: 10px;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.tasks-main {
+    display: grid;
+    grid-template-columns: 1fr minmax(280px, 340px);
+    gap: 12px;
+    min-height: 200px;
+}
+
+.tasks-list .task-list-item.tasks-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.task-status-word {
+    flex: 0 0 auto;
+    min-width: 88px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--type-color, var(--color-muted));
+}
+
+.task-status-word.status-todo { color: var(--color-primary); }
+.task-status-word.status-analysing,
+.task-status-word.status-in-progress { color: var(--color-secondary); }
+.task-status-word.status-needs-input,
+.task-status-word.status-needs-review { color: var(--color-warning); }
+.task-status-word.status-analysed { color: var(--color-info); }
+.task-status-word.status-done { color: var(--color-success); }
+.task-status-word.status-skipped { color: var(--color-muted); }
+
+.tasks-row .task-list-item-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tasks-row .task-row-actions {
+    flex: 0 0 auto;
+}
+
+.tasks-row.ignored {
+    opacity: 0.45;
+}
+
+.tasks-row.selected {
+    background: var(--primary-08);
+    border-color: var(--primary-30);
+}
+
+.tasks-show-more {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    text-align: center;
+}
+
+.task-detail-panel {
+    background: var(--bg-module);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 4px;
+    padding: 14px;
+    overflow-y: auto;
+    max-height: 60vh;
+}
+
+.task-detail-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.task-detail-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-primary);
+}
+
+.task-detail-full-link {
+    font-size: 10px;
+    color: var(--color-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.task-detail-actions {
+    margin-bottom: 10px;
+}
+
+.task-detail-body {
+    font-size: 12px;
+}
+
+.tasks-processes-section {
+    border-top: 1px solid var(--bezel-edge);
+    padding-top: 12px;
+}
+
+.tasks-processes-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: 8px;
 }
 
-.pipeline-stage-title {
+.tasks-processes-title {
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--color-primary-dim);
+}
+
+.tasks-processes-counts {
+    font-size: 10px;
+    color: var(--color-muted);
+}
+
+@media (max-width: 900px) {
+    .tasks-main {
+        grid-template-columns: 1fr;
+    }
 }
 
 .pipeline-workflow-filter {
@@ -55,236 +342,6 @@
     outline: none;
     border-color: var(--color-secondary);
 }
-
-.pipeline-stage-title.analysis {
-    color: var(--color-secondary);
-}
-
-.pipeline-stage-title.execution {
-    color: var(--color-secondary);
-}
-
-.pipeline-container {
-    display: flex;
-    gap: 8px;
-    flex: 1;
-    min-height: 0;
-    align-items: stretch;
-}
-
-.pipeline-column {
-    flex: 1;
-    background: var(--bg-screen);
-    border: 1px solid var(--primary-12);
-    border-radius: 4px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background-image:
-        linear-gradient(var(--grid-color) 1px, transparent 1px),
-        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
-        linear-gradient(var(--grid-color-strong) 1px, transparent 1px),
-        linear-gradient(90deg, var(--grid-color-strong) 1px, transparent 1px);
-    background-size: 10px 10px, 10px 10px, 50px 50px, 50px 50px;
-}
-
-.pipeline-column.highlight {
-    border-color: var(--secondary-30);
-}
-
-.column-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 14px;
-    background: var(--primary-05);
-    border-bottom: 1px solid var(--primary-10);
-    position: relative;
-}
-
-.column-resize-handle {
-    position: absolute;
-    right: -4px;
-    top: 0;
-    bottom: 0;
-    width: 8px;
-    cursor: col-resize;
-    z-index: 5;
-}
-
-.column-resize-handle::after {
-    content: '';
-    position: absolute;
-    left: 3px;
-    top: 20%;
-    bottom: 20%;
-    width: 2px;
-    background: transparent;
-    transition: background 0.15s ease;
-    border-radius: 1px;
-}
-
-.column-resize-handle:hover::after,
-.column-resize-handle.dragging::after {
-    background: var(--color-primary-dim);
-}
-
-.column-label {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-primary-dim);
-}
-
-.column-count {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--color-primary);
-    text-shadow: 0 0 10px var(--primary-glow);
-}
-
-.column-items {
-    flex: 1;
-    padding: 8px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-/* Animated flow arrows */
-.flow-arrow {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-primary);
-    font-size: 24px;
-    text-shadow: 0 0 15px var(--primary-glow);
-    animation: flowPulse 1.5s ease-in-out infinite;
-}
-
-@keyframes flowPulse {
-    0%, 100% { opacity: 0.3; transform: translateX(0); }
-    50% { opacity: 1; transform: translateX(3px); }
-}
-
-/* Pipeline task cards (full detail) */
-.pipeline-task {
-    padding: 10px 12px;
-    background: var(--bg-black-overlay-heavy);
-    border: 1px solid var(--primary-15);
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    position: relative;
-    padding-left: 14px;
-}
-
-.pipeline-task::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: var(--color-primary);
-    border-radius: 3px 0 0 3px;
-}
-
-.pipeline-task.priority-high::before { background: var(--color-error); }
-.pipeline-task.priority-med::before { background: var(--color-primary); }
-.pipeline-task.priority-low::before { background: var(--color-success); }
-
-.pipeline-task:hover {
-    background: var(--primary-08);
-    border-color: var(--primary-30);
-}
-
-.pipeline-task.active {
-    border-color: var(--color-secondary);
-    background: rgba(95, 179, 179, 0.1);
-}
-
-.pipeline-task.active::before {
-    background: var(--color-secondary);
-}
-
-.pipeline-load-more {
-    display: block;
-    width: 100%;
-    margin-top: 4px;
-    padding: 6px 12px;
-    background: var(--primary-05);
-    border: 1px dashed var(--primary-30);
-    border-radius: 3px;
-    color: var(--label-color);
-    font-family: inherit;
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.pipeline-load-more:hover {
-    background: var(--primary-08);
-    border-color: var(--primary-30);
-    color: var(--color-primary);
-}
-
-.pipeline-task .task-id {
-    font-size: 8px;
-    color: var(--label-color);
-    margin-bottom: 4px;
-    font-family: var(--font-ui);
-    word-break: break-all;
-}
-
-.pipeline-task .task-title {
-    font-size: 11px;
-    color: var(--color-primary);
-    line-height: 1.4;
-    margin-bottom: 6px;
-}
-
-.pipeline-task .task-tags {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-}
-
-.pipeline-task .task-tag {
-    padding: 2px 6px;
-    background: var(--primary-10);
-    border-radius: 2px;
-    font-size: 8px;
-    color: var(--color-primary-dim);
-}
-
-/* Review-waiting tasks share the "Needs Input" column but are flagged with a
-   warning-toned chip to distinguish them from input-waiting tasks (#500). */
-.pipeline-task .task-tag.tag-review {
-    color: var(--color-warning);
-    background: rgb(var(--color-warning-rgb) / 0.12);
-}
-
-.pipeline-task:has(.completed-date) {
-    padding-bottom: 24px;
-}
-
-.pipeline-task > .completed-date {
-    position: absolute;
-    bottom: 6px;
-    right: 8px;
-    padding: 2px 8px;
-    background: var(--surface-tertiary);
-    color: var(--color-success);
-    font-family: var(--font-ui);
-    font-size: 8px;
-    border-radius: 10px;
-}
-
 /* ========== PRODUCT TAB ========== */
 .product-viewer {
     display: flex;
@@ -1833,11 +1890,37 @@
     margin: 0 0.15em;
 }
 
-/* Workflow Phases — Overview side panel */
-.overview-layout {
+/* Overview cockpit grid (#606): controls column + content + optional side panel */
+.overview-cockpit {
     display: flex;
     height: 100%;
     gap: 1rem;
+}
+
+.cockpit-col {
+    flex: 0 0 clamp(240px, 22vw, 300px);
+    min-width: 0;
+    align-self: stretch;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    /* Framed as a panel so internal scrolling reads as such — without the
+     * border, content clipped at the fold looks broken rather than scrollable */
+    background: var(--bg-module);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 4px;
+}
+
+@media (max-width: 900px) {
+    .overview-cockpit {
+        flex-direction: column;
+    }
+    /* Control column first so RUN/STOP + panic stay reachable on mobile */
+    .cockpit-col {
+        flex: none;
+        order: -1;
+    }
 }
 
 .overview-content {
@@ -2208,6 +2291,53 @@
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 12px;
     margin-bottom: 20px;
+}
+
+/* Collapsed Classics group (#607, PRD 5.8) */
+.theme-classics-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    /* Separate the classics zone from the featured grid above and the
+     * Reduce Motion group below, so the button reads as part of themes */
+    margin: 16px 0 24px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-muted);
+    cursor: pointer;
+}
+
+.theme-classics-toggle:hover {
+    color: var(--color-primary);
+    border-color: var(--primary-30);
+}
+
+.theme-classics-chevron {
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+
+.theme-classics-toggle[aria-expanded="true"] .theme-classics-chevron {
+    transform: rotate(90deg);
+}
+
+/* When expanded the grid carries the bottom separation instead */
+.theme-classics-toggle[aria-expanded="true"] {
+    margin-bottom: 0;
+}
+
+.theme-classics-grid {
+    margin: 12px 0 24px;
+}
+
+.theme-classics-grid.collapsed {
+    display: none;
 }
 
 .theme-option {
@@ -2756,35 +2886,6 @@
 }
 
 /* ========== ROADMAP TASK ACTIONS ========== */
-.roadmap-column-header {
-    gap: 10px;
-}
-
-.roadmap-column-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: auto;
-}
-
-.pipeline-task.ignored {
-    background: rgba(222, 145, 74, 0.08);
-    border-color: rgba(222, 145, 74, 0.28);
-}
-
-.pipeline-task.blocked {
-    border-style: dashed;
-    background: rgba(94, 120, 145, 0.08);
-}
-
-.pipeline-task.manual-ignored::before {
-    background: var(--color-warning);
-}
-
-.pipeline-task.blocked::before {
-    background: var(--color-secondary);
-}
-
 .roadmap-task-note {
     margin-top: 8px;
     font-size: 9px;

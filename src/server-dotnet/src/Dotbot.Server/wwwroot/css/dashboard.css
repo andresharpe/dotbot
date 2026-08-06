@@ -89,25 +89,22 @@ body {
     margin-left: auto;
 }
 
-/* === Tab Bar === */
+/* === View filter chips (#606 — sentence-case chips replace uppercase tabs,
+ * design spec #10; same switching JS, restyle only) === */
 .tab-bar-container {
     display: flex;
-    gap: 0;
-    padding: 0 20px;
-    background: var(--bezel-dark);
-    border-bottom: 1px solid var(--bezel-edge);
+    gap: 6px;
+    padding: 12px 20px 12px 0;
     flex-shrink: 0;
 }
 .tab {
     font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 10px 20px;
+    padding: 3px 12px;
     background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
+    border: 1px solid var(--bezel-edge);
+    border-radius: 3px;
     color: var(--color-muted);
     cursor: pointer;
     transition: all 150ms ease;
@@ -118,8 +115,8 @@ body {
 }
 .tab.active {
     color: var(--color-primary);
-    border-bottom-color: var(--color-primary);
-    text-shadow: 0 0 8px var(--primary-30);
+    border-color: var(--color-primary);
+    background: var(--primary-10);
 }
 
 /* === Main Content ===

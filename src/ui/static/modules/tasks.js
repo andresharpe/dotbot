@@ -32,6 +32,12 @@ function initTaskClicks() {
             return;
         }
 
+        // Rows inside the Tasks surface open the detail panel (tasks-surface.js),
+        // not the modal — the modal is reachable via the panel's "Full detail" link.
+        if (e.target.closest('#tasks-list')) {
+            return;
+        }
+
         const taskItem = e.target.closest('.task-list-item, .pipeline-task');
         if (taskItem && taskItem.dataset.taskId) {
             const task = findTaskById(taskItem.dataset.taskId);
