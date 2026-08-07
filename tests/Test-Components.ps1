@@ -153,7 +153,7 @@ if (Test-Path $worktreeManagerModule) {
         -Message "Ignored local files such as .codex/config.toml must not make patch replay fail opaquely or overwrite divergent content"
     Assert-True -Name "Apply-TaskBranchPatch surfaces conflict_files + 'rebase_conflict' kind on 3-way apply failure" `
         -Condition (($worktreeManagerSrc -match 'diff\s+--name-only\s+--diff-filter=U') -and
-                    ($worktreeManagerSrc -match "failure_kind\s*=\s*if\s*\(\s*\`$conflictFiles\.Count\s*-gt\s*0\s*\)\s*\{\s*'rebase_conflict'") -and
+                    ($worktreeManagerSrc -match 'failure_kind\s*=\s*if\s*\(\s*\$conflictFiles\.Count\s*-gt\s*0\s*\)\s*\{\s*''rebase_conflict''') -and
                     ($worktreeManagerSrc -match "Merge conflict during squash-merge")) `
         -Message "An add/add conflict on a single file (e.g. .gitignore) must reach the operator as a 'rebase_conflict' pending_question naming the file, not a generic 'merge_command_failed' with empty conflict_files. See botdot task d954f7e7 incident on 2026-05-14."
 
@@ -5739,7 +5739,7 @@ try {
     Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue
     Push-Location $p4NestedGit
     try {
-        $phase4NestedGitOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>$null | Out-String
+        $phase4NestedGitOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>&1 | Out-String
         $phase4NestedGitExit = $LASTEXITCODE
     } finally {
         Pop-Location
