@@ -12,6 +12,16 @@ All notable changes to dotbot are documented in this file. The format follows [K
 
 ### Removed
 
+## [4.0.3] - 2026-07-16
+
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
 ## [4.0.2] - 2026-07-09
 
 ### Added
