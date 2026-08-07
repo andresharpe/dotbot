@@ -5739,7 +5739,7 @@ try {
     Remove-Item Env:DOTBOT_HOME -ErrorAction SilentlyContinue
     Push-Location $p4NestedGit
     try {
-        $phase4NestedGitOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>&1 | Out-String
+        $phase4NestedGitOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>$null | Out-String
         $phase4NestedGitExit = $LASTEXITCODE
     } finally {
         Pop-Location
@@ -6084,7 +6084,7 @@ $statusScript = Join-Path $dotbotDir "src/cli/status.ps1"
 $statusProject = New-TestProject -Prefix "dotbot-status"
 try {
     Push-Location $statusProject
-    $statusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>&1 | Out-String
+    $statusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>$null | Out-String
     $statusExit = $LASTEXITCODE
     Pop-Location
 
@@ -6128,7 +6128,7 @@ $initScript = Join-Path $dotbotDir "src/cli/init-project.ps1"
 try {
     Push-Location $statusInitProject
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $initScript -Workflow start-from-prompt 2>&1 | Out-Null
-    $statusOutput2 = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>&1 | Out-String
+    $statusOutput2 = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>$null | Out-String
     Pop-Location
 
     $obj2 = $null
@@ -6145,7 +6145,7 @@ try {
     $nestedStatusDir = Join-Path $statusInitProject "src/nested"
     New-Item -ItemType Directory -Force -Path $nestedStatusDir | Out-Null
     Push-Location $nestedStatusDir
-    $nestedStatusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>&1 | Out-String
+    $nestedStatusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $statusScript -Json 2>$null | Out-String
     Pop-Location
 
     $nestedObj = $null
