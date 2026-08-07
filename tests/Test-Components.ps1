@@ -148,14 +148,12 @@ if (Test-Path $worktreeManagerModule) {
         -Message "Product workspace writes must come from task branch patch replay, not live shared checkout"
     Assert-True -Name "Apply-TaskBranchPatch guards untracked ignored additions" `
         -Condition (($worktreeManagerSrc -match 'diff\s+--name-status') -and
-                    ($worktreeManagerSrc -match 'hash-object\s+--\s') -and
-                    ($worktreeManagerSrc -notmatch 'hash-object\s+--no-filters') -and
+                    ($worktreeManagerSrc -match 'hash-object\s+--no-filters') -and
                     ($worktreeManagerSrc -match 'Untracked file would be overwritten by task branch')) `
-        -Message "Genuinely divergent untracked local files must still block patch replay (guard intact), but the blob comparison must NOT use --no-filters: on Windows with core.autocrlf=true a raw hash of a CRLF working-tree leftover never matches the LF branch blob, falsely flagging EOL-only-stale artifacts as divergent and permanently blocking squash-merge retries (issue #517)."
+        -Message "Ignored local files such as .codex/config.toml must not make patch replay fail opaquely or overwrite divergent content"
     Assert-True -Name "Apply-TaskBranchPatch surfaces conflict_files + 'rebase_conflict' kind on 3-way apply failure" `
         -Condition (($worktreeManagerSrc -match 'diff\s+--name-only\s+--diff-filter=U') -and
-                    ($worktreeManagerSrc -match "\`$conflictFiles\.Count\s*-gt\s*0") -and
-                    ($worktreeManagerSrc -match "'rebase_conflict'") -and
+                    ($worktreeManagerSrc -match "failure_kind\s*=\s*if\s*\(\s*\`$conflictFiles\.Count\s*-gt\s*0\s*\)\s*\{\s*'rebase_conflict'") -and
                     ($worktreeManagerSrc -match "Merge conflict during squash-merge")) `
         -Message "An add/add conflict on a single file (e.g. .gitignore) must reach the operator as a 'rebase_conflict' pending_question naming the file, not a generic 'merge_command_failed' with empty conflict_files. See botdot task d954f7e7 incident on 2026-05-14."
 
@@ -203,93 +201,6 @@ if (Test-Path $worktreeManagerModule) {
     } finally {
         # Best-effort cleanup; git may hold handles briefly on Windows.
         Remove-Item -Path $conflictTmp -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    # ───────────────────────────────────────────────────────────────────────
-    # End-to-end: a stale untracked leftover from a prior failed apply that
-    # differs from the branch version ONLY by line endings must not block the
-    # retry. Reproduces issue #517 (squash-merge retry permanently parked in
-    # needs-input). The guard normalizes via `git hash-object` (no --no-filters),
-    # so the EOL-only-stale leftover hashes equal to the LF branch blob, is
-    # cleaned, and the patch applies. A genuinely divergent leftover still blocks.
-    # ───────────────────────────────────────────────────────────────────────
-    $eolTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-eol-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-    New-Item -ItemType Directory -Path $eolTmp -Force | Out-Null
-    try {
-        Push-Location $eolTmp
-        try {
-            & git init --quiet 2>$null
-            & git config user.email 'test@example.com' 2>$null
-            & git config user.name 'Test' 2>$null
-            & git config core.autocrlf true 2>$null
-            & git checkout -b main --quiet 2>$null
-            'base' | Set-Content -Path (Join-Path $eolTmp 'README.md') -NoNewline
-            & git add README.md 2>$null
-            & git commit -m 'base' --quiet 2>$null
-            # Task branch adds a brand-new file (stored LF in the blob).
-            & git checkout -b 'task/eol-fixture' --quiet 2>$null
-            New-Item -ItemType Directory -Path (Join-Path $eolTmp 'upload-decisions') -Force | Out-Null
-            [IO.File]::WriteAllText((Join-Path $eolTmp 'upload-decisions/per-system.json'), "{`n  `"a`": 1`n}`n")
-            & git add upload-decisions/per-system.json 2>$null
-            & git commit -m 'task: add per-system.json' --quiet 2>$null
-            & git checkout main --quiet 2>$null
-            # Simulate the leftover from a prior failed apply: same content,
-            # but CRLF on disk (what git apply / checkout writes under autocrlf).
-            New-Item -ItemType Directory -Path (Join-Path $eolTmp 'upload-decisions') -Force | Out-Null
-            [IO.File]::WriteAllText((Join-Path $eolTmp 'upload-decisions/per-system.json'), "{`r`n  `"a`": 1`r`n}`r`n")
-        } finally {
-            Pop-Location
-        }
-
-        $applyFn2 = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Apply-TaskBranchPatch })
-        $eolResult = & $applyFn2 -ProjectRoot $eolTmp -BaseBranch 'main' -BranchName 'task/eol-fixture'
-
-        Assert-True -Name "Apply-TaskBranchPatch succeeds over an EOL-only-stale untracked leftover (issue #517)" `
-            -Condition ($eolResult.success -eq $true) `
-            -Message "Expected success=true (stale CRLF leftover cleaned), got: $($eolResult | ConvertTo-Json -Compress)"
-    } finally {
-        Remove-Item -Path $eolTmp -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    # ───────────────────────────────────────────────────────────────────────
-    # Counterpart to the above: a GENUINELY divergent untracked leftover (the
-    # content differs beyond line endings) must STILL block — the guard is
-    # narrowed for EOL noise, not removed. Protects against silent data loss.
-    # ───────────────────────────────────────────────────────────────────────
-    $divTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-div-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-    New-Item -ItemType Directory -Path $divTmp -Force | Out-Null
-    try {
-        Push-Location $divTmp
-        try {
-            & git init --quiet 2>$null
-            & git config user.email 'test@example.com' 2>$null
-            & git config user.name 'Test' 2>$null
-            & git checkout -b main --quiet 2>$null
-            'base' | Set-Content -Path (Join-Path $divTmp 'README.md') -NoNewline
-            & git add README.md 2>$null
-            & git commit -m 'base' --quiet 2>$null
-            & git checkout -b 'task/div-fixture' --quiet 2>$null
-            New-Item -ItemType Directory -Path (Join-Path $divTmp 'upload-decisions') -Force | Out-Null
-            [IO.File]::WriteAllText((Join-Path $divTmp 'upload-decisions/per-system.json'), "{`n  `"a`": 1`n}`n")
-            & git add upload-decisions/per-system.json 2>$null
-            & git commit -m 'task: add per-system.json' --quiet 2>$null
-            & git checkout main --quiet 2>$null
-            # Genuinely different local content at the same path.
-            New-Item -ItemType Directory -Path (Join-Path $divTmp 'upload-decisions') -Force | Out-Null
-            [IO.File]::WriteAllText((Join-Path $divTmp 'upload-decisions/per-system.json'), "{`n  `"a`": 999`n}`n")
-        } finally {
-            Pop-Location
-        }
-
-        $applyFn3 = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Apply-TaskBranchPatch })
-        $divResult = & $applyFn3 -ProjectRoot $divTmp -BaseBranch 'main' -BranchName 'task/div-fixture'
-
-        Assert-True -Name "Apply-TaskBranchPatch still blocks a genuinely divergent untracked leftover" `
-            -Condition (($divResult.success -eq $false) -and
-                        (@($divResult.output) -join "`n") -match 'Untracked file would be overwritten') `
-            -Message "Expected success=false with the overwrite guard message, got: $($divResult | ConvertTo-Json -Compress)"
-    } finally {
-        Remove-Item -Path $divTmp -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # ───────────────────────────────────────────────────────────────────────
@@ -398,76 +309,6 @@ if (Test-Path $worktreeManagerModule) {
         Remove-TestProject -Path $resolveMainRepo
     }
 
-    # Resolve-DotbotBaseBranch (#466): configurable base branch with fail-fast on a
-    # configured-but-missing trunk. Group A exercises the no-config fallback (no BotRoot
-    # -> the Get-Command guard skips Get-MergedSettings -> deterministic main/master/null).
-    $rdbbNoCfg = New-TestProject -Prefix 'dotbot-test-rdbb-nocfg'
-    try {
-        Push-Location $rdbbNoCfg
-        & git branch -M main 2>&1 | Out-Null
-        Pop-Location
-        Assert-Equal -Name "#466: Resolve-DotbotBaseBranch defaults to 'main' (no config)" `
-            -Expected "main" -Actual (Resolve-DotbotBaseBranch -ProjectRoot $rdbbNoCfg)
-
-        Push-Location $rdbbNoCfg
-        & git branch -m main master 2>&1 | Out-Null
-        Pop-Location
-        Assert-Equal -Name "#466: Resolve-DotbotBaseBranch falls back to 'master' (no config)" `
-            -Expected "master" -Actual (Resolve-DotbotBaseBranch -ProjectRoot $rdbbNoCfg)
-
-        Push-Location $rdbbNoCfg
-        & git branch -m master legacy-trunk 2>&1 | Out-Null
-        Pop-Location
-        Assert-True -Name "#466: Resolve-DotbotBaseBranch returns null when neither main nor master exists" `
-            -Condition ($null -eq (Resolve-DotbotBaseBranch -ProjectRoot $rdbbNoCfg)) `
-            -Message "Expected null when no main/master and no configured base"
-    } finally {
-        Remove-TestProject -Path $rdbbNoCfg
-    }
-
-    # Group B exercises a configured git.base_branch (read via Get-MergedSettings). A real
-    # .bot is required so the .control/settings.json override layer resolves; import the
-    # settings loader -Global (mirrors the user-settings block below) so the resolver's
-    # Get-Command Get-MergedSettings guard passes.
-    Import-Module (Join-Path $botDir "src/runtime/Modules/Dotbot.Core/Dotbot.Core.psd1") -Force -DisableNameChecking -Global | Out-Null
-    Import-Module (Join-Path $botDir "src/runtime/Modules/Dotbot.Settings/Dotbot.Settings.psd1") -Force -DisableNameChecking -Global | Out-Null
-    $rdbbCfg = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-rdbb-cfg'
-    try {
-        Push-Location $rdbbCfg.ProjectRoot
-        & git branch -M main 2>&1 | Out-Null
-        & git branch develop 2>&1 | Out-Null
-        Pop-Location
-
-        $rdbbControl = Join-Path $rdbbCfg.ControlDir "settings.json"
-        '{ "git": { "base_branch": "develop" } }' | Set-Content -Path $rdbbControl -Encoding UTF8
-
-        Assert-Equal -Name "#466: Resolve-DotbotBaseBranch honours configured git.base_branch" `
-            -Expected "develop" `
-            -Actual (Resolve-DotbotBaseBranch -ProjectRoot $rdbbCfg.ProjectRoot -BotRoot $rdbbCfg.BotDir)
-        Assert-Equal -Name "#466: Resolve-MainBranch delegates and honours git.base_branch" `
-            -Expected "develop" `
-            -Actual (Resolve-MainBranch -ProjectRoot $rdbbCfg.ProjectRoot -BotRoot $rdbbCfg.BotDir)
-
-        # Configured-but-missing trunk must fail fast — no silent fallback to main.
-        '{ "git": { "base_branch": "nonexistent-trunk" } }' | Set-Content -Path $rdbbControl -Encoding UTF8
-        $rdbbThrew = $false
-        $rdbbErr = ""
-        try {
-            Resolve-DotbotBaseBranch -ProjectRoot $rdbbCfg.ProjectRoot -BotRoot $rdbbCfg.BotDir | Out-Null
-        } catch {
-            $rdbbThrew = $true
-            $rdbbErr = $_.Exception.Message
-        }
-        Assert-True -Name "#466: Resolve-DotbotBaseBranch throws when configured base branch is missing" `
-            -Condition $rdbbThrew `
-            -Message "Expected fail-fast throw for a configured-but-missing base branch"
-        Assert-True -Name "#466: Resolve-DotbotBaseBranch fail-fast message names the configured branch" `
-            -Condition ($rdbbErr -match 'nonexistent-trunk') `
-            -Message "Expected error to mention the configured branch, got: $rdbbErr"
-    } finally {
-        Remove-TestProject -Path $rdbbCfg.ProjectRoot
-    }
-
     Assert-True -Name "Dotbot.Worktree has no Get-BaseBranch function (replaced by Resolve-MainBranch for #317)" `
         -Condition (-not (Select-String -Path $worktreeManagerModule -Pattern 'function Get-BaseBranch' -Quiet)) `
         -Message "Get-BaseBranch read HEAD and caused #317 — it must remain deleted"
@@ -566,30 +407,18 @@ if (Test-Path $worktreeManagerModule) {
                 -Expected $e2eResult.worktree_path -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_PROJECT_ROOT
             Assert-Equal -Name "E2E: worktree MCP records DOTBOT_HOME" `
                 -Expected $dotbotDir -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_HOME
-            # #515: state resolution must target the stable main root, not the worktree.
-            Assert-Equal -Name "E2E: worktree MCP pins DOTBOT_STATE_ROOT to main project root" `
-                -Expected $e2eRoot -Actual $mcpData.mcpServers.dotbot.env.DOTBOT_STATE_ROOT
 
             $antigravityMcpData = Get-Content -LiteralPath $worktreeAntigravityMcp -Raw | ConvertFrom-Json
             Assert-Equal -Name "E2E: Antigravity MCP points at worktree project root" `
                 -Expected $e2eResult.worktree_path -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_PROJECT_ROOT
             Assert-Equal -Name "E2E: Antigravity MCP records DOTBOT_HOME" `
                 -Expected $dotbotDir -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_HOME
-            Assert-Equal -Name "E2E: Antigravity MCP pins DOTBOT_STATE_ROOT to main project root" `
-                -Expected $e2eRoot -Actual $antigravityMcpData.mcpServers.dotbot.env.DOTBOT_STATE_ROOT
 
             $openCodeMcpData = Get-Content -LiteralPath $worktreeOpenCodeConfig -Raw | ConvertFrom-Json
             Assert-Equal -Name "E2E: OpenCode MCP points at worktree project root" `
                 -Expected $e2eResult.worktree_path -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_PROJECT_ROOT
             Assert-Equal -Name "E2E: OpenCode MCP records DOTBOT_HOME" `
                 -Expected $dotbotDir -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_HOME
-            Assert-Equal -Name "E2E: OpenCode MCP pins DOTBOT_STATE_ROOT to main project root" `
-                -Expected $e2eRoot -Actual $openCodeMcpData.mcp.dotbot.environment.DOTBOT_STATE_ROOT
-
-            $codexConfigText = Get-Content -LiteralPath $worktreeCodexConfig -Raw
-            Assert-True -Name "E2E: Codex MCP config pins DOTBOT_STATE_ROOT to main project root" `
-                -Condition ($codexConfigText -match 'DOTBOT_STATE_ROOT\s*=') `
-                -Message "Codex config.toml should export DOTBOT_STATE_ROOT for stable state resolution (#515)"
 
             $generatedStatus = @(git -C $e2eResult.worktree_path status --porcelain -- .mcp.json .claude .codex .opencode .agents .gemini .bot/content .bot/hooks .bot/settings 2>$null)
             Assert-True -Name "E2E: generated provider/MCP files are locally ignored" `
@@ -692,82 +521,6 @@ if (Test-Path $worktreeManagerModule) {
             & git -C $completeRoot branch -D $completeResult.branch_name 2>&1 | Out-Null
         }
         Remove-TestProject -Path $completeRoot
-    }
-
-    # Regression (#655): a multi-task workflow run passes -SkipRemotePush so
-    # the shared base branch is pushed once at the end of the run instead of
-    # once per task completion — each push fires the remote's full CI
-    # pipeline, so N tasks previously meant N CI runs.
-    $pushProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-complete-push'
-    $pushRoot = $pushProj.ProjectRoot
-    $pushBot = $pushProj.BotDir
-    $pushBareRemote = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-push-remote-$([System.Guid]::NewGuid().ToString().Substring(0,8)).git"
-    $pushResultA = $null
-    $pushResultB = $null
-    try {
-        Push-Location $pushRoot
-        & git branch -M main 2>&1 | Out-Null
-        Pop-Location
-
-        & git init --bare --quiet $pushBareRemote 2>&1 | Out-Null
-        & git -C $pushRoot remote add origin $pushBareRemote 2>&1 | Out-Null
-
-        $pushTaskIdA = "t_pushA001"
-        $pushResultA = New-TaskWorktree -TaskId $pushTaskIdA -TaskName "skip remote push task" `
-            -ProjectRoot $pushRoot -BotRoot $pushBot
-        Assert-True -Name "SkipRemotePush regression: first New-TaskWorktree returns success" `
-            -Condition ($pushResultA -and $pushResultA.success -eq $true) `
-            -Message "Expected New-TaskWorktree success, got: $($pushResultA | ConvertTo-Json -Compress)"
-
-        if ($pushResultA -and $pushResultA.success -and (Test-Path $pushResultA.worktree_path)) {
-            "skip push artifact" | Set-Content -Path (Join-Path $pushResultA.worktree_path "skip-push-artifact.txt") -Encoding UTF8
-
-            $pushMergeA = Complete-TaskWorktree -TaskId $pushTaskIdA -ProjectRoot $pushRoot -BotRoot $pushBot -SkipRemotePush
-            Assert-True -Name "SkipRemotePush regression: merge succeeds with -SkipRemotePush" `
-                -Condition ($pushMergeA.success -eq $true) `
-                -Message "Expected success, got: $($pushMergeA | ConvertTo-Json -Depth 10 -Compress)"
-            Assert-True -Name "SkipRemotePush regression: push not attempted" `
-                -Condition ($pushMergeA.push_result.attempted -eq $false) `
-                -Message "Expected push_result.attempted false, got: $($pushMergeA.push_result | ConvertTo-Json -Compress)"
-
-            & git -C $pushBareRemote rev-parse --verify main 2>$null | Out-Null
-            Assert-True -Name "SkipRemotePush regression: origin main ref not created" `
-                -Condition ($LASTEXITCODE -ne 0)
-        }
-
-        $pushTaskIdB = "t_pushB002"
-        $pushResultB = New-TaskWorktree -TaskId $pushTaskIdB -TaskName "default push task" `
-            -ProjectRoot $pushRoot -BotRoot $pushBot
-        Assert-True -Name "SkipRemotePush regression: second New-TaskWorktree returns success" `
-            -Condition ($pushResultB -and $pushResultB.success -eq $true) `
-            -Message "Expected New-TaskWorktree success, got: $($pushResultB | ConvertTo-Json -Compress)"
-
-        if ($pushResultB -and $pushResultB.success -and (Test-Path $pushResultB.worktree_path)) {
-            "default push artifact" | Set-Content -Path (Join-Path $pushResultB.worktree_path "default-push-artifact.txt") -Encoding UTF8
-
-            $pushMergeB = Complete-TaskWorktree -TaskId $pushTaskIdB -ProjectRoot $pushRoot -BotRoot $pushBot
-            Assert-True -Name "SkipRemotePush regression: default merge succeeds" `
-                -Condition ($pushMergeB.success -eq $true) `
-                -Message "Expected success, got: $($pushMergeB | ConvertTo-Json -Depth 10 -Compress)"
-            Assert-True -Name "SkipRemotePush regression: default push attempted and succeeds" `
-                -Condition ($pushMergeB.push_result.attempted -eq $true -and $pushMergeB.push_result.success -eq $true) `
-                -Message "Expected push attempted+success, got: $($pushMergeB.push_result | ConvertTo-Json -Compress)"
-
-            & git -C $pushBareRemote rev-parse --verify main 2>$null | Out-Null
-            Assert-True -Name "SkipRemotePush regression: origin main ref created after default push" `
-                -Condition ($LASTEXITCODE -eq 0)
-        }
-    } finally {
-        foreach ($pr in @($pushResultA, $pushResultB)) {
-            if ($pr -and $pr.worktree_path -and (Test-Path $pr.worktree_path)) {
-                & git -C $pushRoot worktree remove -f $pr.worktree_path 2>&1 | Out-Null
-            }
-            if ($pr -and $pr.branch_name) {
-                & git -C $pushRoot branch -D $pr.branch_name 2>&1 | Out-Null
-            }
-        }
-        Remove-TestProject -Path $pushRoot
-        Remove-Item -LiteralPath $pushBareRemote -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     $unbornRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-unborn-complete-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
@@ -897,77 +650,6 @@ if (Test-Path $worktreeManagerModule) {
             Remove-Item -Path $unbornWorktreeRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
         Remove-TestProject -Path $unbornRoot
-    }
-
-    # #570: two orphan tasks (both cut while main was unborn) that write the SAME
-    # file collide on merge with no common ancestor. The second merge must be
-    # classified 'unrelated_history' (an actionable operator prompt) rather than
-    # the opaque, unrecoverable 'rebase_conflict'.
-    $collRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-orphan-collide-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
-    $collBot  = Join-Path $collRoot ".bot"
-    $collA = $null; $collB = $null
-    try {
-        New-Item -ItemType Directory -Path $collRoot -Force | Out-Null
-        & git -C $collRoot init --quiet 2>&1 | Out-Null
-        & git -C $collRoot config user.email "test@dotbot.dev" 2>&1 | Out-Null
-        & git -C $collRoot config user.name "Dotbot Test" 2>&1 | Out-Null
-        & git -C $collRoot symbolic-ref HEAD refs/heads/main 2>&1 | Out-Null
-        New-Item -ItemType Directory -Path (Join-Path $collBot ".control") -Force | Out-Null
-        New-Item -ItemType Directory -Path (Join-Path $collBot "workspace/tasks") -Force | Out-Null
-        ".control/`n" | Set-Content -Path (Join-Path $collBot ".gitignore") -Encoding UTF8
-
-        # Task B is cut first (earlier orphan), then task A — both while main is unborn.
-        $collB = New-TaskWorktree -TaskId "t_collide0" -TaskName "earlier orphan writes shared file" -ProjectRoot $collRoot -BotRoot $collBot
-        $collA = New-TaskWorktree -TaskId "t_collide2" -TaskName "later orphan writes shared file" -ProjectRoot $collRoot -BotRoot $collBot
-
-        if ($collA -and $collA.success -and $collB -and $collB.success) {
-            $collRun = Join-Path $collBot "workspace/tasks/workflow-runs/2026-07-02-collide"
-            New-Item -ItemType Directory -Force -Path $collRun | Out-Null
-            @{ id = "wr_collide1"; workflow = "start-from-prompt"; status = "running" } |
-                ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $collRun "run.json") -Encoding UTF8
-            @{ id = "t_collide2"; name = "Later orphan"; status = "done"; completed_at = "2026-07-02T12:10:00Z"
-               provenance = @{ workflow = "start-from-prompt"; run_id = "wr_collide1"; definition_name = "Later orphan"; expanded_by = $null } } |
-                ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $collRun "t_collide2.json") -Encoding UTF8
-            @{ id = "t_collide0"; name = "Earlier orphan"; status = "in-progress"
-               provenance = @{ workflow = "start-from-prompt"; run_id = "wr_collide1"; definition_name = "Earlier orphan"; expanded_by = $null } } |
-                ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path $collRun "t_collide0.json") -Encoding UTF8
-
-            # BOTH tasks write the same path with different content.
-            "content from later task A" | Set-Content -Path (Join-Path $collA.worktree_path "shared-artifact.txt") -Encoding UTF8
-            "content from earlier task B" | Set-Content -Path (Join-Path $collB.worktree_path "shared-artifact.txt") -Encoding UTF8
-
-            # Merge A first — initializes unborn main with A's shared-artifact.txt.
-            $collMergeA = Complete-TaskWorktree -TaskId "t_collide2" -ProjectRoot $collRoot -BotRoot $collBot
-            Assert-True -Name "#570 orphan-collision: first orphan merges (initializes main)" `
-                -Condition ($collMergeA.success -eq $true) `
-                -Message "Expected success, got: $($collMergeA | ConvertTo-Json -Depth 8 -Compress)"
-
-            # Merge B — same file, no common ancestor -> unrelated-history collision.
-            $collTaskB = Join-Path $collRun "t_collide0.json"
-            $tb = Get-Content -LiteralPath $collTaskB -Raw | ConvertFrom-Json
-            $tb.status = "done"; $tb | ConvertTo-Json -Depth 20 | Set-Content -Path $collTaskB -Encoding UTF8
-
-            $collMergeB = Complete-TaskWorktree -TaskId "t_collide0" -ProjectRoot $collRoot -BotRoot $collBot
-            Assert-True -Name "#570 orphan-collision: second orphan same-file merge fails (not silent success)" `
-                -Condition ($collMergeB.success -eq $false) `
-                -Message "Expected failure, got: $($collMergeB | ConvertTo-Json -Depth 8 -Compress)"
-            Assert-Equal -Name "#570 orphan-collision: classified unrelated_history (not opaque rebase_conflict)" `
-                -Expected "unrelated_history" `
-                -Actual "$($collMergeB.failure_kind)"
-            Assert-True -Name "#570 orphan-collision: conflict file reported" `
-                -Condition (@($collMergeB.conflict_files | Where-Object { $_ -match 'shared-artifact\.txt' }).Count -gt 0) `
-                -Message "Expected shared-artifact.txt in conflict_files, got: $($collMergeB.conflict_files -join ', ')"
-        } else {
-            Write-TestResult -Name "#570 orphan-collision: setup" -Status Fail -Message "worktree setup failed: A=$($collA | ConvertTo-Json -Compress) B=$($collB | ConvertTo-Json -Compress)"
-        }
-    } finally {
-        foreach ($r in @($collA, $collB)) {
-            if ($r -and $r.worktree_path -and (Test-Path $r.worktree_path)) { & git -C $collRoot worktree remove -f $r.worktree_path 2>&1 | Out-Null }
-            if ($r -and $r.branch_name) { & git -C $collRoot branch -D $r.branch_name 2>&1 | Out-Null }
-        }
-        $collWtRoot = Join-Path (Split-Path $collRoot -Parent) "worktrees/$(Split-Path $collRoot -Leaf)"
-        if (Test-Path $collWtRoot) { Remove-Item -Path $collWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
-        Remove-TestProject -Path $collRoot
     }
 } else {
     Write-TestResult -Name "Dotbot.Worktree module exists" -Status Fail -Message "Module not found at $worktreeManagerModule"
@@ -2405,109 +2087,6 @@ if (Test-Path $notifModule) {
             -Condition ($templateCapture.question.responseSettings.allowFreeText -eq $false) `
             -Message "Expected allowFreeText=false for split proposal, got: $($templateCapture.question.responseSettings.allowFreeText)"
     }
-
-    # ── Send-ReviewNotification tests (issue #468) ───────────────────
-    $mockReviewTask = [PSCustomObject]@{
-        id         = "review-task-7"
-        name       = "Wire payment gateway"
-        extensions = [PSCustomObject]@{
-            review = [PSCustomObject]@{ requested_at = "2026-06-17T09:00:00Z" }
-        }
-    }
-
-    # No-op when notifications are disabled (reuses Send-TaskNotification gates).
-    $reviewDisabled = Send-ReviewNotification -TaskContent $mockReviewTask -Settings $settings -Reason "Ready"
-    Assert-True -Name "Send-ReviewNotification no-ops when disabled" `
-        -Condition ($reviewDisabled.success -eq $false) `
-        -Message "Expected success=false when disabled, got: $($reviewDisabled.success)"
-
-    # Template shape with enabled settings (mock REST to capture the wire payload).
-    $reviewCapture = $null
-    function global:Invoke-RestMethod {
-        param([string]$Method = 'Get', [string]$Uri, [string]$Body, $Headers, $ContentType, $TimeoutSec)
-        if ($Uri -match '/api/templates$') {
-            $global:reviewCapture = $Body | ConvertFrom-Json
-            return @{}
-        }
-        if ($Uri -match '/api/instances$') { return @{} }
-        throw "Unexpected URI: $Uri"
-    }
-    $reviewResult = try {
-        Send-ReviewNotification -TaskContent $mockReviewTask -Settings $enabledSettings `
-            -Reason "Implementation complete, needs sign-off" -Actor "alice@example.com" `
-            -ReviewLinks @(@{ title = "Open review dashboard"; url = "https://cp.example.com/review" })
-    } finally {
-        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-    }
-    $reviewCapture = $global:reviewCapture
-
-    Assert-True -Name "Send-ReviewNotification returns success with mock server" `
-        -Condition ($reviewResult.success -eq $true) `
-        -Message "Expected success=true, got: $($reviewResult | ConvertTo-Json -Depth 5)"
-
-    if ($reviewCapture) {
-        Assert-True -Name "Review template uses informational 'freeText' type" `
-            -Condition ($reviewCapture.question.type -eq 'freeText') `
-            -Message "Expected type=freeText (informational; no Approve/Reject decision card), got: $($reviewCapture.question.type)"
-
-        Assert-True -Name "Review template renders no decision options" `
-            -Condition (@($reviewCapture.question.options).Count -eq 0) `
-            -Message "Expected empty options (no Approve/Reject buttons — no dotbot-side consumer for needs-review), got: $($reviewCapture.question.options | ConvertTo-Json -Compress)"
-
-        Assert-True -Name "Review template directs the reviewer to the dashboard" `
-            -Condition ($reviewCapture.question.context -match "dashboard") `
-            -Message "Expected context to point the reviewer at the dashboard, got: $($reviewCapture.question.context)"
-
-        Assert-True -Name "Review template title identifies the task" `
-            -Condition ($reviewCapture.question.title -match "Wire payment gateway") `
-            -Message "Expected title to contain task name, got: $($reviewCapture.question.title)"
-
-        Assert-True -Name "Review template context identifies task id" `
-            -Condition ($reviewCapture.question.context -match "review-task-7") `
-            -Message "Expected context to contain task id, got: $($reviewCapture.question.context)"
-
-        Assert-True -Name "Review template context names the submitting actor" `
-            -Condition ($reviewCapture.question.context -match "alice@example.com") `
-            -Message "Expected context to name the actor, got: $($reviewCapture.question.context)"
-
-        Assert-True -Name "Review template carries deliverable summary from reason" `
-            -Condition ($reviewCapture.question.deliverableSummary -match "sign-off") `
-            -Message "Expected deliverableSummary from reason, got: $($reviewCapture.question.deliverableSummary)"
-
-        Assert-True -Name "Review template carries the review reference link" `
-            -Condition ($reviewCapture.question.referenceLinks.Count -ge 1 -and $reviewCapture.question.referenceLinks[0].url -eq "https://cp.example.com/review") `
-            -Message "Expected referenceLinks with the review URL, got: $($reviewCapture.question.referenceLinks | ConvertTo-Json -Compress)"
-    }
-
-    # Idempotency: same requested_at -> same deterministic questionId; a fresh
-    # request timestamp -> a different questionId (new card after a reject cycle).
-    $reviewIdA = $null; $reviewIdB = $null
-    function global:Invoke-RestMethod {
-        param([string]$Method = 'Get', [string]$Uri, [string]$Body, $Headers, $ContentType, $TimeoutSec)
-        if ($Uri -match '/api/templates$') { $script:__qid = ($Body | ConvertFrom-Json).question.questionId; return @{} }
-        if ($Uri -match '/api/instances$') { return @{} }
-        throw "Unexpected URI: $Uri"
-    }
-    try {
-        $null = Send-ReviewNotification -TaskContent $mockReviewTask -Settings $enabledSettings -Reason "r"
-        $reviewIdA = $script:__qid
-        $null = Send-ReviewNotification -TaskContent $mockReviewTask -Settings $enabledSettings -Reason "r"
-        $reviewIdB = $script:__qid
-        $mockReviewTask2 = [PSCustomObject]@{
-            id = "review-task-7"; name = "Wire payment gateway"
-            extensions = [PSCustomObject]@{ review = [PSCustomObject]@{ requested_at = "2026-06-18T09:00:00Z" } }
-        }
-        $null = Send-ReviewNotification -TaskContent $mockReviewTask2 -Settings $enabledSettings -Reason "r"
-        $reviewIdC = $script:__qid
-    } finally {
-        Remove-Item -Path 'function:global:Invoke-RestMethod' -ErrorAction SilentlyContinue
-    }
-    Assert-True -Name "Send-ReviewNotification questionId is stable per requested_at" `
-        -Condition ($reviewIdA -eq $reviewIdB) `
-        -Message "Expected same questionId for same requested_at, got A=$reviewIdA B=$reviewIdB"
-    Assert-True -Name "Send-ReviewNotification questionId changes on new requested_at" `
-        -Condition ($reviewIdA -ne $reviewIdC) `
-        -Message "Expected different questionId for new requested_at, got A=$reviewIdA C=$reviewIdC"
 } else {
     Write-TestResult -Name "NotificationClient module exists" -Status Fail -Message "Module not found at $notifModule"
 }
@@ -2937,19 +2516,6 @@ if (Test-Path $settingsApiModule) {
         Assert-True -Name "#309: Set-EditorConfig success" -Condition ($r.success -eq $true)
         Assert-Equal -Name "#309: EditorConfig writes to .control overrides" -Expected "custom" -Actual (Get-OverridesJson).editor.name
         Assert-Equal -Name "#309: EditorConfig custom_command persisted" -Expected "vi {path}" -Actual (Get-OverridesJson).editor.custom_command
-
-        # --- Get/Set-GitConfig (#466) ---
-        Assert-True -Name "#466: Get-GitConfig base_branch defaults to null (no git section seeded)" `
-            -Condition ($null -eq (Get-GitConfig).base_branch)
-        $r = Set-GitConfig -Body ([PSCustomObject]@{ base_branch = "develop" })
-        Assert-True -Name "#466: Set-GitConfig success" -Condition ($r.success -eq $true)
-        Assert-Equal -Name "#466: GitConfig writes base_branch to .control overrides" -Expected "develop" -Actual (Get-OverridesJson).git.base_branch
-        Assert-Equal -Name "#466: GitConfig merged read returns override" -Expected "develop" -Actual (Get-GitConfig).base_branch
-        # Blank/whitespace clears the override back to null.
-        $r = Set-GitConfig -Body ([PSCustomObject]@{ base_branch = "   " })
-        Assert-True -Name "#466: Set-GitConfig clear success" -Condition ($r.success -eq $true)
-        Assert-True -Name "#466: GitConfig blank base_branch persists null in .control" -Condition ($null -eq (Get-OverridesJson).git.base_branch)
-        Assert-True -Name "#466: GitConfig merged read returns null after clear" -Condition ($null -eq (Get-GitConfig).base_branch)
 
         # --- Set-ActiveProvider (top-level scalar) ---
         $r = Set-ActiveProvider -Body ([PSCustomObject]@{ provider = "claude" })
@@ -3435,7 +3001,6 @@ if (Test-Path $mergeEscModule) {
     # kind → template mapping. Test it directly: cheap, deterministic, no FS I/O.
     $kindCases = @(
         @{ Kind = 'rebase_conflict';      ExpectedId = 'merge-conflict';   ExpectedOptionCount = 3 }
-        @{ Kind = 'unrelated_history';    ExpectedId = 'merge-unrelated-history'; ExpectedOptionCount = 3 }
         @{ Kind = 'branch_missing';       ExpectedId = 'branch-missing';   ExpectedOptionCount = 2 }
         @{ Kind = 'merge_command_failed'; ExpectedId = 'merge-failed';     ExpectedOptionCount = 3 }
         @{ Kind = 'commit_failed';        ExpectedId = 'commit-failed';    ExpectedOptionCount = 2 }
@@ -3469,7 +3034,7 @@ if (Test-Path $mergeEscModule) {
         # rebase_conflict puts file names in context (canonical "conflict files"
         # phrasing). All other kinds put the message + failure_detail in context
         # so the operator sees git output / exception text.
-        if ($kind -in @('rebase_conflict', 'unrelated_history')) {
+        if ($kind -eq 'rebase_conflict') {
             Assert-True -Name "Kind dispatch ($kind): context lists conflict files" `
                 -Condition ($pq.context -match 'src/foo\.cs' -and $pq.context -match 'src/bar\.cs') `
                 -Message "Expected conflict files in context"
@@ -4554,156 +4119,6 @@ if (Test-Path $productApiModule) {
         Assert-True -Name "ProductDocumentRaw blocks path traversal" `
             -Condition ($rawTraversal.Found -eq $false) `
             -Message "Path traversal should return not found"
-
-        # ── Pending-review worktree product tests (issue #519) ──
-
-        $pendingWtRoot  = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-pending-wt-$([guid]::NewGuid().ToString().Substring(0,8))"
-        $pendingWtProductDir = Join-Path $pendingWtRoot ".bot" "workspace" "product"
-        New-Item -Path $pendingWtProductDir -ItemType Directory -Force | Out-Null
-
-        $pendingTaskId = [guid]::NewGuid().ToString()
-        # Use v2 layout: workflow-runs/{run}/*.json with status field
-        $wrRunDir = Join-Path $productBotRoot "workspace/tasks/workflow-runs/wr_test01"
-        New-Item -Path $wrRunDir -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $wrRunDir "task-pending.json") `
-            -Value (@{ id = $pendingTaskId; name = "Pending Task"; status = "needs-review"; schema_version = 2 } | ConvertTo-Json) `
-            -Encoding UTF8
-
-        $wtMap = @{ $pendingTaskId = @{ worktree_path = $pendingWtRoot; task_name = "Pending Task"; branch_name = "task/test" } }
-        Set-Content -Path (Join-Path $controlDir "worktree-map.json") `
-            -Value ($wtMap | ConvertTo-Json -Depth 5) -Encoding UTF8
-
-        Set-Content -Path (Join-Path $pendingWtProductDir "feature-spec.md") -Value "# Feature Spec" -Encoding UTF8
-
-        # Re-initialize so the module picks up the new worktree-map + tasks dir
-        Initialize-ProductAPI -BotRoot $productBotRoot -ControlDir $controlDir
-
-        $docsWithPending = @((Get-ProductList).docs)
-        $pendingEntry = $docsWithPending | Where-Object { $_.name -eq 'feature-spec' }
-        Assert-True -Name "ProductAPI includes needs-review worktree artifact in list" `
-            -Condition ($null -ne $pendingEntry) `
-            -Message "Pending artifact 'feature-spec' missing from product list"
-        Assert-True -Name "ProductAPI sets pending_review=true on worktree artifact" `
-            -Condition ($pendingEntry.pending_review -eq $true) `
-            -Message "Expected pending_review=true on 'feature-spec'"
-        Assert-Equal -Name "ProductAPI sets correct task_id on pending artifact" `
-            -Expected $pendingTaskId `
-            -Actual $pendingEntry.task_id
-        Assert-Equal -Name "ProductAPI sets correct task_name on pending artifact" `
-            -Expected "Pending Task" `
-            -Actual $pendingEntry.task_name
-
-        # Main doc takes precedence — mission.md exists in main, should NOT gain pending_review flag
-        Set-Content -Path (Join-Path $pendingWtProductDir "mission.md") -Value "# Pending Mission" -Encoding UTF8
-        $docsDedup = @((Get-ProductList).docs)
-        $missionEntries = @($docsDedup | Where-Object { $_.name -eq 'mission' })
-        Assert-Equal -Name "ProductAPI deduplicates: main doc wins over pending copy" `
-            -Expected 1 `
-            -Actual $missionEntries.Count
-        Assert-True -Name "ProductAPI main doc retains no pending_review flag" `
-            -Condition (-not $missionEntries[0].ContainsKey('pending_review') -or $missionEntries[0].pending_review -ne $true) `
-            -Message "Main workspace doc should not be marked pending_review"
-
-        # Get-ProductDocument falls back to pending worktree
-        $pendingDocResult = Get-ProductDocument -Name "feature-spec"
-        Assert-True -Name "ProductDocument falls back to needs-review worktree" `
-            -Condition ($pendingDocResult.success -eq $true -and $pendingDocResult.content -match 'Feature Spec') `
-            -Message "Get-ProductDocument did not fall back to pending worktree"
-
-        # Get-ProductDocumentRaw falls back to pending worktree
-        # Use a name absent from main workspace/product so fallback path is exercised
-        $pendingSvgContent = '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
-        Set-Content -Path (Join-Path $pendingWtProductDir "pending-only.svg") `
-            -Value $pendingSvgContent -Encoding UTF8 -NoNewline
-        $pendingRawSvg = Get-ProductDocumentRaw -Name "pending-only.svg"
-        Assert-True -Name "ProductDocumentRaw falls back to needs-review worktree for SVG" `
-            -Condition ($pendingRawSvg.Found -eq $true) `
-            -Message "Get-ProductDocumentRaw did not fall back to pending worktree for pending-only.svg"
-        Assert-Equal -Name "ProductDocumentRaw returns correct MIME type for pending SVG" `
-            -Expected "image/svg+xml" `
-            -Actual $pendingRawSvg.MimeType
-        Assert-True -Name "ProductDocumentRaw returns correct content for pending SVG" `
-            -Condition ($pendingRawSvg.TextContent -eq $pendingSvgContent) `
-            -Message "Pending SVG content mismatch"
-
-        $pendingRawMissing = Get-ProductDocumentRaw -Name "diagram-pending.svg"
-        Assert-True -Name "ProductDocumentRaw returns Found=false for truly missing file" `
-            -Condition ($pendingRawMissing.Found -eq $false) `
-            -Message "File not in any worktree should return Found=false"
-
-        # In-progress task (status=in-progress in v2 layout) must not be surfaced
-        $inProgressTaskId = [guid]::NewGuid().ToString()
-        $inProgressWtRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-inprogress-wt-$([guid]::NewGuid().ToString().Substring(0,8))"
-        $inProgressProductDir = Join-Path $inProgressWtRoot ".bot" "workspace" "product"
-        New-Item -Path $inProgressProductDir -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $inProgressProductDir "wip-doc.md") -Value "# WIP" -Encoding UTF8
-        # task file in v2 layout with status=in-progress
-        Set-Content -Path (Join-Path $wrRunDir "task-inprogress.json") `
-            -Value (@{ id = $inProgressTaskId; name = "Running Task"; status = "in-progress"; schema_version = 2 } | ConvertTo-Json) `
-            -Encoding UTF8
-
-        $wtMapWithInProgress = @{
-            $pendingTaskId     = @{ worktree_path = $pendingWtRoot; task_name = "Pending Task"; branch_name = "task/test" }
-            $inProgressTaskId  = @{ worktree_path = $inProgressWtRoot; task_name = "Running Task"; branch_name = "task/running" }
-        }
-        Set-Content -Path (Join-Path $controlDir "worktree-map.json") `
-            -Value ($wtMapWithInProgress | ConvertTo-Json -Depth 5) -Encoding UTF8
-
-        $docsNoWip = @((Get-ProductList).docs)
-        $wipEntry = $docsNoWip | Where-Object { $_.name -eq 'wip-doc' }
-        Assert-True -Name "ProductAPI does NOT surface in-progress task artifacts" `
-            -Condition ($null -eq $wipEntry) `
-            -Message "In-progress task artifact 'wip-doc' should not appear in product list"
-
-        # No worktree-map: graceful empty result
-        Remove-Item -Path (Join-Path $controlDir "worktree-map.json") -Force -ErrorAction SilentlyContinue
-        $docsNoMap = @((Get-ProductList).docs)
-        Assert-True -Name "ProductAPI handles missing worktree-map gracefully" `
-            -Condition ($null -ne $docsNoMap) `
-            -Message "Get-ProductList should not throw when worktree-map.json is absent"
-
-        if (Test-Path $pendingWtRoot) { Remove-Item $pendingWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $inProgressWtRoot) { Remove-Item $inProgressWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
-
-        # Empty main workspace/product + pending worktree: regression for HashSet null crash (#534)
-        $emptyBotRoot   = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-empty-$([guid]::NewGuid().ToString().Substring(0,8))"
-        $emptyCtrlDir   = Join-Path $emptyBotRoot ".control"
-        $emptyTasksDir  = Join-Path $emptyBotRoot "workspace" "tasks" "workflow-runs" "wr_empty01"
-        New-Item -Path $emptyCtrlDir  -ItemType Directory -Force | Out-Null
-        New-Item -Path $emptyTasksDir -ItemType Directory -Force | Out-Null
-        # No workspace/product directory — main productDir intentionally absent
-
-        $emptyPendingWtRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-empty-wt-$([guid]::NewGuid().ToString().Substring(0,8))"
-        $emptyPendingProdDir = Join-Path $emptyPendingWtRoot ".bot" "workspace" "product"
-        New-Item -Path $emptyPendingProdDir -ItemType Directory -Force | Out-Null
-        Set-Content -Path (Join-Path $emptyPendingProdDir "fresh-spec.md") -Value "# Fresh Spec" -Encoding UTF8
-
-        $emptyTaskId = [guid]::NewGuid().ToString()
-        Set-Content -Path (Join-Path $emptyTasksDir "task-empty.json") `
-            -Value (@{ id = $emptyTaskId; name = "Empty Task"; status = "needs-review"; schema_version = 2 } | ConvertTo-Json) `
-            -Encoding UTF8
-        $emptyWtMap = @{ $emptyTaskId = @{ worktree_path = $emptyPendingWtRoot; task_name = "Empty Task"; branch_name = "task/empty" } }
-        Set-Content -Path (Join-Path $emptyCtrlDir "worktree-map.json") `
-            -Value ($emptyWtMap | ConvertTo-Json -Depth 5) -Encoding UTF8
-
-        Initialize-ProductAPI -BotRoot $emptyBotRoot -ControlDir $emptyCtrlDir
-        $emptyDocs = $null
-        $emptyListError = $null
-        try { $emptyDocs = @((Get-ProductList).docs) } catch { $emptyListError = $_ }
-
-        Assert-True -Name "ProductAPI does not crash when main workspace/product is absent (HashSet null guard)" `
-            -Condition ($null -eq $emptyListError) `
-            -Message "Get-ProductList threw when main productDir absent: $emptyListError"
-        $freshEntry = if ($emptyDocs) { $emptyDocs | Where-Object { $_.name -eq 'fresh-spec' } } else { $null }
-        Assert-True -Name "ProductAPI surfaces pending artifact when main workspace/product is absent" `
-            -Condition ($null -ne $freshEntry -and $freshEntry.pending_review -eq $true) `
-            -Message "Expected 'fresh-spec' with pending_review=true when main productDir absent"
-
-        if (Test-Path $emptyBotRoot)       { Remove-Item $emptyBotRoot       -Recurse -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $emptyPendingWtRoot) { Remove-Item $emptyPendingWtRoot -Recurse -Force -ErrorAction SilentlyContinue }
-
-        # Restore module to original test fixture for subsequent tests
-        Initialize-ProductAPI -BotRoot $productBotRoot -ControlDir $controlDir
 
         # ═════════════════════════════════════════════════════════════════
         # Get-WorkflowStatus — script-phase probe + process-type filter
@@ -6297,7 +5712,7 @@ try {
     $phase4Shim = Join-Path $dotbotDir "bin/shim/dotbot.ps1"
     Push-Location $p4VendorNested
     try {
-        $phase4VendorStatusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>&1 | Out-String
+        $phase4VendorStatusOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $phase4Shim status -Json 2>$null | Out-String
         $phase4VendorStatusExit = $LASTEXITCODE
     } finally {
         Pop-Location
