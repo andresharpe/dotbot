@@ -130,6 +130,10 @@ function Initialize-DotbotTaskWorktreeForProcess {
     $wtInfo = Get-TaskWorktreeInfo -TaskId $Task.id -BotRoot $BotRoot
     if ($wtInfo -and (Test-Path $wtInfo.worktree_path)) {
         Write-Status "Using worktree: $($wtInfo.worktree_path)" -Type Info
+        if (-not [string]::IsNullOrWhiteSpace($BaseBranch) -and $wtInfo.base_branch -ne $BaseBranch) {
+            Write-Status "Reconciling recorded base '$($wtInfo.base_branch)' to '$BaseBranch' for reused worktree" -Type Info
+            Update-TaskWorktreeBaseBranch -TaskId $Task.id -BaseBranch $BaseBranch -BotRoot $BotRoot
+        }
         return @{
             skipped       = $false
             worktree_path = $wtInfo.worktree_path
@@ -138,7 +142,7 @@ function Initialize-DotbotTaskWorktreeForProcess {
         }
     }
 
-    $guardArgs = @{ ProjectRoot = $ProjectRoot }
+    $guardArgs = @{ ProjectRoot = $ProjectRoot; BotRoot = $BotRoot }
     if (-not [string]::IsNullOrWhiteSpace($BaseBranch)) { $guardArgs.BranchName = $BaseBranch }
     try { Assert-OnBaseBranch @guardArgs | Out-Null } catch {
         Write-Status "Branch guard warning: $($_.Exception.Message)" -Type Warn
@@ -1266,6 +1270,11 @@ if ($RunId) {
     }
 }
 
+$baseBranchGuardArgs = @{ ProjectRoot = $projectRoot; BotRoot = $botRoot }
+if (-not [string]::IsNullOrWhiteSpace($integrationBranch)) {
+    $baseBranchGuardArgs.BranchName = $integrationBranch
+}
+
 $loopIteration = 0
 try {
     while ($true) {
@@ -1708,7 +1717,8 @@ try {
             if ($typeSuccess) {
                 $mergeTargetLabel = if ($integrationBranch) { $integrationBranch } else { 'main' }
                 Write-Status "Merging task branch to $mergeTargetLabel..." -Type Process
-                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot -SkipRemotePush:($null -ne $integrationBranch)
+                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot `
+                    -BaseBranch $integrationBranch -SkipRemotePush:($null -ne $integrationBranch)
                 if ($mergeResult.success) {
                     Write-Status "Merged: $($mergeResult.message)" -Type Complete
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to ${mergeTargetLabel}: $($task.name)"
@@ -1771,7 +1781,7 @@ try {
                             $cleanupMap.Remove($task.id)
                             Write-WorktreeMap -Map $cleanupMap -BotRoot $botRoot
                         }
-                        try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                        try { Assert-OnBaseBranch @baseBranchGuardArgs | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                     }
                 }
 
@@ -2286,7 +2296,8 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             if ($worktreePath) {
                 $mergeTargetLabel = if ($integrationBranch) { $integrationBranch } else { 'main' }
                 Write-Status "Merging task branch to $mergeTargetLabel..." -Type Process
-                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot -SkipRemotePush:($null -ne $integrationBranch)
+                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot `
+                    -BaseBranch $integrationBranch -SkipRemotePush:($null -ne $integrationBranch)
                 if ($mergeResult.success) {
                     Write-Status "Merged: $($mergeResult.message)" -Type Complete
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to ${mergeTargetLabel}: $($task.name)"
@@ -2387,7 +2398,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                         $cleanupMap.Remove($task.id)
                         Write-WorktreeMap -Map $cleanupMap -BotRoot $botRoot
                     }
-                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                    try { Assert-OnBaseBranch @baseBranchGuardArgs | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 }
             }
             $processData.heartbeat_status = "Terminal ($taskTerminalState): $($task.name)"
@@ -2410,7 +2421,7 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                         Write-WorktreeMap -Map $cleanupMap -BotRoot $botRoot
                     }
                     # Re-assert base branch after failed-task cleanup (Fix: wrong-branch merge)
-                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                    try { Assert-OnBaseBranch @baseBranchGuardArgs | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
                 }
             }
 
