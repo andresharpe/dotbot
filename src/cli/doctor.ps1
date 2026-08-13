@@ -333,6 +333,39 @@ if ($writeHostCount -eq 0 -and $consoleErrorCount -eq 0) {
 
 Write-BlankLine
 
+Write-DotbotSection -Title "WORKSPACE TRACKING"
+
+$trackedWorkspaceTrees = [ordered]@{
+    '.bot/workspace/tasks'     = '.bot/workspace/tasks/standalone/task.json'
+    '.bot/workspace/decisions' = '.bot/workspace/decisions/decision.md'
+    '.bot/content'             = '.bot/content/workflows/workflow.json'
+    '.bot/hooks'               = '.bot/hooks/verify/hook.ps1'
+    '.bot/settings'            = '.bot/settings/settings.json'
+}
+$projectRoot = Split-Path $BotRoot -Parent
+
+$null = & git -C $projectRoot rev-parse --is-inside-work-tree 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Check "Workspace tracking" "not a git repository — skipped" Pass
+} else {
+    $ignoredTrees = 0
+    foreach ($tree in $trackedWorkspaceTrees.Keys) {
+        $source = & git -C $projectRoot check-ignore -v --no-index -- $trackedWorkspaceTrees[$tree] 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $source) { continue }
+        $ignoredTrees++
+        $rule = ("$($source | Select-Object -First 1)" -split "`t")[0]
+        Write-Check $tree "ignored by $rule — changes here are invisible to git" Fail
+    }
+    if ($ignoredTrees -eq 0) {
+        Write-Check "Workspace tracking" "$($trackedWorkspaceTrees.Count) tracked trees, none ignored" Pass
+    } else {
+        Write-DotbotCommand "Remove the rule that ignores .bot/ from your .gitignore (or core.excludesFile / .git/info/exclude)"
+        Write-DotbotCommand "Then re-track the workspace tree:  git add .bot/workspace/"
+    }
+}
+
+Write-BlankLine
+
 # ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
