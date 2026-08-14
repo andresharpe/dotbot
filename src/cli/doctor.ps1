@@ -344,10 +344,18 @@ $trackedWorkspaceTrees = [ordered]@{
 }
 $projectRoot = Split-Path $BotRoot -Parent
 
-$null = & git -C $projectRoot rev-parse --is-inside-work-tree 2>$null
-if ($LASTEXITCODE -ne 0) {
+$gitCommonDir = & git -C $projectRoot rev-parse --git-common-dir 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $gitCommonDir) {
     Write-Check "Workspace tracking" "not a git repository — skipped" Pass
 } else {
+    $commonCandidate = if ([System.IO.Path]::IsPathRooted($gitCommonDir)) {
+        $gitCommonDir
+    } else {
+        Join-Path $projectRoot $gitCommonDir
+    }
+    $resolvedCommon = Resolve-Path -LiteralPath $commonCandidate -ErrorAction SilentlyContinue
+    if ($resolvedCommon) { $projectRoot = Split-Path $resolvedCommon.Path -Parent }
+
     $ignoredTrees = 0
     foreach ($tree in $trackedWorkspaceTrees.Keys) {
         $source = & git -C $projectRoot check-ignore -v --no-index -- $trackedWorkspaceTrees[$tree] 2>$null

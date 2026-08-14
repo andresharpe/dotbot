@@ -663,6 +663,14 @@ if (Test-Path $worktreeManagerModule) {
                 -Condition ($generatedStatus.Count -eq 0) `
                 -Message "Generated files should not appear in git status: $($generatedStatus -join '; ')"
 
+            $doctorOut = & pwsh -NoProfile -ExecutionPolicy Bypass `
+                -File (Join-Path $dotbotDir 'src/cli/doctor.ps1') `
+                -BotRoot (Join-Path $e2eResult.worktree_path '.bot') 2>&1
+            $doctorText = (@($doctorOut | ForEach-Object { ConvertTo-SanitizedConsoleText "$_" }) -join "`n")
+            Assert-True -Name "E2E: doctor reports no ignored workspace tree from inside a task worktree" `
+                -Condition ($doctorText -notmatch 'changes here are invisible to git') `
+                -Message "doctor flagged the worktree's own generated .gitignore files: $doctorText"
+
             Assert-PathNotExists -Name "E2E: main checkout still has no .mcp.json" -Path (Join-Path $e2eRoot ".mcp.json")
             Assert-PathNotExists -Name "E2E: main checkout still has no .claude/" -Path (Join-Path $e2eRoot ".claude")
             Assert-PathNotExists -Name "E2E: main checkout still has no .opencode/" -Path (Join-Path $e2eRoot ".opencode")

@@ -847,7 +847,7 @@ function Initialize-DotbotWorktreeExecutionEnvironment {
     Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'settings') -Destination (Join-Path $worktreeBotRoot 'settings')
 
     foreach ($name in @('content', 'hooks', 'settings')) {
-        Set-Content -Path (Join-Path (Join-Path $worktreeBotRoot $name) '.gitignore') -Value '*' -Encoding utf8NoBOM
+        Set-Content -LiteralPath (Join-Path (Join-Path $worktreeBotRoot $name) '.gitignore') -Value '*' -Encoding utf8NoBOM
     }
 
     Copy-DotbotProviderContent -WorktreePath $WorktreePath -BotRoot $BotRoot -FrameworkRoot $frameworkRoot
