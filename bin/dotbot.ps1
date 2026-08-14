@@ -318,7 +318,7 @@ function Get-WorkflowRunInvocation {
                     $i++
                 }
                 'pollintervalms' {
-                    if (($i + 1) -lt $RunArgs.Count) {
+                    if (($i + 1) -lt $RunArgs.Count -and [string]$RunArgs[$i + 1] -notmatch '^--?') {
                         $runSplat['PollIntervalMs'] = [int]$RunArgs[$i + 1]
                         $i += 2
                     } else {
@@ -545,7 +545,11 @@ function Invoke-Tasks {
     switch ($sub) {
         'run'  {
             $script = Join-Path $ScriptsDir 'tasks-run.ps1'
-            if (Test-Path $script) { & $script } else { Write-DotbotError "tasks-run.ps1 not found" }
+            if (Test-Path $script) {
+                $global:LASTEXITCODE = 0
+                & $script
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else { Write-DotbotError "tasks-run.ps1 not found" }
         }
         'stop' {
             $script = Join-Path $ScriptsDir 'tasks-stop.ps1'

@@ -275,6 +275,65 @@ function Start-DotbotRuntime {
     return $result
 }
 
+function Start-DotbotRuntimeDetached {
+    <#
+    .SYNOPSIS
+    Bring the runtime up in a process of its own so it outlives the caller.
+
+    .DESCRIPTION
+    Start-DotbotRuntime hosts the listener in-process and records $PID, so a
+    CLI that spawns a detached runner and then exits would take the runtime
+    down with it. This spawns 'dotbot serve' as a child process instead — the
+    background mode serve.ps1 documents — and waits for the connection file,
+    which Start-DotbotRuntime writes only once the listener is accepting.
+
+    Attaches instead of spawning when a runtime is already alive.
+
+    Returns @{ url; pid; attached }. There is deliberately no 'listener' key:
+    the caller does not own this runtime and must never stop it.
+
+    Throws when the runtime does not come up within TimeoutSeconds.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotRoot,
+
+        [int]$TimeoutSeconds = 30
+    )
+
+    $child = $null
+    if (-not (Test-RuntimeAlive -BotRoot $BotRoot)) {
+        $serveScript = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../../cli/serve.ps1'))
+        if (-not (Test-Path -LiteralPath $serveScript -PathType Leaf)) {
+            throw "Runtime host script not found at $serveScript."
+        }
+
+        $child = Start-DotbotChildProcess `
+            -File $serveScript `
+            -WorkingDirectory (Split-Path -Parent $BotRoot) `
+            -WindowStyle Hidden
+
+        $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+        while (-not (Test-RuntimeAlive -BotRoot $BotRoot)) {
+            if ($child.HasExited) {
+                throw "The dotbot runtime host exited before the runtime was ready."
+            }
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw "The dotbot runtime did not become ready within $TimeoutSeconds seconds."
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
+    $conn = Read-RuntimeConnectionFile -BotRoot $BotRoot
+    return [ordered]@{
+        url      = [string]$conn.url
+        pid      = $conn.pid
+        attached = ($null -eq $child)
+    }
+}
+
 function Stop-DotbotRuntime {
     <#
     .SYNOPSIS
@@ -311,6 +370,7 @@ function Stop-DotbotRuntime {
 
 Export-ModuleMember -Function @(
     'Start-DotbotRuntime'
+    'Start-DotbotRuntimeDetached'
     'Stop-DotbotRuntime'
     'Test-RuntimeAlive'
     'New-RuntimeBearerToken'

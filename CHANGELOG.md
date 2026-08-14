@@ -5,10 +5,15 @@ All notable changes to dotbot are documented in this file. The format follows [K
 ## [Unreleased]
 
 ### Added
+- **`Start-DotbotRuntimeDetached`** in `Dotbot.Runtime` — brings the per-project runtime up in a process of its own by spawning `dotbot serve` as a child and waiting for `.control/runtime.json`, which `Start-DotbotRuntime` writes only once the listener is accepting. `Start-DotbotRuntime` hosts the listener in-process and records its own `$PID`, so it cannot serve a CLI that exits immediately after spawning a detached runner. The result carries no `listener` handle, so a caller can never tear down a runtime it does not own.
 
 ### Changed
+- **`dotbot run <workflow>` and `dotbot tasks run` now start the runtime themselves** when none is alive, instead of only doing so under `--watch`. `--no-auto-runtime` is the opt-out on both paths and now refuses synchronously with exit 1. `--watch` still hosts its runtime in-process and tears it down on exit; the runtime auto-started for a detached run deliberately outlives the command (`dotbot runtime-status` reports its PID). For `dotbot run` the runtime is settled *before* `Initialize-WorkflowRun`, so a runtime that cannot start leaves no run, no tasks and no integration branch behind.
+- **`dotbot tasks run` propagates its exit code** through `bin/dotbot.ps1`, matching `dotbot run` / `dotbot workflow run` / `dotbot doctor`. `exit` inside a `&`-invoked script only ends that script, so every `tasks run` failure — including the pre-existing "no .bot" and "Invoke-DotbotProcess.ps1 not found" guards — previously reported success to the shell.
 
 ### Fixed
+- **`dotbot run <workflow>` without `--watch` reported success for a run that could not progress (#682).** The runtime precondition and auto-start were both nested inside `if ($Watch)`, so the default path spawned the detached task-runner with no runtime and exited 0; the runner then parked every task in `needs-input` with `Dotbot runtime endpoint not available` — asynchronously, in a log file the caller never sees — after creating and pushing an integration branch. `--no-auto-runtime` was bound but unreachable without `--watch`.
+- **`--poll-interval-ms` consumed the following token even when it was another flag**, so `dotbot run <wf> --poll-interval-ms --watch` cast `[int]"--watch"`, silently dropped `--watch`, and took the very detached path above. It now uses the same `-notmatch '^--?'` guard as the parser's `default` arm.
 
 ### Removed
 
