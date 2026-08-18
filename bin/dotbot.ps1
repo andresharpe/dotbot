@@ -331,7 +331,7 @@ function Get-WorkflowRunInvocation {
                     $i++
                 }
                 'pollintervalms' {
-                    if (($i + 1) -lt $RunArgs.Count) {
+                    if (($i + 1) -lt $RunArgs.Count -and [string]$RunArgs[$i + 1] -notmatch '^--?') {
                         $runSplat['PollIntervalMs'] = [int]$RunArgs[$i + 1]
                         $i += 2
                     } else {

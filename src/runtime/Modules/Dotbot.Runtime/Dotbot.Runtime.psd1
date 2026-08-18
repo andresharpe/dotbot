@@ -52,6 +52,7 @@
 
         # Lifecycle
         'Start-DotbotRuntime'
+        'Start-DotbotRuntimeDetached'
         'Stop-DotbotRuntime'
         'Test-RuntimeAlive'
         'New-RuntimeBearerToken'

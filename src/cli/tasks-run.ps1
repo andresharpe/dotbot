@@ -35,8 +35,24 @@ if (-not (Test-Path $lpPath)) {
     exit 1
 }
 
+Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1") -Force -DisableNameChecking
+
 Write-DotbotBanner -Title "D O T B O T" -Subtitle "Pending tasks runner"
 Write-Status "Launching workflow-agnostic task runner..."
+
+if (-not (Test-RuntimeAlive -BotRoot $BotDir)) {
+    Write-Status "Starting headless runtime..."
+    try {
+        $runtimeStart = Start-DotbotRuntimeDetached -BotRoot $BotDir
+    } catch {
+        Write-DotbotError $_.Exception.Message
+        Write-DotbotCommand "Start it manually with 'dotbot serve' in another shell."
+        exit 1
+    }
+    Write-Success ("Runtime ready at {0}" -f $runtimeStart.url)
+} else {
+    Write-DotbotCommand "Using existing headless runtime."
+}
 
 $wfArgs = @(
     "-Type", "task-runner",
