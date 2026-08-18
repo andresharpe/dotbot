@@ -158,6 +158,13 @@ if (Test-Path $worktreeManagerModule) {
                     ($worktreeManagerSrc -match "'rebase_conflict'") -and
                     ($worktreeManagerSrc -match "Merge conflict during squash-merge")) `
         -Message "An add/add conflict on a single file (e.g. .gitignore) must reach the operator as a 'rebase_conflict' pending_question naming the file, not a generic 'merge_command_failed' with empty conflict_files. See botdot task d954f7e7 incident on 2026-05-14."
+    Assert-True -Name "Worktree exclude block leaves the tracked .bot tree alone" `
+        -Condition (($worktreeManagerSrc -match [regex]::Escape("'.mcp.json'")) -and
+                    ($worktreeManagerSrc -notmatch [regex]::Escape("'.bot/workspace/tasks/'")) -and
+                    ($worktreeManagerSrc -notmatch [regex]::Escape("'.bot/content/'")) -and
+                    ($worktreeManagerSrc -notmatch [regex]::Escape("'.bot/hooks/'")) -and
+                    ($worktreeManagerSrc -notmatch [regex]::Escape("'.bot/settings/'"))) `
+        -Message "Ensure-DotbotWorktreeExcludes writes the shared common-dir .git/info/exclude, so any .bot/ entry there also ignores the operator's main checkout. The tracked workspace/content/hooks/settings tree must stay out of that block (issue #681); only generated, never-tracked paths belong in it."
 
     # ───────────────────────────────────────────────────────────────────────
     # End-to-end: Apply-TaskBranchPatch on a real two-branch fixture with
@@ -290,6 +297,66 @@ if (Test-Path $worktreeManagerModule) {
             -Message "Expected success=false with the overwrite guard message, got: $($divResult | ConvertTo-Json -Compress)"
     } finally {
         Remove-Item -Path $divTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    $exclTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-excl-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $exclWorktree = "$exclTmp-wt"
+    New-Item -ItemType Directory -Path $exclTmp -Force | Out-Null
+    try {
+        Push-Location $exclTmp
+        try {
+            & git init --quiet 2>$null
+            & git config user.email 'test@example.com' 2>$null
+            & git config user.name 'Test' 2>$null
+            & git checkout -b main --quiet 2>$null
+            'base' | Set-Content -Path (Join-Path $exclTmp 'README.md') -NoNewline
+            New-Item -ItemType Directory -Path (Join-Path $exclTmp '.bot/workspace/tasks/standalone') -Force | Out-Null
+            '' | Set-Content -Path (Join-Path $exclTmp '.bot/workspace/tasks/standalone/.gitkeep') -NoNewline
+            & git add -A 2>$null
+            & git commit -m 'dotbot init' --quiet 2>$null
+        } finally {
+            Pop-Location
+        }
+
+        Add-Content -Path (Join-Path $exclTmp '.git/info/exclude') -Value @(
+            '# dotbot generated execution environment: start'
+            '.mcp.json'
+            '.bot/workspace/tasks'
+            '.bot/workspace/tasks/'
+            '.bot/content/'
+            '# dotbot generated execution environment: end'
+        )
+
+        & git -C $exclTmp worktree add --quiet -b 'task/excl-fixture' $exclWorktree main 2>$null
+
+        $excludeFn = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Ensure-DotbotWorktreeExcludes })
+        & $excludeFn -WorktreePath $exclWorktree
+
+        & git -C $exclTmp check-ignore -q --no-index -- '.bot/workspace/tasks' 2>$null
+        Assert-True -Name "Worktree setup leaves .bot/workspace/tasks unignored in the main repo" `
+            -Condition ($LASTEXITCODE -ne 0) `
+            -Message "check-ignore still reports the tracked task tree as ignored: $(& git -C $exclTmp check-ignore -v --no-index -- '.bot/workspace/tasks' 2>$null)"
+        & git -C $exclTmp check-ignore -q --no-index -- '.bot/content/workflows/workflow.json' 2>$null
+        Assert-True -Name "Worktree setup leaves .bot/content unignored in the main repo" `
+            -Condition ($LASTEXITCODE -ne 0) `
+            -Message "Project-tier overrides under .bot/content are tracked and are FrameworkIntegrity protected paths"
+        & git -C $exclTmp check-ignore -q --no-index -- '.mcp.json' 2>$null
+        Assert-True -Name "Worktree setup still ignores generated .mcp.json" `
+            -Condition ($LASTEXITCODE -eq 0) `
+            -Message "The generated execution environment must stay ignored, otherwise 01-git-clean fails every task"
+
+        $exclRunDir = Join-Path $exclTmp '.bot/workspace/tasks/workflow-runs/probe'
+        New-Item -ItemType Directory -Path $exclRunDir -Force | Out-Null
+        Set-Content -Path (Join-Path $exclRunDir 'run.json') -Value '{"id":"wr_probe"}'
+        & git -C $exclTmp add .bot/workspace/tasks/ 2>$null
+        $exclStaged = @(& git -C $exclTmp diff --cached --name-only 2>$null)
+        Assert-True -Name "git add stages new task state without -f" `
+            -Condition ($exclStaged -contains '.bot/workspace/tasks/workflow-runs/probe/run.json') `
+            -Message "Complete-TaskWorktree stages this tree with a plain git add (no -f); staged set was: $($exclStaged -join ', ')"
+    } finally {
+        & git -C $exclTmp worktree remove --force $exclWorktree 2>$null
+        Remove-Item -Path $exclWorktree -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $exclTmp -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # ───────────────────────────────────────────────────────────────────────
@@ -595,6 +662,14 @@ if (Test-Path $worktreeManagerModule) {
             Assert-True -Name "E2E: generated provider/MCP files are locally ignored" `
                 -Condition ($generatedStatus.Count -eq 0) `
                 -Message "Generated files should not appear in git status: $($generatedStatus -join '; ')"
+
+            $doctorOut = & pwsh -NoProfile -ExecutionPolicy Bypass `
+                -File (Join-Path $dotbotDir 'src/cli/doctor.ps1') `
+                -BotRoot (Join-Path $e2eResult.worktree_path '.bot') 2>&1
+            $doctorText = (@($doctorOut | ForEach-Object { ConvertTo-SanitizedConsoleText "$_" }) -join "`n")
+            Assert-True -Name "E2E: doctor reports no ignored workspace tree from inside a task worktree" `
+                -Condition ($doctorText -notmatch 'changes here are invisible to git') `
+                -Message "doctor flagged the worktree's own generated .gitignore files: $doctorText"
 
             Assert-PathNotExists -Name "E2E: main checkout still has no .mcp.json" -Path (Join-Path $e2eRoot ".mcp.json")
             Assert-PathNotExists -Name "E2E: main checkout still has no .claude/" -Path (Join-Path $e2eRoot ".claude")

@@ -699,11 +699,6 @@ function Ensure-DotbotWorktreeExcludes {
         '.bot/.control/'
         '.bot/.handoffs'
         '.bot/.handoffs/'
-        '.bot/workspace/tasks'
-        '.bot/workspace/tasks/'
-        '.bot/content/'
-        '.bot/hooks/'
-        '.bot/settings/'
         $markerEnd
     )
 
@@ -984,6 +979,10 @@ function Initialize-DotbotWorktreeExecutionEnvironment {
     Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'hooks') -Destination (Join-Path $worktreeBotRoot 'hooks')
     Copy-DotbotDirectoryContents -Source (Join-Path $frameworkRoot 'content/settings') -Destination (Join-Path $worktreeBotRoot 'settings')
     Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'settings') -Destination (Join-Path $worktreeBotRoot 'settings')
+
+    foreach ($name in @('content', 'hooks', 'settings')) {
+        Set-Content -LiteralPath (Join-Path (Join-Path $worktreeBotRoot $name) '.gitignore') -Value '*' -Encoding utf8NoBOM
+    }
 
     Copy-DotbotProviderContent -WorktreePath $WorktreePath -BotRoot $BotRoot -FrameworkRoot $frameworkRoot
     Set-DotbotMcpServerJson -Path (Join-Path $WorktreePath '.mcp.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath -StateRoot $ProjectRoot
@@ -1334,7 +1333,7 @@ function Restore-DotbotTaskStateBackup {
         $restorePath = Join-Path $tasksRoot ($key -replace '/', [System.IO.Path]::DirectorySeparatorChar)
         $restoreDir = Split-Path $restorePath -Parent
         if (-not (Test-Path -LiteralPath $restoreDir)) {
-            New-Item -LiteralPath $restoreDir -ItemType Directory -Force | Out-Null
+            New-Item -Path $restoreDir -ItemType Directory -Force | Out-Null
         }
         Write-TaskFileRawAtomic -Path $restorePath -RawContent $TaskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $TaskBackup[$key])
     }
@@ -2027,7 +2026,10 @@ function Complete-TaskWorktree {
 
         # Commit current shared runtime state on main. Product workspace files
         # are branch-local and are replayed through Apply-TaskBranchPatch above.
-        git -C $ProjectRoot add .bot/workspace/tasks/ .bot/workspace/decisions/ 2>$null
+        $stateAddOutput = git -C $ProjectRoot add .bot/workspace/tasks/ .bot/workspace/decisions/ 2>&1
+        if ($LASTEXITCODE -ne 0 -and (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            Write-BotLog -Level Warn -Message "Could not stage task state: $(@($stateAddOutput | ForEach-Object { "$_" }) -join ' ')"
+        }
         $stateStaged = git -C $ProjectRoot diff --cached --name-only 2>$null
         if ($stateStaged) {
             $stateCommitOutput = git -C $ProjectRoot `

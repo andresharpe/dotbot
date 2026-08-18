@@ -5,6 +5,7 @@ All notable changes to dotbot are documented in this file. The format follows [K
 ## [Unreleased]
 
 ### Added
+- **`dotbot doctor` WORKSPACE TRACKING section** reports any tracked `.bot/` tree hidden by an ignore rule, naming the rule responsible (`file:line:pattern`) so the offending entry can be found. Covers `.bot/workspace/tasks`, `.bot/workspace/decisions`, `.bot/content`, `.bot/hooks` and `.bot/settings`. Run from a task worktree it resolves back to the main repository via `git rev-parse --git-common-dir`, so it reports identically from either checkout.
 
 ### Changed
 
@@ -41,6 +42,9 @@ All notable changes to dotbot are documented in this file. The format follows [K
   no-`-BranchName` fallback could only ever resolve `main`/`master`; the three cleanup call sites in
   `Invoke-WorkflowProcess.ps1` used that fallback and yanked the working copy off a configured base
   branch on any failed or skipped task.
+- **Creating a task worktree no longer ignores the project's own `.bot/` tree.** `Ensure-DotbotWorktreeExcludes` writes `.git/info/exclude`, which git keeps in the shared common directory, so its `.bot/workspace/tasks`, `.bot/content`, `.bot/hooks` and `.bot/settings` entries silently ignored those tracked trees in the operator's main checkout: `git add .bot/workspace/tasks/` became a no-op, workflow run state accumulated invisibly (`git status` stayed clean and `git clean -fd` could not remove it), and `FrameworkIntegrity`'s `git status` scan passed over three of its protected paths. Those entries are gone; suppression inside the worktree now uses a nested `.gitignore` in each generated copy, which cannot reach the main checkout. Already-affected repositories self-heal on their next task — the marker block is rewritten in place. (#681)
+- **`Restore-DotbotTaskStateBackup` threw when recreating a task-state directory.** `New-Item -LiteralPath` is not a valid parameter; the call failed as soon as the task tree became visible to git again, surfacing as `failure_kind: exception` out of `Complete-TaskWorktree`.
+- **`Complete-TaskWorktree` no longer discards a failed task-state staging.** The `git add` of `.bot/workspace/tasks/` and `.bot/workspace/decisions/` sent stderr to `$null` and never checked the exit code, so a refusal was invisible; it now logs a warning with git's output.
 
 ### Removed
 
