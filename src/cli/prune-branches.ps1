@@ -88,11 +88,11 @@ try {
 }
 
 Write-DotbotSection "PRUNE BRANCHES"
-Write-DotbotLabel "Project:   " $projectRoot
-Write-DotbotLabel "Match:     " $Match
-Write-DotbotLabel "Older than:" $OlderThan
-Write-DotbotLabel "Cutoff UTC:" ([string]$preview.cutoff_utc)
-Write-DotbotLabel "Remotes:   " $(if ($IncludeRemote) { "INCLUDED" } else { "skipped (use --IncludeRemote to override)" })
+Write-DotbotLabel "Project:    " $projectRoot
+Write-DotbotLabel "Match:      " $Match
+Write-DotbotLabel "Older than: " $OlderThan
+Write-DotbotLabel "Cutoff UTC: " (([datetime]$preview.cutoff_utc).ToString('u', [Globalization.CultureInfo]::InvariantCulture))
+Write-DotbotLabel "Remotes:    " $(if ($IncludeRemote) { "INCLUDED" } else { "skipped (use --IncludeRemote to override)" })
 Write-BlankLine
 
 $cands = @($preview.candidates)
@@ -103,11 +103,12 @@ if ($cands.Count -eq 0) {
 }
 
 Write-DotbotSection "CANDIDATES"
+$maxNameLen = ($cands | ForEach-Object { ([string]$_['name']).Length } | Measure-Object -Maximum).Maximum
 foreach ($c in $cands) {
-    $name = $c['name']
-    $date = $c['last_commit_at']
+    $name = [string]$c['name']
+    $date = ([datetime]$c['last_commit_at']).ToString('u', [Globalization.CultureInfo]::InvariantCulture)
     $remote = if ($c['has_remote_ref']) { ' [has remote]' } else { '' }
-    Write-DotbotLabel ("  • " + $name) ("$date$remote")
+    Write-DotbotLabel ("  • " + $name.PadRight($maxNameLen + 2)) ("$date$remote")
 }
 Write-BlankLine
 

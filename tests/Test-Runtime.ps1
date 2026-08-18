@@ -143,8 +143,10 @@ $serveCommand = Get-Command (Join-Path $repoRoot "src/cli/serve.ps1")
 $mothershipAliases = @($serveCommand.Parameters['Mothership'].Aliases)
 $mothershipKeyAliases = @($serveCommand.Parameters['MothershipApiKey'].Aliases)
 Assert-Equal -Name "serve --mothership has no aliases" -Expected 0 -Actual $mothershipAliases.Count
-Assert-Equal -Name "serve key has one alias" -Expected 1 -Actual $mothershipKeyAliases.Count
+Assert-Equal -Name "serve key has two aliases" -Expected 2 -Actual $mothershipKeyAliases.Count
 Assert-Equal -Name "serve key alias is --mothership-key" -Expected 'mothership-key' -Actual $mothershipKeyAliases[0]
+Assert-True -Name "serve key accepts the normalised MothershipKey spelling" `
+    -Condition ($mothershipKeyAliases -contains 'MothershipKey')
 
 $bot = New-TestBotRoot
 try {

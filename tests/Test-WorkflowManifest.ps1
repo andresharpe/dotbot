@@ -1461,6 +1461,34 @@ Assert-True -Name "Invoke-WorkflowProcess only increments tasks_completed after 
 Assert-True -Name "Invoke-WorkflowProcess records merge failure heartbeat" `
     -Condition ($workflowSrc -match '"Merge failed:\s*\$\(\$task\.name\)"')
 
+$forceDeleteCount = ([regex]::Matches($workflowSrc, 'branch -D \$branchName')).Count
+Assert-Equal -Name "#683: exactly one task-branch force-delete survives" `
+    -Expected 1 -Actual $forceDeleteCount `
+    -Message "Failure paths must preserve the task branch so committed work is recoverable"
+Assert-True -Name "#683: that force-delete is gated on the branch not being preserved" `
+    -Condition ($workflowSrc -match 'if \(-not \$preserveTerminalBranch\)[\s\S]{0,120}?branch -D \$branchName') `
+    -Message "A 'failed' terminal state must keep its branch; only skipped/cancelled/split delete it"
+Assert-True -Name "#683: a 'failed' terminal state preserves its branch" `
+    -Condition ($workflowSrc -match '\$preserveTerminalBranch = \(\$taskTerminalState -eq ''failed''\)') `
+    -Message "task_set_status(failed) routes through the terminal-state arm, not the provider-failure arm"
+$preserveCount = ([regex]::Matches($workflowSrc, 'preserved at \$failedTip')).Count
+Assert-Equal -Name "#683: every failure arm names the preserved branch" `
+    -Expected 3 -Actual $preserveCount `
+    -Message "Executor failure, provider failure and a 'failed' terminal must each report the recoverable branch"
+
+Assert-True -Name "#683: run completion counts integration-branch commits over the base" `
+    -Condition ($workflowSrc -match 'rev-list --count "\$resolvedBase\.\.\$integrationBranch"') `
+    -Message "Expected an ahead-count before pushing the integration branch"
+Assert-True -Name "#683: integration-branch push is gated on that count" `
+    -Condition ($workflowSrc -match 'if \(\$integrationAhead -gt 0\)[\s\S]*?push -u origin \$integrationBranch') `
+    -Message "An empty integration branch must not be pushed"
+Assert-True -Name "#683: an empty integration branch is reaped at run completion" `
+    -Condition (($workflowSrc -match 'if \(\$integrationAhead -eq 0\)') -and ($workflowSrc -match 'branch -d \$integrationBranch')) `
+    -Message "Expected the empty integration branch to be deleted (with the safe -d) at run completion"
+Assert-True -Name "#683: the reap skips a branch a retained worktree still merges into" `
+    -Condition ($workflowSrc -match '\$integrationStillTargeted[\s\S]*?base_branch -eq \$integrationBranch') `
+    -Message "Deleting a base_branch still named in the worktree map breaks the parked task's later merge"
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════

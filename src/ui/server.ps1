@@ -2845,6 +2845,8 @@ $docContext
                             ".svg" { "image/svg+xml" }
                             ".ico" { "image/x-icon" }
                             ".png" { "image/png" }
+                            ".woff2" { "font/woff2" }
+                            ".woff" { "font/woff" }
                             default { "application/octet-stream" }
                         }
                         $isBinary = $extension -in @('.ico', '.png', '.gif', '.jpg', '.jpeg', '.woff', '.woff2')

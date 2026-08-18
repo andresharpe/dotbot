@@ -11,6 +11,7 @@
 .PARAMETER BotRoot
     Path to the .bot directory (default: ./.bot)
 #>
+[CmdletBinding()]
 param(
     [string]$BotRoot = (Join-Path (Get-Location) ".bot")
 )

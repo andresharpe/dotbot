@@ -8,6 +8,7 @@
     eligible todo task regardless of `task.workflow`. Closes the gap left
     by PR #274 for orphan/untagged tasks (see #324, #301).
 #>
+[CmdletBinding()]
 param()
 
 $ErrorActionPreference = "Stop"
