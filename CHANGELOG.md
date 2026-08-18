@@ -19,6 +19,29 @@ All notable changes to dotbot are documented in this file. The format follows [K
 - **`dotbot studio` is reachable again (#684).** The verb resolved `<DOTBOT_HOME>/studio-ui`, but the studio moved to `src/studio-ui/` in v4; the studio's own `server.ps1` and `go.ps1` also still imported `Dotbot.Core` from the retired `src/core/` path. Both are corrected, and the already-running branch calls a theme helper the dispatcher actually imports. The studio still needs its Vite build (`src/studio-ui/static/`, gitignored) to serve.
 - **The dashboard no longer fetches webfonts from `fonts.googleapis.com` (#685).** `src/ui/static/css/base.css` `@import`ed Google Fonts, so a tool that otherwise runs entirely on localhost made an outbound request on every page load and silently fell back to system fonts offline. Inter and JetBrains Mono (both OFL-1.1) are now self-hosted as variable woff2 under `src/ui/static/fonts/` — latin and latin-ext subsets, matching the `unicode-range` splits the CDN stylesheet used, so accented text keeps its typeface — and the UI server serves `.woff2`/`.woff` with the correct MIME type.
 
+- **Task merges no longer target a stale `base_branch`.** `Complete-TaskWorktree` took its integration
+  target from the value `worktree-map.json` recorded when the worktree was created and never reconciled
+  it with the branch the main checkout was on. With a clean tree it silently squash-merged the task into
+  that recorded branch — usually the trunk — and reported plain success; with a dirty tracked file under
+  `.bot/workspace/decisions/` it failed with `Failed to checkout <base> … (currently on: <branch>)` and
+  parked the run. The target is now resolved by precedence: an explicit `-BaseBranch` from the caller (a
+  workflow run passes its integration branch), then a configured `git.base_branch`, then the recorded
+  value when it matches the checkout, then the checked-out branch — adopted, reconciled back into the
+  map, and named in the result message. `task/*` branches and detached HEADs are never adopted.
+- **The pre-merge stash no longer excludes `.bot/workspace/decisions/`.** That tree is tracked and is
+  committed by the same function, but — unlike `.bot/workspace/tasks/` — it was never scrubbed or backed
+  up, so a dirty file there blocked the very checkout the stash exists to enable.
+- **The pre-merge stash is popped even when `git stash push` exits non-zero.** `git stash push -u` can
+  stash successfully and still exit 1 over an advisory (`The following paths are ignored by one of your
+  .gitignore files: .bot/workspace/tasks`), which made dotbot skip the pop and silently park the
+  operator's uncommitted work in a stash. Stash detection now compares `refs/stash` before and after.
+- **`Assert-OnBaseBranch` reports why a checkout failed and can honour `git.base_branch`.** It discarded
+  git's stderr, so every blocker — a dirty tracked file, a branch held by another linked worktree, a
+  file lock — produced the same unactionable message. It also had no `-BotRoot` parameter, so its
+  no-`-BranchName` fallback could only ever resolve `main`/`master`; the three cleanup call sites in
+  `Invoke-WorkflowProcess.ps1` used that fallback and yanked the working copy off a configured base
+  branch on any failed or skipped task.
+
 ### Removed
 
 ## [4.0.2] - 2026-07-09

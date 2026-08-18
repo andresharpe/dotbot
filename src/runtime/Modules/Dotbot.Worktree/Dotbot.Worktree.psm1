@@ -218,16 +218,22 @@ function Assert-OnBaseBranch {
     <#
     .SYNOPSIS
     Ensure the main repo is checked out on the specified branch (or the canonical
-    main/master if none is specified). Checks out the branch if not already on it.
+    base branch if none is specified). Checks out the branch if not already on it.
     Throws if the branch cannot be found or checked out.
     Returns the confirmed base branch name.
+
+    .PARAMETER BotRoot
+    Optional. Forwarded to Resolve-MainBranch so the configured git.base_branch is
+    honoured when -BranchName is omitted. Without it the fallback can only ever
+    resolve main/master, which silently defeats a project's configured trunk.
     #>
     param(
         [Parameter(Mandatory)][string]$ProjectRoot,
-        [string]$BranchName
+        [string]$BranchName,
+        [string]$BotRoot
     )
     if (-not $BranchName) {
-        $BranchName = Resolve-MainBranch -ProjectRoot $ProjectRoot
+        $BranchName = Resolve-MainBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot
     }
     if (-not $BranchName) {
         throw "Cannot find base branch in $ProjectRoot"
@@ -240,12 +246,140 @@ function Assert-OnBaseBranch {
         }
     }
     if ($currentBranch -ne $BranchName) {
-        git -C $ProjectRoot checkout $BranchName 2>&1 | Out-Null
+        $checkoutOutput = git -C $ProjectRoot checkout $BranchName 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to checkout $BranchName in $ProjectRoot (currently on: $currentBranch)"
+            $reason = $checkoutOutput.Trim()
+            $detail = if ($reason) { ": $reason" } else { "" }
+            throw "Failed to checkout $BranchName in $ProjectRoot (currently on: $currentBranch)$detail"
         }
     }
     return $BranchName
+}
+
+function Resolve-TaskMergeTarget {
+    <#
+    .SYNOPSIS
+    Decide which branch a completed task should be integrated into.
+
+    .DESCRIPTION
+    The worktree-map records a base_branch when the task worktree is created. That
+    value used to be authoritative forever, which meant a run whose checkout had
+    moved on — or a stale entry reused across runs — silently integrated the task
+    into whatever was recorded, typically the trunk. Precedence, highest first:
+
+      1. RequestedBaseBranch — the caller (a workflow run) knows its integration
+         branch. Most specific wins, and the stale record is reconciled.
+      2. A configured git.base_branch — an explicit operator declaration. It must
+         outrank adoption, or pointing dotbot at a non-default trunk would be
+         silently undone whenever the checkout happened to sit elsewhere (#466).
+         Delegated to Resolve-DotbotBaseBranch so a configured-but-missing branch
+         still fails fast.
+      3. The recorded base, when it already equals the checked-out branch.
+      4. The checked-out branch, when it differs from the record: the operator's
+         branch is treated as the truth and the record is reconciled. Deliberate
+         precedence decision — a checkout the operator moved is a stronger signal
+         than a value written when the worktree was created.
+      5. The recorded base, when HEAD is detached (no branch to adopt) or when the
+         checkout sits on a task/* branch (never a valid integration target).
+      6. Resolve-MainBranch, when nothing was recorded.
+
+    Adoption lives here and never inside Resolve-MainBranch / Resolve-DotbotBaseBranch:
+    those must stay HEAD-blind so they remain safe to call while the main repo is on
+    a task branch.
+
+    .OUTPUTS
+    Hashtable with: branch, source ('requested'|'recorded'|'adopted'|'resolved'),
+    recorded (the map's value, or $null), reason (human-readable, for logging).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [string]$BotRoot,
+        $Entry,
+        [string]$RequestedBaseBranch
+    )
+
+    $recorded = $null
+    if ($Entry -and $Entry.base_branch) { $recorded = [string]$Entry.base_branch }
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedBaseBranch)) {
+        $why = if ($recorded -and $recorded -ne $RequestedBaseBranch) {
+            "caller supplied '$RequestedBaseBranch'; worktree-map recorded '$recorded'"
+        } else {
+            "caller supplied '$RequestedBaseBranch'"
+        }
+        return @{ branch = $RequestedBaseBranch; source = 'requested'; recorded = $recorded; reason = $why }
+    }
+
+    # A configured git.base_branch is an operator declaration, not an inference, so it
+    # outranks the checkout. Resolve-DotbotBaseBranch validates it and throws when the
+    # configured branch does not exist, which is the #466 fail-fast contract.
+    $configuredBase = $null
+    if ($BotRoot -and (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
+        $merged = Get-MergedSettings -BotRoot $BotRoot
+        if ($merged -and $merged.PSObject.Properties['git'] -and $merged.git -and $merged.git.PSObject.Properties['base_branch']) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$merged.git.base_branch)) {
+                $configuredBase = Resolve-DotbotBaseBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot
+            }
+        }
+    }
+    if ($configuredBase) {
+        return @{ branch = $configuredBase; source = 'configured'; recorded = $recorded
+                  reason = "git.base_branch is configured as '$configuredBase'" }
+    }
+
+    $rawCurrent = git -C $ProjectRoot rev-parse --abbrev-ref HEAD 2>$null
+    $currentBranch = if ($rawCurrent) { "$rawCurrent".Trim() } else { '' }
+    $isDetached = ($currentBranch -eq 'HEAD' -or [string]::IsNullOrWhiteSpace($currentBranch))
+
+    if ($recorded) {
+        if ($currentBranch -eq $recorded) {
+            return @{ branch = $recorded; source = 'recorded'; recorded = $recorded
+                      reason = "worktree-map base '$recorded' matches the checkout" }
+        }
+        if ($isDetached) {
+            return @{ branch = $recorded; source = 'recorded'; recorded = $recorded
+                      reason = "HEAD is detached; using the recorded base '$recorded'" }
+        }
+        if ($currentBranch -like 'task/*') {
+            return @{ branch = $recorded; source = 'recorded'; recorded = $recorded
+                      reason = "checkout is on task branch '$currentBranch'; not a valid integration target, using recorded base '$recorded'" }
+        }
+        return @{ branch = $currentBranch; source = 'adopted'; recorded = $recorded
+                  reason = "worktree-map recorded '$recorded' but the checkout is on '$currentBranch'; adopting the checked-out branch" }
+    }
+
+    $resolved = Resolve-MainBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot
+    return @{ branch = $resolved; source = 'resolved'; recorded = $null
+              reason = "no base recorded for this worktree; resolved '$resolved'" }
+}
+
+function Update-TaskWorktreeBaseBranch {
+    <#
+    .SYNOPSIS
+    Reconcile the base_branch recorded for a task worktree, under the map lock.
+
+    .DESCRIPTION
+    Keeps a stale record from surviving a retry. New-TaskWorktree only writes a map
+    entry when the task id is absent, so without this the recorded base is never
+    corrected once written.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TaskId,
+        [Parameter(Mandatory)][string]$BaseBranch,
+        [string]$BotRoot
+    )
+    Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
+        $lockedMap = Read-WorktreeMap -BotRoot $BotRoot
+        if (-not $lockedMap.ContainsKey($TaskId)) { return }
+        $lockedEntry = $lockedMap[$TaskId]
+        if ($lockedEntry -is [hashtable]) {
+            $lockedEntry['base_branch'] = $BaseBranch
+        } else {
+            $lockedEntry | Add-Member -NotePropertyName 'base_branch' -NotePropertyValue $BaseBranch -Force
+        }
+        $lockedMap[$TaskId] = $lockedEntry
+        Write-WorktreeMap -Map $lockedMap -BotRoot $BotRoot
+    }
 }
 
 # ── Cross-process mutual exclusion ───────────────────────────────────────────
@@ -1631,7 +1765,8 @@ function Complete-TaskWorktree {
         # that only needs to reach origin once — after the last task — instead
         # of on every single task completion (each push fires the remote's
         # full CI pipeline).
-        [switch]$SkipRemotePush
+        [switch]$SkipRemotePush,
+        [string]$BaseBranch
     )
 
     $map = Read-WorktreeMap -BotRoot $BotRoot
@@ -1661,10 +1796,19 @@ function Complete-TaskWorktree {
     $mergeLock = Enter-WorkspaceMergeLock -BotRoot $BotRoot
     try {
     try {
-        # Determine target base branch — prefer the value recorded at worktree creation
-        # (immune to HEAD drift on the main repo); fall back to explicit main/master lookup.
-        $baseBranch = $entry.base_branch ?? (Resolve-MainBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot)
+        $mergeTarget = Resolve-TaskMergeTarget -ProjectRoot $ProjectRoot -BotRoot $BotRoot `
+            -Entry $entry -RequestedBaseBranch $BaseBranch
+        $baseBranch = $mergeTarget.branch
         if (-not $baseBranch) { throw "Cannot determine base branch for task $TaskId" }
+
+        $targetReconciled = $false
+        if ($mergeTarget.recorded -and $mergeTarget.recorded -ne $baseBranch) {
+            $targetReconciled = $true
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Warn -Message "Task $TaskId integration target reconciled: $($mergeTarget.reason)"
+            }
+            Update-TaskWorktreeBaseBranch -TaskId $TaskId -BaseBranch $baseBranch -BotRoot $BotRoot
+        }
 
         # Kill any processes still running in the worktree (dev servers, file watchers, etc.)
         $killedCount = Stop-WorktreeProcesses -WorktreePath $worktreePath
@@ -1741,11 +1885,17 @@ function Complete-TaskWorktree {
         # Stash remaining dirty state EXCLUDING task files (task state is managed by backup-restore).
         # Including task files in the stash causes stale state to be reintroduced after the state commit
         # when git stash pop runs, contaminating the next task's backup.
+        $stashRefBefore = git -C $ProjectRoot rev-parse --verify --quiet refs/stash 2>$null
         $stashOutput = git -C $ProjectRoot stash push -u -m "dotbot-pre-merge-$TaskId" -- `
             '.' `
-            ':!.bot/workspace/tasks/' `
-            ':!.bot/workspace/decisions/' 2>&1
-        $wasStashed = $LASTEXITCODE -eq 0 -and "$stashOutput" -notmatch 'No local changes'
+            ':!.bot/workspace/tasks/' 2>&1
+        $stashRefAfter = git -C $ProjectRoot rev-parse --verify --quiet refs/stash 2>$null
+        $wasStashed = [bool]$stashRefAfter -and ("$stashRefAfter".Trim() -ne "$stashRefBefore".Trim())
+        if (-not $wasStashed -and "$stashOutput" -notmatch 'No local changes') {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message "Pre-merge stash created nothing for task $TaskId : $(("$stashOutput").Trim())"
+            }
+        }
 
         # Assert main repo is on the base branch after task state is backed up
         # and non-task dirty state is stashed. This lets detached HEAD checkouts
@@ -1976,10 +2126,16 @@ function Complete-TaskWorktree {
             Write-WorktreeMap -Map $lockedMap -BotRoot $BotRoot
         }
 
+        $mergedMessage = if ($targetReconciled) {
+            "Squash-merged to $baseBranch and cleaned up (target reconciled: $($mergeTarget.reason))"
+        } else {
+            "Squash-merged to $baseBranch and cleaned up"
+        }
+
         return @{
             success        = $true
             merge_commit   = $mergeCommit
-            message        = "Squash-merged to $baseBranch and cleaned up"
+            message        = $mergedMessage
             conflict_files = @()
             failure_kind   = $null
             failure_detail = ""
@@ -2312,6 +2468,7 @@ Export-ModuleMember -Function @(
     'Resolve-DotbotBaseBranch'
     'Resolve-MainBranch'
     'Assert-OnBaseBranch'
+    'Update-TaskWorktreeBaseBranch'
     'Stop-WorktreeProcesses'
     'Invoke-Git'
     'Remove-Junctions'
