@@ -39,7 +39,7 @@ function Get-FrameworkGitInfo {
         branch      = $null
         dirty       = $false
     }
-    if (-not (Test-Path (Join-Path $Root '.git'))) { return $info }
+    if (-not (Test-Path -LiteralPath (Join-Path $Root '.git'))) { return $info }
     Push-Location $Root
     try {
         $sha = (& git rev-parse HEAD 2>$null)

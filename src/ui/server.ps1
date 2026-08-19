@@ -612,7 +612,7 @@ function Get-FrameworkStatusPayload {
         branch      = $null
         dirty       = $false
     }
-    if (Test-Path (Join-Path $dotbotHome '.git')) {
+    if (Test-Path -LiteralPath (Join-Path $dotbotHome '.git')) {
         Push-Location $dotbotHome
         try {
             $sha = (& git rev-parse HEAD 2>$null)

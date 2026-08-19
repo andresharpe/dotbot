@@ -187,7 +187,7 @@ if (-not (Test-Path -LiteralPath $activityPath)) {
     Write-DotbotLabel "Status:" "No activity log yet" -ValueType Warning
     Write-BlankLine
     Write-DotbotCommand "Nothing has been logged to .bot/.control/activity.jsonl yet."
-    exit 1
+    exit 0
 }
 
 Write-DotbotSection "LOGS"

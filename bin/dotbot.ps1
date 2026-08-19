@@ -159,12 +159,18 @@ function Show-Help {
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
     Write-DotbotLabel "    serve             " "Start only the low-level HTTP runtime in the foreground"
     Write-DotbotLabel "    runtime-status    " "Show runtime PID, URL, and active workflow runs"
+    Write-DotbotLabel "    runtime stop      " "Stop the per-project HTTP runtime and clear its connection file"
     Write-DotbotLabel "    logs              " "Show recent activity, or the last crash (--last, --follow)"
     Write-DotbotLabel "    prune-branches    " "Delete stale workflow/* and task/* branches"
     Write-DotbotLabel "    help              " "Show this help message"
     Write-BlankLine
     Write-DotbotSection "GLOBAL OPTIONS"
     Write-DotbotLabel "    -y, --yes         " "Answer yes to confirmation prompts"
+    Write-DotbotLabel "    --json            " "Machine-readable output; supported on 'status' only"
+    Write-BlankLine
+    Write-DotbotSection "PROJECT SETTINGS"
+    Write-DotbotLabel "    git.base_branch   " "Branch runs are cut from and merged into (default: main, else master)"
+    Write-DotbotCommand '      .bot/.control/settings.json -> { "git": { "base_branch": "<branch>" } }'
     Write-BlankLine
 }
 
@@ -602,6 +608,29 @@ function Invoke-Tasks {
     }
 }
 
+function Invoke-Runtime {
+    $sub = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { '' }
+    switch ($sub) {
+        'stop' {
+            $script = Join-Path $ScriptsDir 'runtime-stop.ps1'
+            if (Test-Path $script) {
+                $global:LASTEXITCODE = 0
+                & $script @SplatArgs
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else {
+                Write-DotbotError "runtime-stop.ps1 not found"
+                exit 1
+            }
+        }
+        default {
+            Write-DotbotWarning "Usage: dotbot runtime [stop]"
+            Write-DotbotCommand "  stop   Stop the per-project HTTP runtime and clear its connection file"
+            Write-DotbotCommand "         Use 'dotbot runtime-status' to inspect it first"
+            exit 1
+        }
+    }
+}
+
 function Find-DotbotProjectBotDir {
     param([string]$StartDir)
 
@@ -804,8 +833,17 @@ switch ($Command) {
         & (Join-Path $ScriptsDir 'serve.ps1') @SplatArgs
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
-    "runtime-status" { & (Join-Path $ScriptsDir 'runtime-status.ps1') @SplatArgs }
-    "logs"           { & (Join-Path $ScriptsDir 'logs.ps1')           @SplatArgs }
+    "runtime" { Invoke-Runtime }
+    "runtime-status" {
+        $global:LASTEXITCODE = 0
+        & (Join-Path $ScriptsDir 'runtime-status.ps1') @SplatArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    "logs" {
+        $global:LASTEXITCODE = 0
+        & (Join-Path $ScriptsDir 'logs.ps1') @SplatArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
     "prune-branches" {
         $global:LASTEXITCODE = 0
         & (Join-Path $ScriptsDir 'prune-branches.ps1') @SplatArgs

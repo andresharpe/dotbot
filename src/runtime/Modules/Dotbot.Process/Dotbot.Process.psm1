@@ -172,7 +172,7 @@ function Test-ProcessStopSignal {
         [Parameter(Mandatory)][string]$Id,
         [string]$BotRoot
     )
-    Test-Path (Join-Path (Get-ProcessesDir -BotRoot $BotRoot) "$Id.stop")
+    Test-Path -LiteralPath (Join-Path (Get-ProcessesDir -BotRoot $BotRoot) "$Id.stop")
 }
 
 function Request-ProcessLock {

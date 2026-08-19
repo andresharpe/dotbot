@@ -132,7 +132,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-if (-not (Test-Path (Join-Path $ProjectDir '.git'))) {
+if (-not (Test-Path -LiteralPath (Join-Path $ProjectDir '.git'))) {
     Write-DotbotWarning 'Current directory is not a git repository.'
     $initGit = Read-DotbotConfirmation -Message 'Initialize a git repository here?' -Default $false
     if (-not $initGit) {
@@ -144,7 +144,7 @@ if (-not (Test-Path (Join-Path $ProjectDir '.git'))) {
         Write-DotbotWarning 'Dry run — would run git init'
     } else {
         & git init --quiet 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $ProjectDir '.git'))) {
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $ProjectDir '.git'))) {
             Write-DotbotError 'Failed to initialize git repository.'
             exit 1
         }
@@ -261,7 +261,7 @@ workspace/sessions/runs/
 # Project-local runtime state
 runtime/.studio-port
 '@
-Set-Content -Path (Join-Path $BotDir '.gitignore') -Value $botGitignore -Encoding UTF8
+Set-Content -LiteralPath (Join-Path $BotDir '.gitignore') -Value $botGitignore -Encoding UTF8
 
 Write-Success 'Created .bot/workspace tree and .bot/.gitignore'
 
@@ -484,8 +484,8 @@ if ($resolvedWorkflow -or $resolvedStacks.Count -gt 0) {
     }
     $controlSettingsPath = Join-Path $controlDir 'settings.json'
     $existing = [pscustomobject]@{}
-    if (Test-Path $controlSettingsPath) {
-        try { $existing = Get-Content $controlSettingsPath -Raw | ConvertFrom-Json } catch {
+    if (Test-Path -LiteralPath $controlSettingsPath) {
+        try { $existing = Get-Content -LiteralPath $controlSettingsPath -Raw | ConvertFrom-Json } catch {
             $existing = [pscustomobject]@{}
         }
     }
@@ -495,7 +495,7 @@ if ($resolvedWorkflow -or $resolvedStacks.Count -gt 0) {
     if ($resolvedStacks.Count -gt 0) {
         $existing | Add-Member -NotePropertyName 'stacks' -NotePropertyValue $resolvedStacks -Force
     }
-    $existing | ConvertTo-Json -Depth 10 | Set-Content -Path $controlSettingsPath -Encoding UTF8
+    $existing | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $controlSettingsPath -Encoding UTF8
 
     if ($resolvedWorkflow)        { Write-Success "Active workflow: $resolvedWorkflow" }
     if ($resolvedStacks.Count -gt 0) { Write-Success "Active stacks:  $($resolvedStacks -join ', ')" }

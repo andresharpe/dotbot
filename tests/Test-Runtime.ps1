@@ -280,6 +280,28 @@ try {
     Remove-TestBotRoot -BotRoot $bot
 }
 
+$bot = New-TestBotRoot
+try {
+    $foreignPid = if ($IsWindows) { 4 } else { 1 }
+    $foreignProc = Get-Process -Id $foreignPid -ErrorAction SilentlyContinue
+    if ($foreignProc -and $foreignProc.ProcessName -notmatch 'pwsh|powershell') {
+        Write-RuntimeConnectionFile -BotRoot $bot -Url 'http://127.0.0.1:1/' -Token 'recycled' -ProcessId $foreignPid -StartedAt '2026-05-20T00:00:00Z' | Out-Null
+        Assert-True -Name "Test-RuntimeAlive rejects a live PID that is not a PowerShell host" `
+            -Condition (-not (Test-RuntimeAlive -BotRoot $bot)) `
+            -Message "PID $foreignPid is '$($foreignProc.ProcessName)', not a runtime host"
+    } else {
+        Write-TestResult -Name "Test-RuntimeAlive rejects a live PID that is not a PowerShell host" -Status Skip -Message "No non-PowerShell PID available to probe"
+    }
+
+    Write-RuntimeConnectionFile -BotRoot $bot -Url 'http://127.0.0.1:1/' -Token 'other' -ProcessId 999999 -StartedAt '2026-05-20T00:00:00Z' | Out-Null
+    Stop-DotbotRuntime -BotRoot $bot -Listener $null -ErrorAction SilentlyContinue
+    Assert-True -Name "Stop-DotbotRuntime keeps a connection file owned by another process" `
+        -Condition (Test-Path -LiteralPath (Get-RuntimeConnectionFilePath -BotRoot $bot)) `
+        -Message "Removing another runtime's runtime.json makes that runtime undiscoverable"
+} finally {
+    Remove-TestBotRoot -BotRoot $bot
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # HTTP surface: auth + routing
 # ═══════════════════════════════════════════════════════════════════════════

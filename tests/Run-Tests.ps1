@@ -102,15 +102,18 @@ function Invoke-TestFile {
     # line into the caller's `$code = Invoke-TestFile ...` assignment, which
     # both swallows the test output and turns $code into an Object[] instead
     # of an int.
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\$FileName" | Out-Host
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\$FileName" | Tee-Object -Variable childOutput | Out-Host
     $code = $LASTEXITCODE
     $sw.Stop()
+
+    $printedSummary = [bool]($childOutput | Where-Object { $_ -match 'Summary:' })
 
     if (-not $layerTimings.ContainsKey($Layer)) { $layerTimings[$Layer] = @() }
     $layerTimings[$Layer] += [pscustomobject]@{
         File      = $FileName
         ElapsedMs = $sw.ElapsedMilliseconds
         ExitCode  = $code
+        Crashed   = (($code -ne 0) -and -not $printedSummary)
     }
 
     return $code
@@ -143,13 +146,14 @@ if (1 -in $layersToRun) {
     $verifyQualityCode   = Invoke-TestFile -Layer '1' -FileName 'Test-VerifyQuality.ps1'
     $legacyVocabularyCode = Invoke-TestFile -Layer '1' -FileName 'Test-NoLegacyVocabulary.ps1'
     $backslashPathsCode   = Invoke-TestFile -Layer '1' -FileName 'Test-NoBackslashPaths.ps1'
+    $wildcardPathsCode    = Invoke-TestFile -Layer '1' -FileName 'Test-NoWildcardPaths.ps1'
     $clarificationCode    = Invoke-TestFile -Layer '1' -FileName 'Test-StartFromPromptClarification.ps1'
     $activityLogCode     = Invoke-TestFile -Layer '1' -FileName 'Test-ActivityLogHygiene.ps1'
     $privacyScanCode     = Invoke-TestFile -Layer '1' -FileName 'Test-PrivacyScan.ps1'
     $pathSanitizerCode   = Invoke-TestFile -Layer '1' -FileName 'Test-PathSanitizer.ps1'
     $mcpSurfaceCode      = Invoke-TestFile -Layer '1' -FileName 'Test-McpSurface.ps1'
 
-    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $legacyYamlCode -ne 0 -or $dataModelCode -ne 0 -or $runtimeCode -ne 0 -or $worktreeCode -ne 0 -or $executorCode -ne 0 -or $hooksCode -ne 0 -or $mdRefsCode -ne 0 -or $verifyQualityCode -ne 0 -or $legacyVocabularyCode -ne 0 -or $backslashPathsCode -ne 0 -or $clarificationCode -ne 0 -or $activityLogCode -ne 0 -or $privacyScanCode -ne 0 -or $pathSanitizerCode -ne 0 -or $mcpSurfaceCode -ne 0) { 1 } else { 0 }
+    $exitCode = if ($structureCode -ne 0 -or $compilationCode -ne 0 -or $workflowManifestCode -ne 0 -or $legacyYamlCode -ne 0 -or $dataModelCode -ne 0 -or $runtimeCode -ne 0 -or $worktreeCode -ne 0 -or $executorCode -ne 0 -or $hooksCode -ne 0 -or $mdRefsCode -ne 0 -or $verifyQualityCode -ne 0 -or $legacyVocabularyCode -ne 0 -or $backslashPathsCode -ne 0 -or $wildcardPathsCode -ne 0 -or $clarificationCode -ne 0 -or $activityLogCode -ne 0 -or $privacyScanCode -ne 0 -or $pathSanitizerCode -ne 0 -or $mcpSurfaceCode -ne 0) { 1 } else { 0 }
     $layerResults["1"] = ($exitCode -eq 0)
     if ($exitCode -ne 0) { $overallFailed = $true }
 }
@@ -224,7 +228,11 @@ foreach ($layer in $layersToRun) {
         $maxNameLen = ($files | ForEach-Object { $_.File.Length } | Measure-Object -Maximum).Maximum
         foreach ($f in ($files | Sort-Object -Property ElapsedMs -Descending)) {
             $padded = $f.File.PadRight($maxNameLen)
-            Write-Host ("            {0}  {1}" -f $padded, (Format-Duration -Ms $f.ElapsedMs)) -ForegroundColor DarkGray
+            if ($f.Crashed) {
+                Write-Host ("            {0}  {1}  ✗ CRASHED - exited {2} without reporting a Summary; assertions after the failure never ran" -f $padded, (Format-Duration -Ms $f.ElapsedMs), $f.ExitCode) -ForegroundColor Red
+            } else {
+                Write-Host ("            {0}  {1}" -f $padded, (Format-Duration -Ms $f.ElapsedMs)) -ForegroundColor DarkGray
+            }
         }
     }
 }

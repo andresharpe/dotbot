@@ -107,12 +107,12 @@ function Invoke-ResearchStatus {
     # Determine overall phase
     # ---------------------------------------------------------------------------
     $phase = "not-started"
-    $initiativeExists = Test-Path (Join-Path $briefingDir "jira-context.md")
-    $missionExists    = Test-Path (Join-Path $productDir "mission.md")
-    $researchComplete = (Test-Path (Join-Path $productDir "research-internet.md")) -and
-                        (Test-Path (Join-Path $productDir "research-documents.md")) -and
-                        (Test-Path (Join-Path $productDir "research-repos.md"))
-    $implResearchExists = Test-Path (Join-Path $briefingDir "04_IMPLEMENTATION_RESEARCH.md")
+    $initiativeExists = Test-Path -LiteralPath (Join-Path $briefingDir "jira-context.md")
+    $missionExists    = Test-Path -LiteralPath (Join-Path $productDir "mission.md")
+    $researchComplete = (Test-Path -LiteralPath (Join-Path $productDir "research-internet.md")) -and
+                        (Test-Path -LiteralPath (Join-Path $productDir "research-documents.md")) -and
+                        (Test-Path -LiteralPath (Join-Path $productDir "research-repos.md"))
+    $implResearchExists = Test-Path -LiteralPath (Join-Path $briefingDir "04_IMPLEMENTATION_RESEARCH.md")
 
     if ($initiativeExists) { $phase = "started" }
     if ($missionExists)    { $phase = "planned" }

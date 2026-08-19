@@ -1127,8 +1127,8 @@ if (Test-Path $standardsDir) {
     $standardsList = if ($standardsFiles) { "- " + ($standardsFiles -join "`n- ") } else { "No standards files found." }
 }
 $productDir = Join-Path (Join-Path $botRoot 'workspace') 'product'
-$productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read the product mission and context from: .bot/workspace/product/mission.md" } else { "No product mission file found." }
-$entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
+$productMission = if (Test-Path -LiteralPath (Join-Path $productDir "mission.md")) { "Read the product mission and context from: .bot/workspace/product/mission.md" } else { "No product mission file found." }
+$entityModel = if (Test-Path -LiteralPath (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
 # Dotbot.Task carries post-task hooks; Dotbot.Executor owns non-prompt
 # task execution.
@@ -1248,6 +1248,9 @@ if ($LASTEXITCODE -ne 0) {
 $processData.status = 'running'
 Write-ProcessFile -Id $procId -Data $processData
 
+$operatorBranch = (git -C $projectRoot symbolic-ref --quiet --short HEAD 2>$null) -as [string]
+$operatorBranch = if ($operatorBranch) { $operatorBranch.Trim() } else { '' }
+
 $integrationBranch = $null
 $resolvedBase = $null
 if ($RunId) {
@@ -1255,6 +1258,12 @@ if ($RunId) {
     if (-not $resolvedBase) {
         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "No base branch yet (unborn repo); skipping integration branch — first task uses an orphan worktree."
     } else {
+        if ($operatorBranch -and $operatorBranch -ne $resolvedBase) {
+            Write-Status "You are on '$operatorBranch' but the configured base is '$resolvedBase'; the integration branch will be created from '$resolvedBase'." -Type Warn
+            Write-Status "To base the run on your current branch, set git.base_branch to '$operatorBranch' in .bot/.control/settings.json." -Type Info
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Checked-out branch '$operatorBranch' differs from the configured base '$resolvedBase'; the integration branch is cut from '$resolvedBase'. Set git.base_branch in .bot/.control/settings.json to change it."
+        }
+
         $integrationSlug  = ConvertTo-WorktreeSlug -Text $WorkflowName
         $integrationShort = Get-ShortId -Id $RunId
         $integrationBranch = Get-WorktreeBranchName -Slug $integrationSlug -ShortId $integrationShort
@@ -2646,6 +2655,18 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 } else {
                     Write-BotLog -Level Warn -Message "Could not remove empty integration branch $integrationBranch : $(($integrationDeleteOut | Out-String).Trim())"
                 }
+            }
+        }
+    }
+
+    if ($operatorBranch) {
+        $endBranch = (git -C $projectRoot rev-parse --abbrev-ref HEAD 2>$null) -as [string]
+        $endBranch = if ($endBranch) { $endBranch.Trim() } else { '' }
+        if ($endBranch -ne $operatorBranch) {
+            $restoreOutput = git -C $projectRoot checkout $operatorBranch 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) {
+                Write-Status "Could not return to '$operatorBranch'; left on '$endBranch'." -Type Warn
+                Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Failed to restore the starting branch '$operatorBranch' (left on '$endBranch'): $($restoreOutput.Trim())"
             }
         }
     }

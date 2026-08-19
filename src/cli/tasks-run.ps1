@@ -9,7 +9,9 @@
     by PR #274 for orphan/untagged tasks (see #324, #301).
 #>
 [CmdletBinding()]
-param()
+param(
+    [switch]$NoAutoRuntime
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -40,7 +42,14 @@ Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Runtime/Dotbot.
 Write-DotbotBanner -Title "D O T B O T" -Subtitle "Pending tasks runner"
 Write-Status "Launching workflow-agnostic task runner..."
 
-if (-not (Test-RuntimeAlive -BotRoot $BotDir)) {
+$runtimeAlive = Test-RuntimeAlive -BotRoot $BotDir
+if (-not $runtimeAlive -and $NoAutoRuntime) {
+    Write-DotbotError "The dotbot runtime is not running."
+    Write-DotbotCommand "Run 'dotbot serve' in another shell, or omit --no-auto-runtime."
+    exit 1
+}
+
+if (-not $runtimeAlive) {
     Write-Status "Starting headless runtime..."
     try {
         $runtimeStart = Start-DotbotRuntimeDetached -BotRoot $BotDir

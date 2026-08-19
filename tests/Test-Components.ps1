@@ -1439,6 +1439,80 @@ if (Test-Path $extractCommitInfoScript) {
 
 Write-Host ""
 
+# BRACKETED PROJECT PATHS
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  BRACKETED PROJECT PATHS" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$bracketParent = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-bracket-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+$bracketRoot = Join-Path $bracketParent 'bracket[v2]'
+try {
+    [System.IO.Directory]::CreateDirectory($bracketRoot) | Out-Null
+    & git init -b main --quiet -- $bracketRoot 2>&1 | Out-Null
+    & git -C $bracketRoot config user.email "test@dotbot.dev" 2>&1 | Out-Null
+    & git -C $bracketRoot config user.name "Dotbot Test" 2>&1 | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $bracketRoot 'README.md'), "seed`n")
+    & git -C $bracketRoot add -A 2>&1 | Out-Null
+    & git -C $bracketRoot commit -m "seed" --quiet 2>&1 | Out-Null
+
+    Assert-True -Name "bracketed fixture is a real git repo" `
+        -Condition ([System.IO.Directory]::Exists((Join-Path $bracketRoot '.git'))) `
+        -Message "Fixture setup failed at $bracketRoot"
+
+    $env:DOTBOT_HOME = $dotbotDir
+    Push-Location -LiteralPath $bracketRoot
+    try {
+        $bracketInitOut = & pwsh -NoProfile -File (Join-Path $dotbotDir 'bin/dotbot.ps1') init -y 2>&1
+        $bracketInitCode = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "dotbot init exits 0 in a directory containing [ ]" `
+        -Expected 0 -Actual $bracketInitCode `
+        -Message "init output: $($bracketInitOut -join ' ')"
+    Assert-True -Name "dotbot init creates .bot in a directory containing [ ]" `
+        -Condition ([System.IO.Directory]::Exists((Join-Path $bracketRoot '.bot'))) `
+        -Message "A wildcard-interpreting .git probe makes init report 'not a git repository' for a repo that is one"
+
+    Push-Location -LiteralPath $bracketRoot
+    try {
+        $bracketResolved = Get-DotbotProjectBotPath
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "Get-DotbotProjectBotPath resolves a project path containing [ ]" `
+        -Expected (Join-Path $bracketRoot '.bot') -Actual $bracketResolved `
+        -Message "Falling through to the temp-directory fallback silently redirects every consumer away from the project"
+
+    $bracketTaskId = "beefcafe-1111-2222-3333-444455556666"
+    $bracketWt = New-TaskWorktree -TaskId $bracketTaskId -TaskName "bracket-paths" `
+                                  -ProjectRoot $bracketRoot -BotRoot (Join-Path $bracketRoot '.bot')
+
+    Assert-True -Name "New-TaskWorktree succeeds under a path containing [ ]" `
+        -Condition ($null -ne $bracketWt -and $bracketWt.success -eq $true) `
+        -Message "Got: $($bracketWt | ConvertTo-Json -Compress)"
+    if ($bracketWt -and $bracketWt.success) {
+        Assert-True -Name "task worktree created under a path containing [ ] has its .git marker" `
+            -Condition ([System.IO.File]::Exists((Join-Path $bracketWt.worktree_path '.git')) -or [System.IO.Directory]::Exists((Join-Path $bracketWt.worktree_path '.git'))) `
+            -Message "Worktree at $($bracketWt.worktree_path) has no .git marker"
+    }
+} finally {
+    if ([System.IO.Directory]::Exists($bracketRoot)) {
+        foreach ($wtLine in @(& git -C $bracketRoot worktree list --porcelain 2>$null)) {
+            if ([string]$wtLine -match '^worktree (.+)$') {
+                $wtPath = $Matches[1].Trim()
+                if ($wtPath -and $wtPath -ne $bracketRoot) { & git -C $bracketRoot worktree remove --force $wtPath 2>&1 | Out-Null }
+            }
+        }
+    }
+    Remove-Item -LiteralPath $bracketParent -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host ""
+
 # PROCESS STATUS SANITIZATION
 # ═══════════════════════════════════════════════════════════════════
 

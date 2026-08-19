@@ -141,7 +141,7 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $projB '.bot/.control') -Force | Out-Null
 
     $r = Invoke-Cli -Script $logsScript -WorkDir $projB
-    Assert-Equal -Name "logs with no activity log exits 1" -Expected 1 -Actual $r.Code -Message $r.Output
+    Assert-Equal -Name "logs with no activity log exits 0" -Expected 0 -Actual $r.Code -Message $r.Output
     Assert-True -Name "logs with no activity log explains why" -Condition ($r.Output -match 'No activity log') -Message $r.Output
 
     $r = Invoke-Cli -Script $logsScript -WorkDir $projB -CliArgs @('-Last')

@@ -1,5 +1,5 @@
 if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-    if (-not (Test-Path (Join-Path $ProjectDir ".gitignore"))) {
+    if (-not (Test-Path -LiteralPath (Join-Path $ProjectDir ".gitignore"))) {
         dotnet new gitignore --output $ProjectDir 2>$null | Out-Null
         Write-Success "Generated .NET .gitignore"
     } else {

@@ -107,7 +107,7 @@ function Read-WorktreeMap {
     $path = Get-WorktreeMapPath -BotRoot $BotRoot
     if (-not (Test-Path $path)) { return @{} }
     try {
-        $content = Get-Content $path -Raw
+        $content = Get-Content -LiteralPath $path -Raw
         if ([string]::IsNullOrWhiteSpace($content)) { return @{} }
         $json = $content | ConvertFrom-Json
         $map = @{}
@@ -134,7 +134,7 @@ function Write-WorktreeMap {
     $tempFile = "$path.tmp"
     for ($r = 0; $r -lt 3; $r++) {
         try {
-            $Map | ConvertTo-Json -Depth 10 | Set-Content -Path $tempFile -Encoding utf8NoBOM -NoNewline
+            $Map | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $tempFile -Encoding utf8NoBOM -NoNewline
             Move-Item -Path $tempFile -Destination $path -Force -ErrorAction Stop
             return
         } catch {
@@ -710,7 +710,7 @@ function Ensure-DotbotWorktreeExcludes {
         if ($existing -and -not $existing.EndsWith("`n")) { $existing += "`n" }
         $existing += ($blockLines -join "`n")
     }
-    Set-Content -Path $excludePath -Value $existing -Encoding utf8NoBOM
+    Set-Content -LiteralPath $excludePath -Value $existing -Encoding utf8NoBOM
 }
 
 function Set-DotbotMcpServerJson {
@@ -750,7 +750,7 @@ function Set-DotbotMcpServerJson {
 
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-    $mcpConfig | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
+    $mcpConfig | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
 }
 
 function Set-DotbotCodexMcpConfig {
@@ -779,7 +779,7 @@ function Set-DotbotCodexMcpConfig {
     ) + $envLines + @('')
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-    Set-Content -Path $Path -Value ($lines -join "`n") -Encoding utf8NoBOM
+    Set-Content -LiteralPath $Path -Value ($lines -join "`n") -Encoding utf8NoBOM
 }
 
 function Set-DotbotAntigravityMcpConfig {
@@ -816,7 +816,7 @@ function Set-DotbotAntigravityMcpConfig {
 
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-    $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
+    $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
 }
 
 function Set-DotbotOpenCodeMcpConfig {
@@ -860,7 +860,7 @@ function Set-DotbotOpenCodeMcpConfig {
 
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-    $config | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
+    $config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
 }
 
 function Copy-DotbotProviderContent {
@@ -1548,14 +1548,14 @@ function New-TaskWorktree {
     $worktreeDir = Join-Path $repoParent "worktrees/$repoName"
     $worktreePath = Join-Path $worktreeDir "task-$shortId-$slug"
 
-    if (-not (Test-Path $worktreeDir)) {
+    if (-not (Test-Path -LiteralPath $worktreeDir)) {
         New-Item -Path $worktreeDir -ItemType Directory -Force | Out-Null
     }
 
     # If worktree directory already exists, validate it's a real worktree
-    if (Test-Path $worktreePath) {
+    if (Test-Path -LiteralPath $worktreePath) {
         $gitMarker = Join-Path $worktreePath ".git"
-        if (Test-Path $gitMarker) {
+        if (Test-Path -LiteralPath $gitMarker) {
             Repair-TaskWorktreeProductWorkspace -WorktreePath $worktreePath -BotRoot $BotRoot
             Initialize-DotbotWorktreeExecutionEnvironment -WorktreePath $worktreePath -ProjectRoot $ProjectRoot -BotRoot $BotRoot
             # Valid worktree — ensure map entry exists and return it
@@ -1582,10 +1582,10 @@ function New-TaskWorktree {
         } else {
             # Stale leftover directory (no .git marker) — remove and recreate
             Assert-PathWithinBounds -Path $worktreePath -ExpectedRoot $worktreeDir
-            Remove-Item -Path $worktreePath -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $worktreePath -Recurse -Force -ErrorAction SilentlyContinue
             # Also prune git's worktree list so it doesn't think it still exists
             git -C $ProjectRoot worktree prune 2>$null
-            if (Test-Path $worktreePath) {
+            if (Test-Path -LiteralPath $worktreePath) {
                 return @{
                     worktree_path = $worktreePath
                     branch_name   = $branchName
@@ -1626,8 +1626,8 @@ function New-TaskWorktree {
 
         # Sanity check: verify worktree was actually created
         $gitMarker = Join-Path $worktreePath ".git"
-        if (-not (Test-Path $gitMarker)) {
-            throw "git worktree add succeeded but .git marker not found in $worktreePath"
+        if (-not (Test-Path -LiteralPath $gitMarker)) {
+            throw "Worktree verification failed: no .git marker at $gitMarker after git worktree add reported success"
         }
         if ($baseIsUnborn) {
             $sourceBotIgnore = Join-Path $BotRoot ".gitignore"
@@ -1648,9 +1648,9 @@ function New-TaskWorktree {
         # 1. .bot/.control/ — gitignored, won't exist in worktree
         $worktreeControlDir = Join-Path $worktreePath ".bot/.control"
         $mainControlDir = Join-Path $BotRoot ".control"
-        if (-not (Test-Path $worktreeControlDir)) {
+        if (-not (Test-Path -LiteralPath $worktreeControlDir)) {
             $controlParent = Split-Path $worktreeControlDir -Parent
-            if (-not (Test-Path $controlParent)) {
+            if (-not (Test-Path -LiteralPath $controlParent)) {
                 New-Item -Path $controlParent -ItemType Directory -Force | Out-Null
             }
             New-DirectoryLink -Path $worktreeControlDir -Target $mainControlDir
@@ -1659,12 +1659,12 @@ function New-TaskWorktree {
         # 2. .bot/workspace/tasks/ — has tracked .gitkeep files, replace with junction
         $worktreeTasksDir = Join-Path $worktreePath ".bot/workspace/tasks"
         $mainTasksDir = Join-Path $BotRoot "workspace/tasks"
-        if (Test-Path $worktreeTasksDir) {
+        if (Test-Path -LiteralPath $worktreeTasksDir) {
             Assert-PathWithinBounds -Path $worktreeTasksDir -ExpectedRoot $worktreePath
-            Remove-Item -Path $worktreeTasksDir -Recurse -Force
+            Remove-Item -LiteralPath $worktreeTasksDir -Recurse -Force
         }
         $tasksParent = Split-Path $worktreeTasksDir -Parent
-        if (-not (Test-Path $tasksParent)) {
+        if (-not (Test-Path -LiteralPath $tasksParent)) {
             New-Item -Path $tasksParent -ItemType Directory -Force | Out-Null
         }
         New-DirectoryLink -Path $worktreeTasksDir -Target $mainTasksDir
@@ -1672,28 +1672,28 @@ function New-TaskWorktree {
         # 3. .bot/hooks/ — verify scripts, commit-bot-state, dev lifecycle
         $worktreeHooksDir = Join-Path $worktreePath ".bot/hooks"
         $mainHooksDir = Join-Path $BotRoot "hooks"
-        if ((Test-Path $mainHooksDir) -and -not (Test-Path $worktreeHooksDir)) {
+        if ((Test-Path -LiteralPath $mainHooksDir) -and -not (Test-Path -LiteralPath $worktreeHooksDir)) {
             New-DirectoryLink -Path $worktreeHooksDir -Target $mainHooksDir
         }
 
         # 4. .bot/systems/ — MCP server, runtime, UI
         $worktreeSystemsDir = Join-Path $worktreePath ".bot/systems"
         $mainSystemsDir = Join-Path $BotRoot "systems"
-        if ((Test-Path $mainSystemsDir) -and -not (Test-Path $worktreeSystemsDir)) {
+        if ((Test-Path -LiteralPath $mainSystemsDir) -and -not (Test-Path -LiteralPath $worktreeSystemsDir)) {
             New-DirectoryLink -Path $worktreeSystemsDir -Target $mainSystemsDir
         }
 
         # 5. .bot/recipes/ — recipes, research methodologies, standards
         $worktreeRecipesDir = Join-Path $worktreePath ".bot/recipes"
         $mainRecipesDir = Join-Path $BotRoot "recipes"
-        if ((Test-Path $mainRecipesDir) -and -not (Test-Path $worktreeRecipesDir)) {
+        if ((Test-Path -LiteralPath $mainRecipesDir) -and -not (Test-Path -LiteralPath $worktreeRecipesDir)) {
             New-DirectoryLink -Path $worktreeRecipesDir -Target $mainRecipesDir
         }
 
         # 6. .bot/settings/ — settings defaults
         $worktreeSettingsDir = Join-Path $worktreePath ".bot/settings"
         $mainSettingsDir = Join-Path $BotRoot "settings"
-        if ((Test-Path $mainSettingsDir) -and -not (Test-Path $worktreeSettingsDir)) {
+        if ((Test-Path -LiteralPath $mainSettingsDir) -and -not (Test-Path -LiteralPath $worktreeSettingsDir)) {
             New-DirectoryLink -Path $worktreeSettingsDir -Target $mainSettingsDir
         }
 
@@ -2355,7 +2355,7 @@ function Remove-OrphanWorktrees {
         Get-ChildItem -Path $dirPath -Filter '*.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
             $filePath = $_.FullName
             try {
-                $c = Get-Content -Path $filePath -Raw | ConvertFrom-Json
+                $c = Get-Content -LiteralPath $filePath -Raw | ConvertFrom-Json
                 if ($c.id) { $null = $activeIds.Add([string]$c.id) }
             } catch { Write-BotLog -Level Debug -Message "Failed to read task file $filePath" -Exception $_ }
         }
@@ -2375,7 +2375,7 @@ function Remove-OrphanWorktrees {
             ForEach-Object {
                 $filePath = $_.FullName
                 try {
-                    $c = Get-Content -Path $filePath -Raw | ConvertFrom-Json
+                    $c = Get-Content -LiteralPath $filePath -Raw | ConvertFrom-Json
                     if ($c.id -and $canonicalActiveStatuses.Contains([string]$c.status)) {
                         $null = $activeIds.Add([string]$c.id)
                     }

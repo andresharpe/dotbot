@@ -12,7 +12,7 @@ function Invoke-ProdStop {
     try {
         # Use project root detected by MCP server
         $solutionRoot = $global:DotbotProjectRoot
-        if (-not $solutionRoot -or -not (Test-Path (Join-Path $solutionRoot '.bot'))) {
+        if (-not $solutionRoot -or -not (Test-Path -LiteralPath (Join-Path $solutionRoot '.bot'))) {
             $duration = Get-ToolDuration -Stopwatch $timer
             return New-EnvelopeResponse `
                 -Tool "prod_stop" `

@@ -20,7 +20,7 @@ function Invoke-RepoList {
         $repoName = $dir.Name
 
         # Check if it's a git repo
-        $isGitRepo = Test-Path (Join-Path $repoPath ".git")
+        $isGitRepo = Test-Path -LiteralPath (Join-Path $repoPath ".git")
 
         $status = "unknown"
         $branch = $null

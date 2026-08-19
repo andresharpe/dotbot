@@ -37,7 +37,7 @@ $staticRoot = Join-Path $scriptDir 'static'
 function Find-DotbotRoot {
     $dir = $scriptDir
     while ($dir -ne [System.IO.Path]::GetPathRoot($dir)) {
-        if ((Test-Path (Join-Path $dir 'workflows')) -and (Test-Path (Join-Path $dir 'scripts'))) {
+        if ((Test-Path -LiteralPath (Join-Path $dir 'workflows')) -and (Test-Path -LiteralPath (Join-Path $dir 'scripts'))) {
             return $dir
         }
         $dir = Split-Path $dir -Parent

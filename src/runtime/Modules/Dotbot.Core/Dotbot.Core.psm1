@@ -155,11 +155,11 @@ function Get-DotbotProjectBotPath {
     $dir = $PWD.Path
 
     while ($dir) {
-        if (Test-Path (Join-Path $dir '.bot')) {
+        if (Test-Path -LiteralPath (Join-Path $dir '.bot')) {
             return (Join-Path $dir '.bot')
         }
 
-        if (Test-Path (Join-Path $dir '.git')) { break }
+        if (Test-Path -LiteralPath (Join-Path $dir '.git')) { break }
 
         $parent = Split-Path -Parent $dir
         if ($parent -eq $dir) { break }
