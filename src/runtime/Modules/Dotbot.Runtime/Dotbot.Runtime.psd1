@@ -55,6 +55,7 @@
         'Start-DotbotRuntimeDetached'
         'Stop-DotbotRuntime'
         'Test-RuntimeAlive'
+        'Test-RuntimeServing'
         'New-RuntimeBearerToken'
         'Find-AvailableRuntimePort'
 

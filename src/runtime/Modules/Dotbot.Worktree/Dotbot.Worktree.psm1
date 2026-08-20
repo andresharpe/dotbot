@@ -1648,6 +1648,9 @@ function New-TaskWorktree {
         # 1. .bot/.control/ — gitignored, won't exist in worktree
         $worktreeControlDir = Join-Path $worktreePath ".bot/.control"
         $mainControlDir = Join-Path $BotRoot ".control"
+        if (-not (Test-Path -LiteralPath $mainControlDir)) {
+            New-Item -Path $mainControlDir -ItemType Directory -Force | Out-Null
+        }
         if (-not (Test-Path -LiteralPath $worktreeControlDir)) {
             $controlParent = Split-Path $worktreeControlDir -Parent
             if (-not (Test-Path -LiteralPath $controlParent)) {
@@ -1659,6 +1662,9 @@ function New-TaskWorktree {
         # 2. .bot/workspace/tasks/ — has tracked .gitkeep files, replace with junction
         $worktreeTasksDir = Join-Path $worktreePath ".bot/workspace/tasks"
         $mainTasksDir = Join-Path $BotRoot "workspace/tasks"
+        if (-not (Test-Path -LiteralPath $mainTasksDir)) {
+            New-Item -Path $mainTasksDir -ItemType Directory -Force | Out-Null
+        }
         if (Test-Path -LiteralPath $worktreeTasksDir) {
             Assert-PathWithinBounds -Path $worktreeTasksDir -ExpectedRoot $worktreePath
             Remove-Item -LiteralPath $worktreeTasksDir -Recurse -Force

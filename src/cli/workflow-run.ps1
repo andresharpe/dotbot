@@ -361,7 +361,7 @@ if ($tasks.Count -eq 0) {
 $runtimeStart = $null
 $runtimeStartedHere = $false
 Import-Module (Join-Path $DotbotBase "src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1") -Force -DisableNameChecking
-$runtimeAlive = Test-RuntimeAlive -BotRoot $BotDir
+$runtimeAlive = (Test-RuntimeAlive -BotRoot $BotDir) -and (Test-RuntimeServing -BotRoot $BotDir)
 if (-not $runtimeAlive -and $NoAutoRuntime) {
     Write-DotbotError "The dotbot runtime is not running."
     Write-DotbotCommand "Run 'dotbot serve' in another shell, or omit --no-auto-runtime."

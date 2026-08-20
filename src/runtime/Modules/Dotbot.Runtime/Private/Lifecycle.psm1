@@ -239,6 +239,10 @@ function Start-DotbotRuntime {
         [int]$Port
     )
 
+    if ((Test-RuntimeAlive -BotRoot $BotRoot) -and -not (Test-RuntimeServing -BotRoot $BotRoot)) {
+        Remove-RuntimeConnectionFile -BotRoot $BotRoot
+    }
+
     # Idempotent attach path.
     if (Test-RuntimeAlive -BotRoot $BotRoot) {
         $existing = Read-RuntimeConnectionFile -BotRoot $BotRoot
@@ -436,6 +440,7 @@ Export-ModuleMember -Function @(
     'Start-DotbotRuntimeDetached'
     'Stop-DotbotRuntime'
     'Test-RuntimeAlive'
+    'Test-RuntimeServing'
     'New-RuntimeBearerToken'
     'Find-AvailableRuntimePort'
 )
