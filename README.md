@@ -221,6 +221,17 @@ To upgrade a source checkout, run `git pull` inside that checkout. For packaged 
 
 The runtime resolves framework content lazily: `<BotRoot>/content/<type>/<name>/` first, then `<dotbot install>/content/<type>/<name>/`. The same project-over-framework merge applies to hooks (`<BotRoot>/hooks/<phase>/` over `<dotbot install>/src/hooks/<phase>/`) and settings (four layers — see AGENTS.md "Settings Loading Rules" for the full chain).
 
+By default a run cuts its `workflow/*` integration branch from `main` (or `master`) and returns you to
+the branch you started on. To build on a different trunk, set `git.base_branch`:
+
+```json
+{ "git": { "base_branch": "develop" } }
+```
+
+in `.bot/.control/settings.json`. The branch must already exist — dotbot fails fast rather than
+silently falling back to `main`. Runs warn when the configured base differs from your checked-out
+branch.
+
 ## MCP Tools
 
 The dotbot MCP server exposes 31 tools, auto-discovered from `src/mcp/tools/`:

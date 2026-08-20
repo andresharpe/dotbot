@@ -107,7 +107,7 @@ function Read-WorktreeMap {
     $path = Get-WorktreeMapPath -BotRoot $BotRoot
     if (-not (Test-Path $path)) { return @{} }
     try {
-        $content = Get-Content $path -Raw
+        $content = Get-Content -LiteralPath $path -Raw
         if ([string]::IsNullOrWhiteSpace($content)) { return @{} }
         $json = $content | ConvertFrom-Json
         $map = @{}
@@ -134,7 +134,7 @@ function Write-WorktreeMap {
     $tempFile = "$path.tmp"
     for ($r = 0; $r -lt 3; $r++) {
         try {
-            $Map | ConvertTo-Json -Depth 10 | Set-Content -Path $tempFile -Encoding utf8NoBOM -NoNewline
+            $Map | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $tempFile -Encoding utf8NoBOM -NoNewline
             Move-Item -Path $tempFile -Destination $path -Force -ErrorAction Stop
             return
         } catch {
@@ -218,16 +218,22 @@ function Assert-OnBaseBranch {
     <#
     .SYNOPSIS
     Ensure the main repo is checked out on the specified branch (or the canonical
-    main/master if none is specified). Checks out the branch if not already on it.
+    base branch if none is specified). Checks out the branch if not already on it.
     Throws if the branch cannot be found or checked out.
     Returns the confirmed base branch name.
+
+    .PARAMETER BotRoot
+    Optional. Forwarded to Resolve-MainBranch so the configured git.base_branch is
+    honoured when -BranchName is omitted. Without it the fallback can only ever
+    resolve main/master, which silently defeats a project's configured trunk.
     #>
     param(
         [Parameter(Mandatory)][string]$ProjectRoot,
-        [string]$BranchName
+        [string]$BranchName,
+        [string]$BotRoot
     )
     if (-not $BranchName) {
-        $BranchName = Resolve-MainBranch -ProjectRoot $ProjectRoot
+        $BranchName = Resolve-MainBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot
     }
     if (-not $BranchName) {
         throw "Cannot find base branch in $ProjectRoot"
@@ -240,12 +246,140 @@ function Assert-OnBaseBranch {
         }
     }
     if ($currentBranch -ne $BranchName) {
-        git -C $ProjectRoot checkout $BranchName 2>&1 | Out-Null
+        $checkoutOutput = git -C $ProjectRoot checkout $BranchName 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to checkout $BranchName in $ProjectRoot (currently on: $currentBranch)"
+            $reason = $checkoutOutput.Trim()
+            $detail = if ($reason) { ": $reason" } else { "" }
+            throw "Failed to checkout $BranchName in $ProjectRoot (currently on: $currentBranch)$detail"
         }
     }
     return $BranchName
+}
+
+function Resolve-TaskMergeTarget {
+    <#
+    .SYNOPSIS
+    Decide which branch a completed task should be integrated into.
+
+    .DESCRIPTION
+    The worktree-map records a base_branch when the task worktree is created. That
+    value used to be authoritative forever, which meant a run whose checkout had
+    moved on — or a stale entry reused across runs — silently integrated the task
+    into whatever was recorded, typically the trunk. Precedence, highest first:
+
+      1. RequestedBaseBranch — the caller (a workflow run) knows its integration
+         branch. Most specific wins, and the stale record is reconciled.
+      2. A configured git.base_branch — an explicit operator declaration. It must
+         outrank adoption, or pointing dotbot at a non-default trunk would be
+         silently undone whenever the checkout happened to sit elsewhere (#466).
+         Delegated to Resolve-DotbotBaseBranch so a configured-but-missing branch
+         still fails fast.
+      3. The recorded base, when it already equals the checked-out branch.
+      4. The checked-out branch, when it differs from the record: the operator's
+         branch is treated as the truth and the record is reconciled. Deliberate
+         precedence decision — a checkout the operator moved is a stronger signal
+         than a value written when the worktree was created.
+      5. The recorded base, when HEAD is detached (no branch to adopt) or when the
+         checkout sits on a task/* branch (never a valid integration target).
+      6. Resolve-MainBranch, when nothing was recorded.
+
+    Adoption lives here and never inside Resolve-MainBranch / Resolve-DotbotBaseBranch:
+    those must stay HEAD-blind so they remain safe to call while the main repo is on
+    a task branch.
+
+    .OUTPUTS
+    Hashtable with: branch, source ('requested'|'recorded'|'adopted'|'resolved'),
+    recorded (the map's value, or $null), reason (human-readable, for logging).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [string]$BotRoot,
+        $Entry,
+        [string]$RequestedBaseBranch
+    )
+
+    $recorded = $null
+    if ($Entry -and $Entry.base_branch) { $recorded = [string]$Entry.base_branch }
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedBaseBranch)) {
+        $why = if ($recorded -and $recorded -ne $RequestedBaseBranch) {
+            "caller supplied '$RequestedBaseBranch'; worktree-map recorded '$recorded'"
+        } else {
+            "caller supplied '$RequestedBaseBranch'"
+        }
+        return @{ branch = $RequestedBaseBranch; source = 'requested'; recorded = $recorded; reason = $why }
+    }
+
+    # A configured git.base_branch is an operator declaration, not an inference, so it
+    # outranks the checkout. Resolve-DotbotBaseBranch validates it and throws when the
+    # configured branch does not exist, which is the #466 fail-fast contract.
+    $configuredBase = $null
+    if ($BotRoot -and (Get-Command Get-MergedSettings -ErrorAction SilentlyContinue)) {
+        $merged = Get-MergedSettings -BotRoot $BotRoot
+        if ($merged -and $merged.PSObject.Properties['git'] -and $merged.git -and $merged.git.PSObject.Properties['base_branch']) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$merged.git.base_branch)) {
+                $configuredBase = Resolve-DotbotBaseBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot
+            }
+        }
+    }
+    if ($configuredBase) {
+        return @{ branch = $configuredBase; source = 'configured'; recorded = $recorded
+                  reason = "git.base_branch is configured as '$configuredBase'" }
+    }
+
+    $rawCurrent = git -C $ProjectRoot rev-parse --abbrev-ref HEAD 2>$null
+    $currentBranch = if ($rawCurrent) { "$rawCurrent".Trim() } else { '' }
+    $isDetached = ($currentBranch -eq 'HEAD' -or [string]::IsNullOrWhiteSpace($currentBranch))
+
+    if ($recorded) {
+        if ($currentBranch -eq $recorded) {
+            return @{ branch = $recorded; source = 'recorded'; recorded = $recorded
+                      reason = "worktree-map base '$recorded' matches the checkout" }
+        }
+        if ($isDetached) {
+            return @{ branch = $recorded; source = 'recorded'; recorded = $recorded
+                      reason = "HEAD is detached; using the recorded base '$recorded'" }
+        }
+        if ($currentBranch -like 'task/*') {
+            return @{ branch = $recorded; source = 'recorded'; recorded = $recorded
+                      reason = "checkout is on task branch '$currentBranch'; not a valid integration target, using recorded base '$recorded'" }
+        }
+        return @{ branch = $currentBranch; source = 'adopted'; recorded = $recorded
+                  reason = "worktree-map recorded '$recorded' but the checkout is on '$currentBranch'; adopting the checked-out branch" }
+    }
+
+    $resolved = Resolve-MainBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot
+    return @{ branch = $resolved; source = 'resolved'; recorded = $null
+              reason = "no base recorded for this worktree; resolved '$resolved'" }
+}
+
+function Update-TaskWorktreeBaseBranch {
+    <#
+    .SYNOPSIS
+    Reconcile the base_branch recorded for a task worktree, under the map lock.
+
+    .DESCRIPTION
+    Keeps a stale record from surviving a retry. New-TaskWorktree only writes a map
+    entry when the task id is absent, so without this the recorded base is never
+    corrected once written.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TaskId,
+        [Parameter(Mandatory)][string]$BaseBranch,
+        [string]$BotRoot
+    )
+    Invoke-WorktreeMapLocked -BotRoot $BotRoot -Action {
+        $lockedMap = Read-WorktreeMap -BotRoot $BotRoot
+        if (-not $lockedMap.ContainsKey($TaskId)) { return }
+        $lockedEntry = $lockedMap[$TaskId]
+        if ($lockedEntry -is [hashtable]) {
+            $lockedEntry['base_branch'] = $BaseBranch
+        } else {
+            $lockedEntry | Add-Member -NotePropertyName 'base_branch' -NotePropertyValue $BaseBranch -Force
+        }
+        $lockedMap[$TaskId] = $lockedEntry
+        Write-WorktreeMap -Map $lockedMap -BotRoot $BotRoot
+    }
 }
 
 # ── Cross-process mutual exclusion ───────────────────────────────────────────
@@ -565,11 +699,6 @@ function Ensure-DotbotWorktreeExcludes {
         '.bot/.control/'
         '.bot/.handoffs'
         '.bot/.handoffs/'
-        '.bot/workspace/tasks'
-        '.bot/workspace/tasks/'
-        '.bot/content/'
-        '.bot/hooks/'
-        '.bot/settings/'
         $markerEnd
     )
 
@@ -581,7 +710,7 @@ function Ensure-DotbotWorktreeExcludes {
         if ($existing -and -not $existing.EndsWith("`n")) { $existing += "`n" }
         $existing += ($blockLines -join "`n")
     }
-    Set-Content -Path $excludePath -Value $existing -Encoding utf8NoBOM
+    Set-Content -LiteralPath $excludePath -Value $existing -Encoding utf8NoBOM
 }
 
 function Set-DotbotMcpServerJson {
@@ -621,7 +750,7 @@ function Set-DotbotMcpServerJson {
 
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-    $mcpConfig | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
+    $mcpConfig | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
 }
 
 function Set-DotbotCodexMcpConfig {
@@ -650,7 +779,7 @@ function Set-DotbotCodexMcpConfig {
     ) + $envLines + @('')
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-    Set-Content -Path $Path -Value ($lines -join "`n") -Encoding utf8NoBOM
+    Set-Content -LiteralPath $Path -Value ($lines -join "`n") -Encoding utf8NoBOM
 }
 
 function Set-DotbotAntigravityMcpConfig {
@@ -687,7 +816,7 @@ function Set-DotbotAntigravityMcpConfig {
 
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-    $settings | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
+    $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
 }
 
 function Set-DotbotOpenCodeMcpConfig {
@@ -731,7 +860,7 @@ function Set-DotbotOpenCodeMcpConfig {
 
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-    $config | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8NoBOM
+    $config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
 }
 
 function Copy-DotbotProviderContent {
@@ -850,6 +979,10 @@ function Initialize-DotbotWorktreeExecutionEnvironment {
     Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'hooks') -Destination (Join-Path $worktreeBotRoot 'hooks')
     Copy-DotbotDirectoryContents -Source (Join-Path $frameworkRoot 'content/settings') -Destination (Join-Path $worktreeBotRoot 'settings')
     Copy-DotbotDirectoryContents -Source (Join-Path $BotRoot 'settings') -Destination (Join-Path $worktreeBotRoot 'settings')
+
+    foreach ($name in @('content', 'hooks', 'settings')) {
+        Set-Content -LiteralPath (Join-Path (Join-Path $worktreeBotRoot $name) '.gitignore') -Value '*' -Encoding utf8NoBOM
+    }
 
     Copy-DotbotProviderContent -WorktreePath $WorktreePath -BotRoot $BotRoot -FrameworkRoot $frameworkRoot
     Set-DotbotMcpServerJson -Path (Join-Path $WorktreePath '.mcp.json') -FrameworkRoot $frameworkRoot -WorktreePath $WorktreePath -StateRoot $ProjectRoot
@@ -1200,7 +1333,7 @@ function Restore-DotbotTaskStateBackup {
         $restorePath = Join-Path $tasksRoot ($key -replace '/', [System.IO.Path]::DirectorySeparatorChar)
         $restoreDir = Split-Path $restorePath -Parent
         if (-not (Test-Path -LiteralPath $restoreDir)) {
-            New-Item -LiteralPath $restoreDir -ItemType Directory -Force | Out-Null
+            New-Item -Path $restoreDir -ItemType Directory -Force | Out-Null
         }
         Write-TaskFileRawAtomic -Path $restorePath -RawContent $TaskBackup[$key] -TaskId (Get-BackupTaskIdFromJson $TaskBackup[$key])
     }
@@ -1415,14 +1548,14 @@ function New-TaskWorktree {
     $worktreeDir = Join-Path $repoParent "worktrees/$repoName"
     $worktreePath = Join-Path $worktreeDir "task-$shortId-$slug"
 
-    if (-not (Test-Path $worktreeDir)) {
+    if (-not (Test-Path -LiteralPath $worktreeDir)) {
         New-Item -Path $worktreeDir -ItemType Directory -Force | Out-Null
     }
 
     # If worktree directory already exists, validate it's a real worktree
-    if (Test-Path $worktreePath) {
+    if (Test-Path -LiteralPath $worktreePath) {
         $gitMarker = Join-Path $worktreePath ".git"
-        if (Test-Path $gitMarker) {
+        if (Test-Path -LiteralPath $gitMarker) {
             Repair-TaskWorktreeProductWorkspace -WorktreePath $worktreePath -BotRoot $BotRoot
             Initialize-DotbotWorktreeExecutionEnvironment -WorktreePath $worktreePath -ProjectRoot $ProjectRoot -BotRoot $BotRoot
             # Valid worktree — ensure map entry exists and return it
@@ -1449,10 +1582,10 @@ function New-TaskWorktree {
         } else {
             # Stale leftover directory (no .git marker) — remove and recreate
             Assert-PathWithinBounds -Path $worktreePath -ExpectedRoot $worktreeDir
-            Remove-Item -Path $worktreePath -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $worktreePath -Recurse -Force -ErrorAction SilentlyContinue
             # Also prune git's worktree list so it doesn't think it still exists
             git -C $ProjectRoot worktree prune 2>$null
-            if (Test-Path $worktreePath) {
+            if (Test-Path -LiteralPath $worktreePath) {
                 return @{
                     worktree_path = $worktreePath
                     branch_name   = $branchName
@@ -1493,8 +1626,8 @@ function New-TaskWorktree {
 
         # Sanity check: verify worktree was actually created
         $gitMarker = Join-Path $worktreePath ".git"
-        if (-not (Test-Path $gitMarker)) {
-            throw "git worktree add succeeded but .git marker not found in $worktreePath"
+        if (-not (Test-Path -LiteralPath $gitMarker)) {
+            throw "Worktree verification failed: no .git marker at $gitMarker after git worktree add reported success"
         }
         if ($baseIsUnborn) {
             $sourceBotIgnore = Join-Path $BotRoot ".gitignore"
@@ -1515,9 +1648,12 @@ function New-TaskWorktree {
         # 1. .bot/.control/ — gitignored, won't exist in worktree
         $worktreeControlDir = Join-Path $worktreePath ".bot/.control"
         $mainControlDir = Join-Path $BotRoot ".control"
-        if (-not (Test-Path $worktreeControlDir)) {
+        if (-not (Test-Path -LiteralPath $mainControlDir)) {
+            New-Item -Path $mainControlDir -ItemType Directory -Force | Out-Null
+        }
+        if (-not (Test-Path -LiteralPath $worktreeControlDir)) {
             $controlParent = Split-Path $worktreeControlDir -Parent
-            if (-not (Test-Path $controlParent)) {
+            if (-not (Test-Path -LiteralPath $controlParent)) {
                 New-Item -Path $controlParent -ItemType Directory -Force | Out-Null
             }
             New-DirectoryLink -Path $worktreeControlDir -Target $mainControlDir
@@ -1526,12 +1662,15 @@ function New-TaskWorktree {
         # 2. .bot/workspace/tasks/ — has tracked .gitkeep files, replace with junction
         $worktreeTasksDir = Join-Path $worktreePath ".bot/workspace/tasks"
         $mainTasksDir = Join-Path $BotRoot "workspace/tasks"
-        if (Test-Path $worktreeTasksDir) {
+        if (-not (Test-Path -LiteralPath $mainTasksDir)) {
+            New-Item -Path $mainTasksDir -ItemType Directory -Force | Out-Null
+        }
+        if (Test-Path -LiteralPath $worktreeTasksDir) {
             Assert-PathWithinBounds -Path $worktreeTasksDir -ExpectedRoot $worktreePath
-            Remove-Item -Path $worktreeTasksDir -Recurse -Force
+            Remove-Item -LiteralPath $worktreeTasksDir -Recurse -Force
         }
         $tasksParent = Split-Path $worktreeTasksDir -Parent
-        if (-not (Test-Path $tasksParent)) {
+        if (-not (Test-Path -LiteralPath $tasksParent)) {
             New-Item -Path $tasksParent -ItemType Directory -Force | Out-Null
         }
         New-DirectoryLink -Path $worktreeTasksDir -Target $mainTasksDir
@@ -1539,28 +1678,28 @@ function New-TaskWorktree {
         # 3. .bot/hooks/ — verify scripts, commit-bot-state, dev lifecycle
         $worktreeHooksDir = Join-Path $worktreePath ".bot/hooks"
         $mainHooksDir = Join-Path $BotRoot "hooks"
-        if ((Test-Path $mainHooksDir) -and -not (Test-Path $worktreeHooksDir)) {
+        if ((Test-Path -LiteralPath $mainHooksDir) -and -not (Test-Path -LiteralPath $worktreeHooksDir)) {
             New-DirectoryLink -Path $worktreeHooksDir -Target $mainHooksDir
         }
 
         # 4. .bot/systems/ — MCP server, runtime, UI
         $worktreeSystemsDir = Join-Path $worktreePath ".bot/systems"
         $mainSystemsDir = Join-Path $BotRoot "systems"
-        if ((Test-Path $mainSystemsDir) -and -not (Test-Path $worktreeSystemsDir)) {
+        if ((Test-Path -LiteralPath $mainSystemsDir) -and -not (Test-Path -LiteralPath $worktreeSystemsDir)) {
             New-DirectoryLink -Path $worktreeSystemsDir -Target $mainSystemsDir
         }
 
         # 5. .bot/recipes/ — recipes, research methodologies, standards
         $worktreeRecipesDir = Join-Path $worktreePath ".bot/recipes"
         $mainRecipesDir = Join-Path $BotRoot "recipes"
-        if ((Test-Path $mainRecipesDir) -and -not (Test-Path $worktreeRecipesDir)) {
+        if ((Test-Path -LiteralPath $mainRecipesDir) -and -not (Test-Path -LiteralPath $worktreeRecipesDir)) {
             New-DirectoryLink -Path $worktreeRecipesDir -Target $mainRecipesDir
         }
 
         # 6. .bot/settings/ — settings defaults
         $worktreeSettingsDir = Join-Path $worktreePath ".bot/settings"
         $mainSettingsDir = Join-Path $BotRoot "settings"
-        if ((Test-Path $mainSettingsDir) -and -not (Test-Path $worktreeSettingsDir)) {
+        if ((Test-Path -LiteralPath $mainSettingsDir) -and -not (Test-Path -LiteralPath $worktreeSettingsDir)) {
             New-DirectoryLink -Path $worktreeSettingsDir -Target $mainSettingsDir
         }
 
@@ -1631,7 +1770,8 @@ function Complete-TaskWorktree {
         # that only needs to reach origin once — after the last task — instead
         # of on every single task completion (each push fires the remote's
         # full CI pipeline).
-        [switch]$SkipRemotePush
+        [switch]$SkipRemotePush,
+        [string]$BaseBranch
     )
 
     $map = Read-WorktreeMap -BotRoot $BotRoot
@@ -1661,10 +1801,19 @@ function Complete-TaskWorktree {
     $mergeLock = Enter-WorkspaceMergeLock -BotRoot $BotRoot
     try {
     try {
-        # Determine target base branch — prefer the value recorded at worktree creation
-        # (immune to HEAD drift on the main repo); fall back to explicit main/master lookup.
-        $baseBranch = $entry.base_branch ?? (Resolve-MainBranch -ProjectRoot $ProjectRoot -BotRoot $BotRoot)
+        $mergeTarget = Resolve-TaskMergeTarget -ProjectRoot $ProjectRoot -BotRoot $BotRoot `
+            -Entry $entry -RequestedBaseBranch $BaseBranch
+        $baseBranch = $mergeTarget.branch
         if (-not $baseBranch) { throw "Cannot determine base branch for task $TaskId" }
+
+        $targetReconciled = $false
+        if ($mergeTarget.recorded -and $mergeTarget.recorded -ne $baseBranch) {
+            $targetReconciled = $true
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Warn -Message "Task $TaskId integration target reconciled: $($mergeTarget.reason)"
+            }
+            Update-TaskWorktreeBaseBranch -TaskId $TaskId -BaseBranch $baseBranch -BotRoot $BotRoot
+        }
 
         # Kill any processes still running in the worktree (dev servers, file watchers, etc.)
         $killedCount = Stop-WorktreeProcesses -WorktreePath $worktreePath
@@ -1741,11 +1890,17 @@ function Complete-TaskWorktree {
         # Stash remaining dirty state EXCLUDING task files (task state is managed by backup-restore).
         # Including task files in the stash causes stale state to be reintroduced after the state commit
         # when git stash pop runs, contaminating the next task's backup.
+        $stashRefBefore = git -C $ProjectRoot rev-parse --verify --quiet refs/stash 2>$null
         $stashOutput = git -C $ProjectRoot stash push -u -m "dotbot-pre-merge-$TaskId" -- `
             '.' `
-            ':!.bot/workspace/tasks/' `
-            ':!.bot/workspace/decisions/' 2>&1
-        $wasStashed = $LASTEXITCODE -eq 0 -and "$stashOutput" -notmatch 'No local changes'
+            ':!.bot/workspace/tasks/' 2>&1
+        $stashRefAfter = git -C $ProjectRoot rev-parse --verify --quiet refs/stash 2>$null
+        $wasStashed = [bool]$stashRefAfter -and ("$stashRefAfter".Trim() -ne "$stashRefBefore".Trim())
+        if (-not $wasStashed -and "$stashOutput" -notmatch 'No local changes') {
+            if (Get-Command Write-BotLog -ErrorAction SilentlyContinue) {
+                Write-BotLog -Level Debug -Message "Pre-merge stash created nothing for task $TaskId : $(("$stashOutput").Trim())"
+            }
+        }
 
         # Assert main repo is on the base branch after task state is backed up
         # and non-task dirty state is stashed. This lets detached HEAD checkouts
@@ -1877,7 +2032,10 @@ function Complete-TaskWorktree {
 
         # Commit current shared runtime state on main. Product workspace files
         # are branch-local and are replayed through Apply-TaskBranchPatch above.
-        git -C $ProjectRoot add .bot/workspace/tasks/ .bot/workspace/decisions/ 2>$null
+        $stateAddOutput = git -C $ProjectRoot add .bot/workspace/tasks/ .bot/workspace/decisions/ 2>&1
+        if ($LASTEXITCODE -ne 0 -and (Get-Command Write-BotLog -ErrorAction SilentlyContinue)) {
+            Write-BotLog -Level Warn -Message "Could not stage task state: $(@($stateAddOutput | ForEach-Object { "$_" }) -join ' ')"
+        }
         $stateStaged = git -C $ProjectRoot diff --cached --name-only 2>$null
         if ($stateStaged) {
             $stateCommitOutput = git -C $ProjectRoot `
@@ -1976,10 +2134,16 @@ function Complete-TaskWorktree {
             Write-WorktreeMap -Map $lockedMap -BotRoot $BotRoot
         }
 
+        $mergedMessage = if ($targetReconciled) {
+            "Squash-merged to $baseBranch and cleaned up (target reconciled: $($mergeTarget.reason))"
+        } else {
+            "Squash-merged to $baseBranch and cleaned up"
+        }
+
         return @{
             success        = $true
             merge_commit   = $mergeCommit
-            message        = "Squash-merged to $baseBranch and cleaned up"
+            message        = $mergedMessage
             conflict_files = @()
             failure_kind   = $null
             failure_detail = ""
@@ -2197,7 +2361,7 @@ function Remove-OrphanWorktrees {
         Get-ChildItem -Path $dirPath -Filter '*.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
             $filePath = $_.FullName
             try {
-                $c = Get-Content -Path $filePath -Raw | ConvertFrom-Json
+                $c = Get-Content -LiteralPath $filePath -Raw | ConvertFrom-Json
                 if ($c.id) { $null = $activeIds.Add([string]$c.id) }
             } catch { Write-BotLog -Level Debug -Message "Failed to read task file $filePath" -Exception $_ }
         }
@@ -2217,7 +2381,7 @@ function Remove-OrphanWorktrees {
             ForEach-Object {
                 $filePath = $_.FullName
                 try {
-                    $c = Get-Content -Path $filePath -Raw | ConvertFrom-Json
+                    $c = Get-Content -LiteralPath $filePath -Raw | ConvertFrom-Json
                     if ($c.id -and $canonicalActiveStatuses.Contains([string]$c.status)) {
                         $null = $activeIds.Add([string]$c.id)
                     }
@@ -2312,6 +2476,7 @@ Export-ModuleMember -Function @(
     'Resolve-DotbotBaseBranch'
     'Resolve-MainBranch'
     'Assert-OnBaseBranch'
+    'Update-TaskWorktreeBaseBranch'
     'Stop-WorktreeProcesses'
     'Invoke-Git'
     'Remove-Junctions'

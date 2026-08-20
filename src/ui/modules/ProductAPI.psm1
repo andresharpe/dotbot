@@ -610,7 +610,7 @@ function Resolve-PhaseStatusFromOutputs {
     if ($Phase.required_outputs) {
         $allExist = $true
         foreach ($f in $Phase.required_outputs) {
-            if (-not (Test-Path (Join-Path $productDir $f))) { $allExist = $false; break }
+            if (-not (Test-Path -LiteralPath (Join-Path $productDir $f))) { $allExist = $false; break }
         }
         if ($allExist) { return "completed" }
         return "pending"

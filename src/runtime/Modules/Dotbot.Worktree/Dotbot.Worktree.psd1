@@ -22,6 +22,7 @@
         'Resolve-DotbotBaseBranch'
         'Resolve-MainBranch'
         'Assert-OnBaseBranch'
+        'Update-TaskWorktreeBaseBranch'
         'Stop-WorktreeProcesses'
         'Invoke-Git'
         'Remove-Junctions'

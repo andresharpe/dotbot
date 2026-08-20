@@ -22,7 +22,7 @@
 param(
     [string]$Mothership,
 
-    [Alias('mothership-key')]
+    [Alias('mothership-key', 'MothershipKey')]
     [string]$MothershipApiKey
 )
 

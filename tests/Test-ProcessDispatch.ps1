@@ -274,8 +274,94 @@ if (Test-Path $dispatcherScript) {
     Assert-True -Name "dotbot.ps1 propagates workflow-run exit codes" `
         -Condition ($dispatcherCliContent -match 'LASTEXITCODE\s*=\s*0' -and $dispatcherCliContent -match 'exit \$LASTEXITCODE') `
         -Message "dotbot run should return workflow-run.ps1 failures to shell callers"
+
+    $dispatcherAst = [System.Management.Automation.Language.Parser]::ParseFile($dispatcherScript, [ref]$null, [ref]$null)
+    $extractedFns = 0
+    foreach ($fnName in @('ConvertTo-DotbotParameterName', 'Get-WorkflowRunInvocation')) {
+        $fnAst = $dispatcherAst.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq $fnName
+        }, $true)
+        if ($fnAst) {
+            . ([scriptblock]::Create($fnAst.Extent.Text))
+            $extractedFns++
+        }
+    }
+
+    Assert-Equal -Name "dispatcher exposes both flag-parsing functions for extraction" `
+        -Expected 2 -Actual $extractedFns
+
+    if ($extractedFns -eq 2) {
+        $swallowed = Get-WorkflowRunInvocation -RunArgs @('smoke-test', '--poll-interval-ms', '--watch')
+        Assert-True -Name "--poll-interval-ms does not swallow the flag that follows it" `
+            -Condition ([bool]$swallowed.Parameters['Watch']) `
+            -Message "--watch must still bind when it follows a valueless --poll-interval-ms"
+        Assert-Equal -Name "--poll-interval-ms without a value falls back to the default" `
+            -Expected 1000 -Actual $swallowed.Parameters['PollIntervalMs']
+
+        $withValue = Get-WorkflowRunInvocation -RunArgs @('smoke-test', '--poll-interval-ms', '500', '--watch')
+        Assert-Equal -Name "--poll-interval-ms still reads its value when given one" `
+            -Expected 500 -Actual $withValue.Parameters['PollIntervalMs']
+        Assert-True -Name "--poll-interval-ms <ms> leaves a following --watch bound" `
+            -Condition ([bool]$withValue.Parameters['Watch']) `
+            -Message "Regression: the valued form must keep parsing the rest of the line"
+    }
 } else {
     Write-TestResult -Name "dotbot.ps1 workflow run dispatch" -Status Skip -Message "Script not found at $dispatcherScript"
+}
+
+Write-Host ""
+
+Write-Host "  CLI RUNTIME PRECONDITION" -ForegroundColor Cyan
+Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
+
+$precondProject = $null
+try {
+    $precondProject = New-TestProjectFromGolden -Flavor 'start-from-prompt' -Prefix 'dotbot-test-runtime-precond'
+
+    Push-Location $precondProject.ProjectRoot
+    try {
+        $precondOut = & pwsh -NoProfile -ExecutionPolicy Bypass -File $dispatcherScript run smoke-test --no-auto-runtime 2>&1
+        $precondCode = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    $precondOut = $precondOut | Out-String
+
+    Assert-Equal -Name "dotbot run --no-auto-runtime exits non-zero without --watch when no runtime is up" `
+        -Expected 1 -Actual $precondCode -Message $precondOut
+
+    Assert-True -Name "dotbot run --no-auto-runtime says the runtime is not running" `
+        -Condition ($precondOut -match 'runtime is not running') `
+        -Message $precondOut
+
+    $mintedRuns = @(Get-ChildItem -LiteralPath (Join-Path $precondProject.BotDir 'workspace/tasks/workflow-runs') -Directory -ErrorAction SilentlyContinue)
+    Assert-Equal -Name "dotbot run --no-auto-runtime mints no WorkflowRun" `
+        -Expected 0 -Actual $mintedRuns.Count `
+        -Message "The runtime check must run before Initialize-WorkflowRun so a refused run leaves no tasks or branches behind"
+
+    Push-Location $precondProject.ProjectRoot
+    try {
+        $tasksPrecondOut = & pwsh -NoProfile -ExecutionPolicy Bypass -File $dispatcherScript tasks run --no-auto-runtime 2>&1
+        $tasksPrecondCode = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    $tasksPrecondOut = $tasksPrecondOut | Out-String
+
+    Assert-Equal -Name "dotbot tasks run --no-auto-runtime exits non-zero when no runtime is up" `
+        -Expected 1 -Actual $tasksPrecondCode -Message $tasksPrecondOut
+
+    Assert-True -Name "dotbot tasks run --no-auto-runtime says the runtime is not running" `
+        -Condition ($tasksPrecondOut -match 'runtime is not running') `
+        -Message "The opt-out must refuse with the same message as dotbot run, not a parameter-binding error"
+
+    Assert-True -Name "dotbot tasks run --no-auto-runtime starts no task runner" `
+        -Condition (-not ($tasksPrecondOut -match 'runner started')) `
+        -Message $tasksPrecondOut
+} finally {
+    if ($precondProject) { Remove-TestProject -Path $precondProject.ProjectRoot }
 }
 
 Write-Host ""

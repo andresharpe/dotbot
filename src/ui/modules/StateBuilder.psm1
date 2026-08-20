@@ -926,7 +926,7 @@ function Get-BotState {
         $anyStopPending = @(Get-ChildItem -Path $processesDir -Filter "*.stop" -File -ErrorAction SilentlyContinue).Count -gt 0
     }
     $controlSignals = @{
-        pause = Test-Path (Join-Path $controlDir "pause.signal")
+        pause = Test-Path -LiteralPath (Join-Path $controlDir "pause.signal")
         stop = $anyStopPending
         resume = $false
         running = $isActuallyRunning

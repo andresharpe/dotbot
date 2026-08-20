@@ -130,6 +130,10 @@ function Initialize-DotbotTaskWorktreeForProcess {
     $wtInfo = Get-TaskWorktreeInfo -TaskId $Task.id -BotRoot $BotRoot
     if ($wtInfo -and (Test-Path $wtInfo.worktree_path)) {
         Write-Status "Using worktree: $($wtInfo.worktree_path)" -Type Info
+        if (-not [string]::IsNullOrWhiteSpace($BaseBranch) -and $wtInfo.base_branch -ne $BaseBranch) {
+            Write-Status "Reconciling recorded base '$($wtInfo.base_branch)' to '$BaseBranch' for reused worktree" -Type Info
+            Update-TaskWorktreeBaseBranch -TaskId $Task.id -BaseBranch $BaseBranch -BotRoot $BotRoot
+        }
         return @{
             skipped       = $false
             worktree_path = $wtInfo.worktree_path
@@ -138,7 +142,7 @@ function Initialize-DotbotTaskWorktreeForProcess {
         }
     }
 
-    $guardArgs = @{ ProjectRoot = $ProjectRoot }
+    $guardArgs = @{ ProjectRoot = $ProjectRoot; BotRoot = $BotRoot }
     if (-not [string]::IsNullOrWhiteSpace($BaseBranch)) { $guardArgs.BranchName = $BaseBranch }
     try { Assert-OnBaseBranch @guardArgs | Out-Null } catch {
         Write-Status "Branch guard warning: $($_.Exception.Message)" -Type Warn
@@ -1123,8 +1127,8 @@ if (Test-Path $standardsDir) {
     $standardsList = if ($standardsFiles) { "- " + ($standardsFiles -join "`n- ") } else { "No standards files found." }
 }
 $productDir = Join-Path (Join-Path $botRoot 'workspace') 'product'
-$productMission = if (Test-Path (Join-Path $productDir "mission.md")) { "Read the product mission and context from: .bot/workspace/product/mission.md" } else { "No product mission file found." }
-$entityModel = if (Test-Path (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
+$productMission = if (Test-Path -LiteralPath (Join-Path $productDir "mission.md")) { "Read the product mission and context from: .bot/workspace/product/mission.md" } else { "No product mission file found." }
+$entityModel = if (Test-Path -LiteralPath (Join-Path $productDir "entity-model.md")) { "Read the entity model design from: .bot/workspace/product/entity-model.md" } else { "No entity model file found." }
 
 # Dotbot.Task carries post-task hooks; Dotbot.Executor owns non-prompt
 # task execution.
@@ -1244,6 +1248,9 @@ if ($LASTEXITCODE -ne 0) {
 $processData.status = 'running'
 Write-ProcessFile -Id $procId -Data $processData
 
+$operatorBranch = (git -C $projectRoot symbolic-ref --quiet --short HEAD 2>$null) -as [string]
+$operatorBranch = if ($operatorBranch) { $operatorBranch.Trim() } else { '' }
+
 $integrationBranch = $null
 $resolvedBase = $null
 if ($RunId) {
@@ -1251,6 +1258,12 @@ if ($RunId) {
     if (-not $resolvedBase) {
         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "No base branch yet (unborn repo); skipping integration branch — first task uses an orphan worktree."
     } else {
+        if ($operatorBranch -and $operatorBranch -ne $resolvedBase) {
+            Write-Status "You are on '$operatorBranch' but the configured base is '$resolvedBase'; the integration branch will be created from '$resolvedBase'." -Type Warn
+            Write-Status "To base the run on your current branch, set git.base_branch to '$operatorBranch' in .bot/.control/settings.json." -Type Info
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Checked-out branch '$operatorBranch' differs from the configured base '$resolvedBase'; the integration branch is cut from '$resolvedBase'. Set git.base_branch in .bot/.control/settings.json to change it."
+        }
+
         $integrationSlug  = ConvertTo-WorktreeSlug -Text $WorkflowName
         $integrationShort = Get-ShortId -Id $RunId
         $integrationBranch = Get-WorktreeBranchName -Slug $integrationSlug -ShortId $integrationShort
@@ -1264,6 +1277,11 @@ if ($RunId) {
         Write-Status "Integration branch: $integrationBranch (off $resolvedBase)" -Type Info
         Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Integration branch $integrationBranch created off $resolvedBase; tasks will squash-merge into it."
     }
+}
+
+$baseBranchGuardArgs = @{ ProjectRoot = $projectRoot; BotRoot = $botRoot }
+if (-not [string]::IsNullOrWhiteSpace($integrationBranch)) {
+    $baseBranchGuardArgs.BranchName = $integrationBranch
 }
 
 $loopIteration = 0
@@ -1708,7 +1726,8 @@ try {
             if ($typeSuccess) {
                 $mergeTargetLabel = if ($integrationBranch) { $integrationBranch } else { 'main' }
                 Write-Status "Merging task branch to $mergeTargetLabel..." -Type Process
-                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot -SkipRemotePush:($null -ne $integrationBranch)
+                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot `
+                    -BaseBranch $integrationBranch -SkipRemotePush:($null -ne $integrationBranch)
                 if ($mergeResult.success) {
                     Write-Status "Merged: $($mergeResult.message)" -Type Complete
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to ${mergeTargetLabel}: $($task.name)"
@@ -1761,17 +1780,20 @@ try {
                 } catch { Write-BotLog -Level Debug -Message "Session operation failed" -Exception $_ }
 
                 if ($worktreePath) {
+                    $failedTip = if ($branchName) { git -C $projectRoot rev-parse --short $branchName 2>$null } else { $null }
                     try {
                         Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false | Out-Null
                         git -C $projectRoot worktree remove $worktreePath --force 2>$null
-                        if ($branchName) { git -C $projectRoot branch -D $branchName 2>$null }
                     } finally {
                         Invoke-WorktreeMapLocked -BotRoot $botRoot -Action {
                             $cleanupMap = Read-WorktreeMap -BotRoot $botRoot
                             $cleanupMap.Remove($task.id)
                             Write-WorktreeMap -Map $cleanupMap -BotRoot $botRoot
                         }
-                        try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                        try { Assert-OnBaseBranch @baseBranchGuardArgs | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                    }
+                    if ($branchName) {
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Branch $branchName preserved at $failedTip — inspect with: git log $branchName"
                     }
                 }
 
@@ -2286,7 +2308,8 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             if ($worktreePath) {
                 $mergeTargetLabel = if ($integrationBranch) { $integrationBranch } else { 'main' }
                 Write-Status "Merging task branch to $mergeTargetLabel..." -Type Process
-                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot -SkipRemotePush:($null -ne $integrationBranch)
+                $mergeResult = Complete-TaskWorktree -TaskId $task.id -ProjectRoot $projectRoot -BotRoot $botRoot `
+                    -BaseBranch $integrationBranch -SkipRemotePush:($null -ne $integrationBranch)
                 if ($mergeResult.success) {
                     Write-Status "Merged: $($mergeResult.message)" -Type Complete
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Squash-merged to ${mergeTargetLabel}: $($task.name)"
@@ -2370,24 +2393,32 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
             }
         } elseif ($taskTerminal) {
             # Issue #318: task settled into a terminal state other than done
-            # (skipped/cancelled/split). Clean up the worktree without
+            # (failed/skipped/cancelled/split). Clean up the worktree without
             # squash-merging — the work is intentionally abandoned (intentional
             # skip) or the agent already produced child tasks (split). Do NOT
-            # bump consecutive_failures — these are not failures.
+            # bump consecutive_failures — these are not failures. A 'failed'
+            # terminal keeps its branch so committed work stays recoverable.
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task ended in terminal state '$taskTerminalState': $($task.name) — cleaning worktree, no merge"
             if ($worktreePath) {
                 Write-Status "Cleaning up worktree for $taskTerminalState task..." -Type Info
+                $preserveTerminalBranch = ($taskTerminalState -eq 'failed')
+                $failedTip = if ($preserveTerminalBranch -and $branchName) { git -C $projectRoot rev-parse --short $branchName 2>$null } else { $null }
                 try {
                     Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false | Out-Null
                     git -C $projectRoot worktree remove $worktreePath --force 2>$null
-                    git -C $projectRoot branch -D $branchName 2>$null
+                    if (-not $preserveTerminalBranch) {
+                        git -C $projectRoot branch -D $branchName 2>$null
+                    }
                 } finally {
                     Invoke-WorktreeMapLocked -BotRoot $botRoot -Action {
                         $cleanupMap = Read-WorktreeMap -BotRoot $botRoot
                         $cleanupMap.Remove($task.id)
                         Write-WorktreeMap -Map $cleanupMap -BotRoot $botRoot
                     }
-                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                    try { Assert-OnBaseBranch @baseBranchGuardArgs | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                }
+                if ($preserveTerminalBranch -and $branchName) {
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Branch $branchName preserved at $failedTip — inspect with: git log $branchName"
                 }
             }
             $processData.heartbeat_status = "Terminal ($taskTerminalState): $($task.name)"
@@ -2395,13 +2426,13 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
         } else {
             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Task failed: $($task.name)"
 
-            # Clean up worktree for failed/skipped tasks
+            # Clean up the worktree for failed/skipped tasks; the task branch is preserved.
             if ($worktreePath) {
                 Write-Status "Cleaning up worktree for failed task..." -Type Info
+                $failedTip = if ($branchName) { git -C $projectRoot rev-parse --short $branchName 2>$null } else { $null }
                 try {
                     Remove-Junctions -WorktreePath $worktreePath -ErrorOnFailure $false | Out-Null
                     git -C $projectRoot worktree remove $worktreePath --force 2>$null
-                    git -C $projectRoot branch -D $branchName 2>$null
                 } finally {
                     # Map removal always runs even if junction/worktree cleanup throws (Fix: inconsistent registry)
                     Invoke-WorktreeMapLocked -BotRoot $botRoot -Action {
@@ -2410,7 +2441,10 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                         Write-WorktreeMap -Map $cleanupMap -BotRoot $botRoot
                     }
                     # Re-assert base branch after failed-task cleanup (Fix: wrong-branch merge)
-                    try { Assert-OnBaseBranch -ProjectRoot $projectRoot | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                    try { Assert-OnBaseBranch @baseBranchGuardArgs | Out-Null } catch { Write-BotLog -Level Warn -Message "Task operation failed" -Exception $_ }
+                }
+                if ($branchName) {
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Branch $branchName preserved at $failedTip — inspect with: git log $branchName"
                 }
             }
 
@@ -2555,23 +2589,34 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
     }
 
     if ($integrationBranch) {
-        try {
-            $integrationRemote = git -C $projectRoot remote get-url origin 2>$null
-            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($integrationRemote)) {
-                $pushOutput = git -C $projectRoot push -u origin $integrationBranch 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Status "Integration branch pushed: $integrationBranch" -Type Complete
-                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Integration branch $integrationBranch pushed to $($integrationRemote.Trim()). Open a PR into $resolvedBase."
+        $integrationAhead = 1
+        $integrationAheadOut = git -C $projectRoot rev-list --count "$resolvedBase..$integrationBranch" 2>$null
+        if ($LASTEXITCODE -eq 0 -and "$integrationAheadOut".Trim() -match '^\d+$') {
+            $integrationAhead = [int]"$integrationAheadOut".Trim()
+        }
+
+        if ($integrationAhead -gt 0) {
+            try {
+                $integrationRemote = git -C $projectRoot remote get-url origin 2>$null
+                if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($integrationRemote)) {
+                    $pushOutput = git -C $projectRoot push -u origin $integrationBranch 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Status "Integration branch pushed: $integrationBranch" -Type Complete
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Integration branch $integrationBranch pushed to $($integrationRemote.Trim()). Open a PR into $resolvedBase."
+                    } else {
+                        $pushError = ($pushOutput | Out-String).Trim()
+                        Write-Status "Integration branch push failed; branch preserved locally." -Type Warn
+                        Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Failed to push integration branch $integrationBranch (preserved locally): $pushError. Push manually with: git push -u origin $integrationBranch"
+                    }
                 } else {
-                    $pushError = ($pushOutput | Out-String).Trim()
-                    Write-Status "Integration branch push failed; branch preserved locally." -Type Warn
-                    Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Failed to push integration branch $integrationBranch (preserved locally): $pushError. Push manually with: git push -u origin $integrationBranch"
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "No remote configured; integration branch $integrationBranch preserved locally. Push it and open a PR into $resolvedBase when ready."
                 }
-            } else {
-                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "No remote configured; integration branch $integrationBranch preserved locally. Push it and open a PR into $resolvedBase when ready."
+            } catch {
+                Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Integration branch push step failed (branch $integrationBranch preserved locally): $($_.Exception.Message)"
             }
-        } catch {
-            Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Integration branch push step failed (branch $integrationBranch preserved locally): $($_.Exception.Message)"
+        } else {
+            Write-Status "Integration branch $integrationBranch has no commits over $resolvedBase; not pushed." -Type Info
+            Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Integration branch $integrationBranch has no commits over $resolvedBase; not pushed."
         }
 
         if ($resolvedBase) {
@@ -2582,6 +2627,46 @@ Work on this task autonomously. When complete, ensure you call ``task_set_status
                 }
             } catch {
                 Write-BotLog -Level Warn -Message "Failed to restore working copy to base branch '$resolvedBase'" -Exception $_
+            }
+        }
+
+        if ($integrationAhead -eq 0) {
+            $integrationStillTargeted = $true
+            try {
+                $runWorktreeMap = Read-WorktreeMap -BotRoot $botRoot
+                $integrationStillTargeted = $false
+                foreach ($mapKey in @($runWorktreeMap.Keys)) {
+                    if ([string]$runWorktreeMap[$mapKey].base_branch -eq $integrationBranch) {
+                        $integrationStillTargeted = $true
+                        break
+                    }
+                }
+            } catch {
+                Write-BotLog -Level Warn -Message "Could not read the worktree map before reaping $integrationBranch; keeping the branch" -Exception $_
+                $integrationStillTargeted = $true
+            }
+
+            if ($integrationStillTargeted) {
+                Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Integration branch $integrationBranch kept — a retained worktree still merges into it."
+            } else {
+                $integrationDeleteOut = git -C $projectRoot branch -d $integrationBranch 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Empty integration branch $integrationBranch removed (no commits over $resolvedBase)."
+                } else {
+                    Write-BotLog -Level Warn -Message "Could not remove empty integration branch $integrationBranch : $(($integrationDeleteOut | Out-String).Trim())"
+                }
+            }
+        }
+    }
+
+    if ($operatorBranch) {
+        $endBranch = (git -C $projectRoot rev-parse --abbrev-ref HEAD 2>$null) -as [string]
+        $endBranch = if ($endBranch) { $endBranch.Trim() } else { '' }
+        if ($endBranch -ne $operatorBranch) {
+            $restoreOutput = git -C $projectRoot checkout $operatorBranch 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) {
+                Write-Status "Could not return to '$operatorBranch'; left on '$endBranch'." -Type Warn
+                Write-ProcessActivity -Id $procId -ActivityType "error" -Message "Failed to restore the starting branch '$operatorBranch' (left on '$endBranch'): $($restoreOutput.Trim())"
             }
         }
     }

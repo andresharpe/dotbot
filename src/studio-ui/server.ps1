@@ -25,7 +25,7 @@ param(
 )
 
 Set-StrictMode -Version 1.0
-Import-Module (Join-Path $PSScriptRoot ".." "core" "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot ".." "runtime" "Modules" "Dotbot.Core" "Dotbot.Core.psm1") -Force -DisableNameChecking
 
 # ---------------------------------------------------------------------------
 # Resolve paths
@@ -37,7 +37,7 @@ $staticRoot = Join-Path $scriptDir 'static'
 function Find-DotbotRoot {
     $dir = $scriptDir
     while ($dir -ne [System.IO.Path]::GetPathRoot($dir)) {
-        if ((Test-Path (Join-Path $dir 'workflows')) -and (Test-Path (Join-Path $dir 'scripts'))) {
+        if ((Test-Path -LiteralPath (Join-Path $dir 'workflows')) -and (Test-Path -LiteralPath (Join-Path $dir 'scripts'))) {
             return $dir
         }
         $dir = Split-Path $dir -Parent

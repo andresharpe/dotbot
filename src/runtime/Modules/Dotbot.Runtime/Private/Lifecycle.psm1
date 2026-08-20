@@ -150,10 +150,56 @@ function Test-RuntimeAlive {
     $pidValue = $file.pid
     if (-not $pidValue) { return $false }
     try {
-        Get-Process -Id $pidValue -ErrorAction Stop | Out-Null
-        return $true
+        $proc = Get-Process -Id $pidValue -ErrorAction Stop
+        return ($proc.ProcessName -match 'pwsh|powershell')
     } catch {
         return $false
+    }
+}
+
+function Test-RuntimeServing {
+    param([Parameter(Mandatory)] [string]$BotRoot)
+
+    $conn = Read-RuntimeConnectionFile -BotRoot $BotRoot
+    if (-not $conn -or -not $conn.url) { return $false }
+    try {
+        $resp = Invoke-WebRequest `
+            -Uri $conn.url `
+            -Method GET `
+            -Headers @{ Authorization = "Bearer $($conn.token)" } `
+            -TimeoutSec 3 `
+            -SkipHttpErrorCheck `
+            -ErrorAction Stop
+        return ($null -ne $resp.StatusCode)
+    } catch {
+        return $false
+    }
+}
+
+function Invoke-WithNamedMutex {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Action
+    )
+    $__nmSha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $__nmHash = ([System.BitConverter]::ToString(
+            $__nmSha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Name))) -replace '-', '').Substring(0, 32)
+    } finally {
+        $__nmSha.Dispose()
+    }
+    $__nmMutex = [System.Threading.Mutex]::new($false, "Global\dotbot-$__nmHash")
+    $__nmOwns = $false
+    try {
+        try {
+            $__nmOwns = $__nmMutex.WaitOne()
+        } catch [System.Threading.AbandonedMutexException] {
+            $__nmOwns = $true
+        }
+        return (& $Action)
+    } finally {
+        if ($__nmOwns) { try { $__nmMutex.ReleaseMutex() } catch { $null = $_ } }
+        $__nmMutex.Dispose()
     }
 }
 
@@ -192,6 +238,10 @@ function Start-DotbotRuntime {
         # Tests use this to pin a specific port and skip the scan.
         [int]$Port
     )
+
+    if ((Test-RuntimeAlive -BotRoot $BotRoot) -and -not (Test-RuntimeServing -BotRoot $BotRoot)) {
+        Remove-RuntimeConnectionFile -BotRoot $BotRoot
+    }
 
     # Idempotent attach path.
     if (Test-RuntimeAlive -BotRoot $BotRoot) {
@@ -275,6 +325,79 @@ function Start-DotbotRuntime {
     return $result
 }
 
+function Start-DotbotRuntimeDetached {
+    <#
+    .SYNOPSIS
+    Bring the runtime up in a process of its own so it outlives the caller.
+
+    .DESCRIPTION
+    Start-DotbotRuntime hosts the listener in-process and records $PID, so a
+    CLI that spawns a detached runner and then exits would take the runtime
+    down with it. This spawns 'dotbot serve' as a child process instead — the
+    background mode serve.ps1 documents — and waits for the connection file,
+    which Start-DotbotRuntime writes only once the listener is accepting.
+
+    Attaches instead of spawning when a runtime is already alive.
+
+    Returns @{ url; pid; attached }. There is deliberately no 'listener' key:
+    the caller does not own this runtime and must never stop it.
+
+    Throws when the runtime does not come up within TimeoutSeconds.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$BotRoot,
+
+        [int]$TimeoutSeconds = 30
+    )
+
+    $serveScript = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../../cli/serve.ps1'))
+    $startKey = 'runtime-start:' + [System.IO.Path]::GetFullPath($BotRoot)
+
+    $child = Invoke-WithNamedMutex -Name $startKey -Action {
+        if ((Test-RuntimeAlive -BotRoot $BotRoot) -and -not (Test-RuntimeServing -BotRoot $BotRoot)) {
+            Remove-RuntimeConnectionFile -BotRoot $BotRoot
+        }
+        if (Test-RuntimeAlive -BotRoot $BotRoot) { return $null }
+
+        if (-not (Test-Path -LiteralPath $serveScript -PathType Leaf)) {
+            throw "Runtime host script not found at $serveScript."
+        }
+
+        $spawned = Start-DotbotChildProcess `
+            -File $serveScript `
+            -WorkingDirectory (Split-Path -Parent $BotRoot) `
+            -WindowStyle Hidden
+
+        $ready = $false
+        try {
+            $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+            while (-not (Test-RuntimeAlive -BotRoot $BotRoot)) {
+                if ($spawned.HasExited) {
+                    throw "The dotbot runtime host exited before the runtime was ready."
+                }
+                if ([DateTime]::UtcNow -ge $deadline) {
+                    throw "The dotbot runtime did not become ready within $TimeoutSeconds seconds."
+                }
+                Start-Sleep -Milliseconds 250
+            }
+            $ready = $true
+        } finally {
+            if (-not $ready) { try { $spawned.Kill($true) } catch { $null = $_ } }
+        }
+
+        return $spawned
+    }
+
+    $conn = Read-RuntimeConnectionFile -BotRoot $BotRoot
+    return [ordered]@{
+        url      = [string]$conn.url
+        pid      = $conn.pid
+        attached = ($null -eq $child)
+    }
+}
+
 function Stop-DotbotRuntime {
     <#
     .SYNOPSIS
@@ -305,14 +428,19 @@ function Stop-DotbotRuntime {
         try { Stop-ControlPlaneRegistration -BotRoot $BotRoot -Registration $ControlPlaneRegistration } catch { $null = $_ }
     }
 
-    Remove-RuntimeConnectionFile -BotRoot $BotRoot
+    $conn = Read-RuntimeConnectionFile -BotRoot $BotRoot
+    if ($conn -and [string]$conn.pid -eq [string]$PID) {
+        Remove-RuntimeConnectionFile -BotRoot $BotRoot
+    }
     Clear-RuntimeMutexPool
 }
 
 Export-ModuleMember -Function @(
     'Start-DotbotRuntime'
+    'Start-DotbotRuntimeDetached'
     'Stop-DotbotRuntime'
     'Test-RuntimeAlive'
+    'Test-RuntimeServing'
     'New-RuntimeBearerToken'
     'Find-AvailableRuntimePort'
 )

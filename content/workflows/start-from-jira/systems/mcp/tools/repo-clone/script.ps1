@@ -36,7 +36,7 @@ function Get-RepoCloneJiraKey {
 function Test-RepoCloneComplete {
     param([Parameter(Mandatory)][string]$ClonePath)
 
-    if (-not (Test-Path (Join-Path $ClonePath '.git'))) { return $false }
+    if (-not (Test-Path -LiteralPath (Join-Path $ClonePath '.git'))) { return $false }
     $null = & git -C $ClonePath rev-parse --is-inside-work-tree 2>$null
     if ($LASTEXITCODE -ne 0) { return $false }
     $remote = & git -C $ClonePath config --get remote.origin.url 2>$null

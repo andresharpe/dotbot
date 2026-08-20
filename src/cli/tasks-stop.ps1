@@ -8,6 +8,7 @@
     description starts with "Pending tasks". Mirrors the per-workflow stop
     pattern in src/ui/server.ps1.
 #>
+[CmdletBinding()]
 param()
 
 $ErrorActionPreference = "Stop"

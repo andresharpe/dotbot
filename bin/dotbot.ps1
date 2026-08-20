@@ -93,6 +93,15 @@ if ($Command -ne 'doctor' -and (Get-Command Repair-DotbotProcessPath -ErrorActio
     $null = Repair-DotbotProcessPath
 }
 
+function ConvertTo-DotbotParameterName {
+    param([string]$Flag)
+
+    if ($Flag -notmatch '-') { return $Flag }
+    return (($Flag -split '-' | Where-Object { $_ } | ForEach-Object {
+        $_.Substring(0, 1).ToUpperInvariant() + $_.Substring(1)
+    }) -join '')
+}
+
 # Convert CLI args to a hashtable for proper named-parameter splatting.
 # Array splatting only does positional binding; hashtable splatting is
 # required for named parameters like -Workflow / -Stack.
@@ -102,7 +111,7 @@ if ($FilteredArgs.Count -gt 1) {
     $i = 0
     while ($i -lt $raw.Count) {
         if ($raw[$i] -match '^--?(.+)$') {
-            $name = $Matches[1]
+            $name = ConvertTo-DotbotParameterName $Matches[1]
             if (($i + 1) -lt $raw.Count -and $raw[$i + 1] -notmatch '^--?') {
                 $SplatArgs[$name] = $raw[$i + 1]
                 $i += 2
@@ -132,8 +141,9 @@ function Show-Help {
     Write-DotbotLabel "    workflow remove   " "Remove an installed workflow"
     Write-DotbotLabel "    workflow list     " "List installed workflows"
     Write-DotbotLabel "    workflow run      " "Run/rerun a workflow"
+    Write-DotbotLabel "    workflow scaffold " "Scaffold a new workflow"
     Write-DotbotLabel "    install runtime   " "Install runtime into an existing project"
-    Write-DotbotLabel "    install content   " "Install agent, prompt, or skill content"
+    Write-DotbotLabel "    install skill     " "Install an agent, prompt, or skill"
     Write-DotbotLabel "    run               " "Run/rerun a workflow"
     Write-DotbotLabel "    tasks run         " "Run a workflow-agnostic task runner (drains pending todo tasks)"
     Write-DotbotLabel "    tasks stop        " "Stop the workflow-agnostic task runner"
@@ -149,12 +159,18 @@ function Show-Help {
     Write-DotbotLabel "    doctor            " "Scan project for health issues"
     Write-DotbotLabel "    serve             " "Start only the low-level HTTP runtime in the foreground"
     Write-DotbotLabel "    runtime-status    " "Show runtime PID, URL, and active workflow runs"
+    Write-DotbotLabel "    runtime stop      " "Stop the per-project HTTP runtime and clear its connection file"
     Write-DotbotLabel "    logs              " "Show recent activity, or the last crash (--last, --follow)"
     Write-DotbotLabel "    prune-branches    " "Delete stale workflow/* and task/* branches"
     Write-DotbotLabel "    help              " "Show this help message"
     Write-BlankLine
     Write-DotbotSection "GLOBAL OPTIONS"
     Write-DotbotLabel "    -y, --yes         " "Answer yes to confirmation prompts"
+    Write-DotbotLabel "    --json            " "Machine-readable output; supported on 'status' only"
+    Write-BlankLine
+    Write-DotbotSection "PROJECT SETTINGS"
+    Write-DotbotLabel "    git.base_branch   " "Branch runs are cut from and merged into (default: main, else master)"
+    Write-DotbotCommand '      .bot/.control/settings.json -> { "git": { "base_branch": "<branch>" } }'
     Write-BlankLine
 }
 
@@ -180,7 +196,7 @@ function ConvertTo-SplatArg {
     $i = 0
     while ($i -lt $Tokens.Count) {
         if ($Tokens[$i] -match '^--?(.+)$') {
-            $pname = $Matches[1]
+            $pname = ConvertTo-DotbotParameterName $Matches[1]
             if (($i + 1) -lt $Tokens.Count -and $Tokens[$i + 1] -notmatch '^--?') {
                 $splat[$pname] = $Tokens[$i + 1]
                 $i += 2
@@ -221,13 +237,16 @@ function Invoke-Init {
     }
     $initScript = Join-Path $ScriptsDir "init-project.ps1"
     if (Test-Path $initScript) {
+        $global:LASTEXITCODE = 0
         if ($SplatArgs.Count -gt 0) {
             & $initScript @SplatArgs
         } else {
             & $initScript
         }
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
         Write-DotbotError "Init script not found"
+        exit 1
     }
 }
 
@@ -306,7 +325,7 @@ function Get-WorkflowRunInvocation {
     while ($i -lt $RunArgs.Count) {
         $token = [string]$RunArgs[$i]
         if ($token -match '^--?(.+)$') {
-            $rawName = $Matches[1]
+            $rawName = ConvertTo-DotbotParameterName $Matches[1]
             $name = ($rawName -replace '-', '').ToLowerInvariant()
             switch ($name) {
                 'watch' {
@@ -318,7 +337,7 @@ function Get-WorkflowRunInvocation {
                     $i++
                 }
                 'pollintervalms' {
-                    if (($i + 1) -lt $RunArgs.Count) {
+                    if (($i + 1) -lt $RunArgs.Count -and [string]$RunArgs[$i + 1] -notmatch '^--?') {
                         $runSplat['PollIntervalMs'] = [int]$RunArgs[$i + 1]
                         $i += 2
                     } else {
@@ -364,6 +383,7 @@ function Invoke-Workflow {
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         } else {
             Write-DotbotWarning "Usage: dotbot workflow run <workflow-name> [--watch] [--poll-interval-ms <ms>] [--no-auto-runtime]"
+            exit 1
         }
         return
     }
@@ -377,9 +397,12 @@ function Invoke-Workflow {
     if ($wfScript -and (Test-Path $wfScript)) {
         $wfRest = if ($SubArgs.Count -gt 1) { @($SubArgs[1..($SubArgs.Count - 1)]) } else { @() }
         $wfSplat = ConvertTo-SplatArg -Tokens $wfRest -PositionalNames @('Name')
+        $global:LASTEXITCODE = 0
         & $wfScript @wfSplat
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
-        Write-DotbotWarning "Usage: dotbot workflow [add|remove|list|scaffold|run] [name] [--Force]"
+        Write-DotbotWarning "Usage: dotbot workflow [add|remove|list|scaffold|run] [name] [--force]"
+        exit 1
     }
 }
 
@@ -403,7 +426,7 @@ function Invoke-Registry {
         $ri = 0
         while ($ri -lt $regRest.Count) {
             if ($regRest[$ri] -match '^--?(.+)$') {
-                $pname = $Matches[1]
+                $pname = ConvertTo-DotbotParameterName $Matches[1]
                 if (($ri + 1) -lt $regRest.Count -and $regRest[$ri + 1] -notmatch '^--?') {
                     $regSplat[$pname] = $regRest[$ri + 1]
                     $ri += 2
@@ -427,13 +450,16 @@ function Invoke-Registry {
             if ($positional.Count -ge 1) { $regSplat['Name'] = $positional[0] }
         }
 
+        $global:LASTEXITCODE = 0
         & $regScript @regSplat
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
         Write-DotbotWarning "Usage: dotbot registry [add|list|update|remove] ..."
         Write-DotbotCommand "  add    <name> <source> [--branch main] [--force]"
         Write-DotbotCommand "  list"
         Write-DotbotCommand "  update [name] [--force]"
         Write-DotbotCommand "  remove <name>"
+        exit 1
     }
 }
 
@@ -446,12 +472,12 @@ function Invoke-Install {
     while ($i -lt $SubArgs.Count) {
         $token = [string]$SubArgs[$i]
         if ($token -match '^--?(.+)$') {
-            $rawFlagName = $Matches[1]
+            $rawFlagName = ConvertTo-DotbotParameterName $Matches[1]
             $flagName = $rawFlagName.ToLowerInvariant()
             if ($flagName -in @('from','version')) {
                 if (($i + 1) -ge $SubArgs.Count -or [string]$SubArgs[$i + 1] -match '^--?') {
                     Write-DotbotWarning "Missing value for --$flagName"
-                    return
+                    exit 1
                 }
                 if ($flagName -eq 'from') {
                     $contentSplat['From'] = $SubArgs[$i + 1]
@@ -475,9 +501,11 @@ function Invoke-Install {
 
             if (($i + 1) -lt $SubArgs.Count -and [string]$SubArgs[$i + 1] -notmatch '^--?') {
                 $runtimeSplat[$rawFlagName] = $SubArgs[$i + 1]
+                $contentSplat[$rawFlagName] = $SubArgs[$i + 1]
                 $i += 2
             } else {
                 $runtimeSplat[$rawFlagName] = $true
+                $contentSplat[$rawFlagName] = $true
                 $i++
             }
             continue
@@ -495,10 +523,12 @@ function Invoke-Install {
         $installScript = Join-Path $ScriptsDir 'install-runtime.ps1'
         if (-not (Test-Path -LiteralPath $installScript -PathType Leaf)) {
             Write-DotbotError "Runtime install script not found"
-            return
+            exit 1
         }
 
+        $global:LASTEXITCODE = 0
         & $installScript @runtimeSplat
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         return
     }
 
@@ -506,20 +536,23 @@ function Invoke-Install {
         $installScript = Join-Path $ScriptsDir 'install-content.ps1'
         if (-not (Test-Path -LiteralPath $installScript -PathType Leaf)) {
             Write-DotbotError "Content install script not found"
-            return
+            exit 1
         }
 
         if ($contentPositionals.Count -gt 0 -and -not $contentSplat.ContainsKey('Source')) {
             $contentSplat['Source'] = $contentPositionals[0]
         }
 
+        $global:LASTEXITCODE = 0
         & $installScript -Type $installSubCmd @contentSplat
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         return
     }
 
     Write-DotbotWarning "Usage: dotbot install runtime [--from <dotbot-checkout>]"
     Write-DotbotCommand "       dotbot install [--global] <agent|prompt|skill> <name|path|registry/path|github-url> [--version <vN>] [--force]"
     Write-DotbotCommand "       dotbot install skill --from github.com/owner/repo/skills/name:v2 --global"
+    exit 1
 }
 
 function Invoke-Run {
@@ -537,6 +570,7 @@ function Invoke-Run {
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
         Write-DotbotWarning "Usage: dotbot run <workflow-name> [--watch] [--poll-interval-ms <ms>] [--no-auto-runtime]"
+        exit 1
     }
 }
 
@@ -545,16 +579,54 @@ function Invoke-Tasks {
     switch ($sub) {
         'run'  {
             $script = Join-Path $ScriptsDir 'tasks-run.ps1'
-            if (Test-Path $script) { & $script } else { Write-DotbotError "tasks-run.ps1 not found" }
+            if (Test-Path $script) {
+                $global:LASTEXITCODE = 0
+                & $script @SplatArgs
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else {
+                Write-DotbotError "tasks-run.ps1 not found"
+                exit 1
+            }
         }
         'stop' {
             $script = Join-Path $ScriptsDir 'tasks-stop.ps1'
-            if (Test-Path $script) { & $script } else { Write-DotbotError "tasks-stop.ps1 not found" }
+            if (Test-Path $script) {
+                $global:LASTEXITCODE = 0
+                & $script @SplatArgs
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else {
+                Write-DotbotError "tasks-stop.ps1 not found"
+                exit 1
+            }
         }
         default {
             Write-DotbotWarning "Usage: dotbot tasks [run|stop]"
             Write-DotbotCommand "  run    Launch a workflow-agnostic task runner that drains pending todo tasks"
             Write-DotbotCommand "  stop   Signal stop to the workflow-agnostic task runner"
+            exit 1
+        }
+    }
+}
+
+function Invoke-Runtime {
+    $sub = if ($SubArgs.Count -gt 0) { $SubArgs[0] } else { '' }
+    switch ($sub) {
+        'stop' {
+            $script = Join-Path $ScriptsDir 'runtime-stop.ps1'
+            if (Test-Path $script) {
+                $global:LASTEXITCODE = 0
+                & $script @SplatArgs
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else {
+                Write-DotbotError "runtime-stop.ps1 not found"
+                exit 1
+            }
+        }
+        default {
+            Write-DotbotWarning "Usage: dotbot runtime [stop]"
+            Write-DotbotCommand "  stop   Stop the per-project HTTP runtime and clear its connection file"
+            Write-DotbotCommand "         Use 'dotbot runtime-status' to inspect it first"
+            exit 1
         }
     }
 }
@@ -603,13 +675,13 @@ function Invoke-Go {
     if (-not $botDir) {
         Write-DotbotError "Project is not initialized."
         Write-DotbotCommand "Run 'dotbot init' from the project root first."
-        return
+        exit 1
     }
 
     $serverScript = Join-Path $DotbotBase 'src/ui/server.ps1'
     if (-not (Test-Path -LiteralPath $serverScript)) {
         Write-DotbotError "Dashboard server not found at $serverScript"
-        return
+        exit 1
     }
 
     # If a UI server is already serving this project, attach to it instead of
@@ -646,7 +718,7 @@ function Invoke-Go {
         $runtimePsd1 = Join-Path $DotbotBase 'src/runtime/Modules/Dotbot.Runtime/Dotbot.Runtime.psd1'
         if (-not (Test-Path -LiteralPath $runtimePsd1)) {
             Write-DotbotError "Dotbot.Runtime module not found at $runtimePsd1"
-            return
+            exit 1
         }
 
         Import-Module $runtimePsd1 -DisableNameChecking -Force
@@ -681,6 +753,14 @@ function Invoke-Go {
     }
 }
 
+trap [System.Management.Automation.ParameterBindingException] {
+    Write-BlankLine
+    Write-DotbotError $_.Exception.Message
+    Write-DotbotWarning "Run 'dotbot help' for available commands"
+    Write-BlankLine
+    exit 1
+}
+
 switch ($Command) {
     "init" { Invoke-Init }
     "workflow" { Invoke-Workflow }
@@ -693,13 +773,18 @@ switch ($Command) {
         Write-DotbotWarning "'dotbot resume' is not yet supported."
         Write-DotbotWarning "Please use 'dotbot run <workflow-name>' instead."
         Write-BlankLine
+        exit 1
     }
     "list" { Invoke-List }
     "profiles" { Invoke-List }  # backward compat
-    "status" { & (Join-Path $ScriptsDir 'status.ps1') @SplatArgs }
+    "status" {
+        $global:LASTEXITCODE = 0
+        & (Join-Path $ScriptsDir 'status.ps1') @SplatArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
     "go" { Invoke-Go }
     "studio" {
-        $studioDir = Join-Path $DotbotBase "studio-ui"
+        $studioDir = Join-Path $DotbotBase "src" "studio-ui"
         $serverScript = Join-Path $studioDir "server.ps1"
         $portFile = Join-Path $DotbotBase ".studio-port"
 
@@ -708,7 +793,7 @@ switch ($Command) {
             Write-DotbotError "Studio not found."
             Write-DotbotWarning "Run 'dotbot update' to install the studio"
             Write-BlankLine
-            break
+            exit 1
         }
 
         # Check if studio is already running
@@ -722,7 +807,7 @@ switch ($Command) {
                 if ($proc -and $proc.ProcessName -match 'pwsh|powershell') {
                     Write-BlankLine
                     Write-Success "Studio already running at http://localhost:$existingPort (PID $existingPid)"
-                    Write-Status "Opening browser..."
+                    Write-DotbotCommand "Opening browser..."
                     Write-BlankLine
                     Start-Process "http://localhost:$existingPort"
                     break
@@ -734,17 +819,36 @@ switch ($Command) {
             }
         }
 
+        $global:LASTEXITCODE = 0
         & pwsh -NoProfile -File $serverScript
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
     "doctor" {
         $global:LASTEXITCODE = 0
         & (Join-Path $ScriptsDir 'doctor.ps1') @SplatArgs
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
-    "serve"          { & (Join-Path $ScriptsDir 'serve.ps1')          @SplatArgs }
-    "runtime-status" { & (Join-Path $ScriptsDir 'runtime-status.ps1') @SplatArgs }
-    "logs"           { & (Join-Path $ScriptsDir 'logs.ps1')           @SplatArgs }
-    "prune-branches" { & (Join-Path $ScriptsDir 'prune-branches.ps1') @SplatArgs }
+    "serve" {
+        $global:LASTEXITCODE = 0
+        & (Join-Path $ScriptsDir 'serve.ps1') @SplatArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    "runtime" { Invoke-Runtime }
+    "runtime-status" {
+        $global:LASTEXITCODE = 0
+        & (Join-Path $ScriptsDir 'runtime-status.ps1') @SplatArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    "logs" {
+        $global:LASTEXITCODE = 0
+        & (Join-Path $ScriptsDir 'logs.ps1') @SplatArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    "prune-branches" {
+        $global:LASTEXITCODE = 0
+        & (Join-Path $ScriptsDir 'prune-branches.ps1') @SplatArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
     "update" { Invoke-Update }
     "help" { Show-Help }
     "--help" { Show-Help }
@@ -755,5 +859,6 @@ switch ($Command) {
         Write-DotbotError "Unknown command: $Command"
         Write-DotbotWarning "Run 'dotbot help' for available commands"
         Write-BlankLine
+        exit 1
     }
 }

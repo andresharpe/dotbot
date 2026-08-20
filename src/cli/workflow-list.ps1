@@ -3,6 +3,7 @@
 .SYNOPSIS
     List installed workflows in the current project.
 #>
+[CmdletBinding()]
 param()
 
 $ErrorActionPreference = "Stop"

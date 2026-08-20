@@ -109,7 +109,7 @@ $scanDirs = @('src', 'content')
 
 # If no src/ or content/ dirs exist, this is a target project, not the dotbot source repo.
 # Skip validation — the hook only validates source-level references.
-$hasSourceDirs = $scanDirs | Where-Object { Test-Path (Join-Path $RepoRoot $_) }
+$hasSourceDirs = $scanDirs | Where-Object { Test-Path -LiteralPath (Join-Path $RepoRoot $_) }
 if (-not $hasSourceDirs) {
     @{
         success  = $true

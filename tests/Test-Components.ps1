@@ -158,6 +158,13 @@ if (Test-Path $worktreeManagerModule) {
                     ($worktreeManagerSrc -match "'rebase_conflict'") -and
                     ($worktreeManagerSrc -match "Merge conflict during squash-merge")) `
         -Message "An add/add conflict on a single file (e.g. .gitignore) must reach the operator as a 'rebase_conflict' pending_question naming the file, not a generic 'merge_command_failed' with empty conflict_files. See botdot task d954f7e7 incident on 2026-05-14."
+    Assert-True -Name "Worktree exclude block leaves the tracked .bot tree alone" `
+        -Condition (($worktreeManagerSrc -match [regex]::Escape("'.mcp.json'")) -and
+                    ($worktreeManagerSrc -notmatch [regex]::Escape("'.bot/workspace/tasks/'")) -and
+                    ($worktreeManagerSrc -notmatch [regex]::Escape("'.bot/content/'")) -and
+                    ($worktreeManagerSrc -notmatch [regex]::Escape("'.bot/hooks/'")) -and
+                    ($worktreeManagerSrc -notmatch [regex]::Escape("'.bot/settings/'"))) `
+        -Message "Ensure-DotbotWorktreeExcludes writes the shared common-dir .git/info/exclude, so any .bot/ entry there also ignores the operator's main checkout. The tracked workspace/content/hooks/settings tree must stay out of that block (issue #681); only generated, never-tracked paths belong in it."
 
     # ───────────────────────────────────────────────────────────────────────
     # End-to-end: Apply-TaskBranchPatch on a real two-branch fixture with
@@ -290,6 +297,66 @@ if (Test-Path $worktreeManagerModule) {
             -Message "Expected success=false with the overwrite guard message, got: $($divResult | ConvertTo-Json -Compress)"
     } finally {
         Remove-Item -Path $divTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    $exclTmp = Join-Path ([IO.Path]::GetTempPath()) ('dotbot-excl-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $exclWorktree = "$exclTmp-wt"
+    New-Item -ItemType Directory -Path $exclTmp -Force | Out-Null
+    try {
+        Push-Location $exclTmp
+        try {
+            & git init --quiet 2>$null
+            & git config user.email 'test@example.com' 2>$null
+            & git config user.name 'Test' 2>$null
+            & git checkout -b main --quiet 2>$null
+            'base' | Set-Content -Path (Join-Path $exclTmp 'README.md') -NoNewline
+            New-Item -ItemType Directory -Path (Join-Path $exclTmp '.bot/workspace/tasks/standalone') -Force | Out-Null
+            '' | Set-Content -Path (Join-Path $exclTmp '.bot/workspace/tasks/standalone/.gitkeep') -NoNewline
+            & git add -A 2>$null
+            & git commit -m 'dotbot init' --quiet 2>$null
+        } finally {
+            Pop-Location
+        }
+
+        Add-Content -Path (Join-Path $exclTmp '.git/info/exclude') -Value @(
+            '# dotbot generated execution environment: start'
+            '.mcp.json'
+            '.bot/workspace/tasks'
+            '.bot/workspace/tasks/'
+            '.bot/content/'
+            '# dotbot generated execution environment: end'
+        )
+
+        & git -C $exclTmp worktree add --quiet -b 'task/excl-fixture' $exclWorktree main 2>$null
+
+        $excludeFn = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Ensure-DotbotWorktreeExcludes })
+        & $excludeFn -WorktreePath $exclWorktree
+
+        & git -C $exclTmp check-ignore -q --no-index -- '.bot/workspace/tasks' 2>$null
+        Assert-True -Name "Worktree setup leaves .bot/workspace/tasks unignored in the main repo" `
+            -Condition ($LASTEXITCODE -ne 0) `
+            -Message "check-ignore still reports the tracked task tree as ignored: $(& git -C $exclTmp check-ignore -v --no-index -- '.bot/workspace/tasks' 2>$null)"
+        & git -C $exclTmp check-ignore -q --no-index -- '.bot/content/workflows/workflow.json' 2>$null
+        Assert-True -Name "Worktree setup leaves .bot/content unignored in the main repo" `
+            -Condition ($LASTEXITCODE -ne 0) `
+            -Message "Project-tier overrides under .bot/content are tracked and are FrameworkIntegrity protected paths"
+        & git -C $exclTmp check-ignore -q --no-index -- '.mcp.json' 2>$null
+        Assert-True -Name "Worktree setup still ignores generated .mcp.json" `
+            -Condition ($LASTEXITCODE -eq 0) `
+            -Message "The generated execution environment must stay ignored, otherwise 01-git-clean fails every task"
+
+        $exclRunDir = Join-Path $exclTmp '.bot/workspace/tasks/workflow-runs/probe'
+        New-Item -ItemType Directory -Path $exclRunDir -Force | Out-Null
+        Set-Content -Path (Join-Path $exclRunDir 'run.json') -Value '{"id":"wr_probe"}'
+        & git -C $exclTmp add .bot/workspace/tasks/ 2>$null
+        $exclStaged = @(& git -C $exclTmp diff --cached --name-only 2>$null)
+        Assert-True -Name "git add stages new task state without -f" `
+            -Condition ($exclStaged -contains '.bot/workspace/tasks/workflow-runs/probe/run.json') `
+            -Message "Complete-TaskWorktree stages this tree with a plain git add (no -f); staged set was: $($exclStaged -join ', ')"
+    } finally {
+        & git -C $exclTmp worktree remove --force $exclWorktree 2>$null
+        Remove-Item -Path $exclWorktree -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $exclTmp -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # ───────────────────────────────────────────────────────────────────────
@@ -596,6 +663,14 @@ if (Test-Path $worktreeManagerModule) {
                 -Condition ($generatedStatus.Count -eq 0) `
                 -Message "Generated files should not appear in git status: $($generatedStatus -join '; ')"
 
+            $doctorOut = & pwsh -NoProfile -ExecutionPolicy Bypass `
+                -File (Join-Path $dotbotDir 'src/cli/doctor.ps1') `
+                -BotRoot (Join-Path $e2eResult.worktree_path '.bot') 2>&1
+            $doctorText = (@($doctorOut | ForEach-Object { ConvertTo-SanitizedConsoleText "$_" }) -join "`n")
+            Assert-True -Name "E2E: doctor reports no ignored workspace tree from inside a task worktree" `
+                -Condition ($doctorText -notmatch 'changes here are invisible to git') `
+                -Message "doctor flagged the worktree's own generated .gitignore files: $doctorText"
+
             Assert-PathNotExists -Name "E2E: main checkout still has no .mcp.json" -Path (Join-Path $e2eRoot ".mcp.json")
             Assert-PathNotExists -Name "E2E: main checkout still has no .claude/" -Path (Join-Path $e2eRoot ".claude")
             Assert-PathNotExists -Name "E2E: main checkout still has no .opencode/" -Path (Join-Path $e2eRoot ".opencode")
@@ -692,6 +767,251 @@ if (Test-Path $worktreeManagerModule) {
             & git -C $completeRoot branch -D $completeResult.branch_name 2>&1 | Out-Null
         }
         Remove-TestProject -Path $completeRoot
+    }
+
+    $adoptProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-adopt-target'
+    $adoptRoot = $adoptProj.ProjectRoot
+    $adoptBot = $adoptProj.BotDir
+    $adoptResult = $null
+    try {
+        & git -C $adoptRoot branch -M main 2>&1 | Out-Null
+
+        $adoptTaskId = "t_adopt01"
+        $adoptResult = New-TaskWorktree -TaskId $adoptTaskId -TaskName "adopts checked-out branch" `
+                                        -ProjectRoot $adoptRoot -BotRoot $adoptBot
+        Assert-True -Name "Adopt target: New-TaskWorktree returns success" `
+            -Condition ($adoptResult -and $adoptResult.success -eq $true) `
+            -Message "Expected success, got: $($adoptResult | ConvertTo-Json -Compress)"
+
+        if ($adoptResult -and $adoptResult.success -and (Test-Path $adoptResult.worktree_path)) {
+            $adoptMapPath = Join-Path $adoptBot ".control/worktree-map.json"
+            $recordedBefore = ((Get-Content $adoptMapPath -Raw | ConvertFrom-Json).$adoptTaskId).base_branch
+            Assert-Equal -Name "Adopt target: worktree-map records main at creation" `
+                -Expected "main" -Actual "$recordedBefore"
+
+            "adopted artifact" | Set-Content -Path (Join-Path $adoptResult.worktree_path "adopt-artifact.txt") -Encoding UTF8
+
+            & git -C $adoptRoot checkout -b workflow/integration-run --quiet 2>&1 | Out-Null
+            $adoptMainBefore = (& git -C $adoptRoot rev-parse main 2>$null).Trim()
+
+            $adoptMerge = Complete-TaskWorktree -TaskId $adoptTaskId -ProjectRoot $adoptRoot -BotRoot $adoptBot -SkipRemotePush
+            Assert-True -Name "Adopt target: merge succeeds against the checked-out branch" `
+                -Condition ($adoptMerge.success -eq $true) `
+                -Message "Expected success, got: $($adoptMerge | ConvertTo-Json -Depth 10 -Compress)"
+            Assert-True -Name "Adopt target: message names the reconciliation" `
+                -Condition ([bool]("$($adoptMerge.message)" -match 'reconciled')) `
+                -Message "Expected the reconciliation to be surfaced, got: $($adoptMerge.message)"
+            Assert-Equal -Name "Adopt target: merged into the checked-out branch, not main" `
+                -Expected "Squash-merged to workflow/integration-run" `
+                -Actual ("$($adoptMerge.message)" -replace ' and cleaned up.*$', '')
+            Assert-Equal -Name "Adopt target: main is left untouched" `
+                -Expected $adoptMainBefore `
+                -Actual ((& git -C $adoptRoot rev-parse main 2>$null).Trim())
+            Assert-Equal -Name "Adopt target: checkout stays on the operator's branch" `
+                -Expected "workflow/integration-run" `
+                -Actual ((& git -C $adoptRoot rev-parse --abbrev-ref HEAD 2>$null).Trim())
+            Assert-PathExists -Name "Adopt target: artifact present on the integration branch" `
+                -Path (Join-Path $adoptRoot "adopt-artifact.txt")
+        }
+    } finally {
+        if ($adoptResult -and $adoptResult.worktree_path -and (Test-Path $adoptResult.worktree_path)) {
+            & git -C $adoptRoot worktree remove -f $adoptResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($adoptResult -and $adoptResult.branch_name) {
+            & git -C $adoptRoot branch -D $adoptResult.branch_name 2>&1 | Out-Null
+        }
+        Remove-TestProject -Path $adoptRoot
+    }
+
+    $reqProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-requested-target'
+    $reqRoot = $reqProj.ProjectRoot
+    $reqBot = $reqProj.BotDir
+    $reqResult = $null
+    try {
+        & git -C $reqRoot branch -M main 2>&1 | Out-Null
+        & git -C $reqRoot branch workflow/explicit-run 2>&1 | Out-Null
+
+        $reqTaskId = "t_reqbase1"
+        $reqResult = New-TaskWorktree -TaskId $reqTaskId -TaskName "honours explicit base" `
+                                      -ProjectRoot $reqRoot -BotRoot $reqBot
+        if ($reqResult -and $reqResult.success -and (Test-Path $reqResult.worktree_path)) {
+            "explicit artifact" | Set-Content -Path (Join-Path $reqResult.worktree_path "explicit-artifact.txt") -Encoding UTF8
+
+            $reqMainBefore = (& git -C $reqRoot rev-parse main 2>$null).Trim()
+            $reqMerge = Complete-TaskWorktree -TaskId $reqTaskId -ProjectRoot $reqRoot -BotRoot $reqBot `
+                                              -BaseBranch 'workflow/explicit-run' -SkipRemotePush
+            Assert-True -Name "Explicit base: merge succeeds" `
+                -Condition ($reqMerge.success -eq $true) `
+                -Message "Expected success, got: $($reqMerge | ConvertTo-Json -Depth 10 -Compress)"
+            Assert-Equal -Name "Explicit base: -BaseBranch outranks the recorded value" `
+                -Expected "Squash-merged to workflow/explicit-run" `
+                -Actual ("$($reqMerge.message)" -replace ' and cleaned up.*$', '')
+            Assert-Equal -Name "Explicit base: main untouched" `
+                -Expected $reqMainBefore `
+                -Actual ((& git -C $reqRoot rev-parse main 2>$null).Trim())
+        }
+    } finally {
+        if ($reqResult -and $reqResult.worktree_path -and (Test-Path $reqResult.worktree_path)) {
+            & git -C $reqRoot worktree remove -f $reqResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($reqResult -and $reqResult.branch_name) {
+            & git -C $reqRoot branch -D $reqResult.branch_name 2>&1 | Out-Null
+        }
+        Remove-TestProject -Path $reqRoot
+    }
+
+    $cfgProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-configured-target'
+    $cfgRoot = $cfgProj.ProjectRoot
+    $cfgBot = $cfgProj.BotDir
+    $cfgResult = $null
+    try {
+        & git -C $cfgRoot branch -M main 2>&1 | Out-Null
+        & git -C $cfgRoot branch develop 2>&1 | Out-Null
+        '{ "git": { "base_branch": "develop" } }' |
+            Set-Content -Path (Join-Path $cfgProj.ControlDir "settings.json") -Encoding UTF8
+
+        $cfgResult = New-TaskWorktree -TaskId "t_cfgbase1" -TaskName "honours configured base" `
+                                      -ProjectRoot $cfgRoot -BotRoot $cfgBot
+        if ($cfgResult -and $cfgResult.success -and (Test-Path $cfgResult.worktree_path)) {
+            "configured artifact" | Set-Content -Path (Join-Path $cfgResult.worktree_path "cfg-artifact.txt") -Encoding UTF8
+
+            & git -C $cfgRoot checkout main --quiet 2>&1 | Out-Null
+            $cfgMainBefore = (& git -C $cfgRoot rev-parse main 2>$null).Trim()
+
+            $cfgMerge = Complete-TaskWorktree -TaskId "t_cfgbase1" -ProjectRoot $cfgRoot -BotRoot $cfgBot -SkipRemotePush
+            Assert-True -Name "#466 precedence: merge succeeds" `
+                -Condition ($cfgMerge.success -eq $true) `
+                -Message "Expected success, got: $($cfgMerge | ConvertTo-Json -Depth 10 -Compress)"
+            Assert-Equal -Name "#466 precedence: configured git.base_branch outranks the checked-out branch" `
+                -Expected "Squash-merged to develop" `
+                -Actual ("$($cfgMerge.message)" -replace ' and cleaned up.*$', '')
+            Assert-Equal -Name "#466 precedence: main is not written to" `
+                -Expected $cfgMainBefore `
+                -Actual ((& git -C $cfgRoot rev-parse main 2>$null).Trim())
+        }
+    } finally {
+        if ($cfgResult -and $cfgResult.worktree_path -and (Test-Path $cfgResult.worktree_path)) {
+            & git -C $cfgRoot worktree remove -f $cfgResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($cfgResult -and $cfgResult.branch_name) {
+            & git -C $cfgRoot branch -D $cfgResult.branch_name 2>&1 | Out-Null
+        }
+        Remove-TestProject -Path $cfgRoot
+    }
+
+    $tbProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-taskbranch-target'
+    $tbRoot = $tbProj.ProjectRoot
+    $tbBot = $tbProj.BotDir
+    $tbResult = $null
+    try {
+        & git -C $tbRoot branch -M main 2>&1 | Out-Null
+        $tbResult = New-TaskWorktree -TaskId "t_tbguard1" -TaskName "declines task branch" `
+                                     -ProjectRoot $tbRoot -BotRoot $tbBot
+        if ($tbResult -and $tbResult.success -and (Test-Path $tbResult.worktree_path)) {
+            "task branch guard" | Set-Content -Path (Join-Path $tbResult.worktree_path "tb-artifact.txt") -Encoding UTF8
+            & git -C $tbRoot checkout -b ('task' + '/unrelated-parked') --quiet 2>&1 | Out-Null
+
+            $tbMerge = Complete-TaskWorktree -TaskId "t_tbguard1" -ProjectRoot $tbRoot -BotRoot $tbBot -SkipRemotePush
+            Assert-True -Name "Task-branch guard: merge succeeds" `
+                -Condition ($tbMerge.success -eq $true) `
+                -Message "Expected success, got: $($tbMerge | ConvertTo-Json -Depth 10 -Compress)"
+            Assert-Equal -Name "Task-branch guard: falls back to main rather than adopting a task branch" `
+                -Expected "Squash-merged to main" `
+                -Actual ("$($tbMerge.message)" -replace ' and cleaned up.*$', '')
+        }
+    } finally {
+        if ($tbResult -and $tbResult.worktree_path -and (Test-Path $tbResult.worktree_path)) {
+            & git -C $tbRoot worktree remove -f $tbResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($tbResult -and $tbResult.branch_name) {
+            & git -C $tbRoot branch -D $tbResult.branch_name 2>&1 | Out-Null
+        }
+        Remove-TestProject -Path $tbRoot
+    }
+
+    $decProj = New-TestProjectFromGolden -Flavor 'default' -Prefix 'dotbot-test-decisions-stash'
+    $decRoot = $decProj.ProjectRoot
+    $decBot = $decProj.BotDir
+    $decResult = $null
+    try {
+        & git -C $decRoot branch -M main 2>&1 | Out-Null
+
+        $decFile = Join-Path $decBot "workspace/decisions/proposed/dec-001-stash.md"
+        New-Item -ItemType Directory -Force -Path (Split-Path $decFile -Parent) | Out-Null
+        "on main" | Set-Content -Path $decFile -Encoding UTF8
+        & git -C $decRoot add -f -- ".bot/workspace/decisions/proposed/dec-001-stash.md" 2>&1 | Out-Null
+        & git -C $decRoot commit -m "docs: dec-001 on main" --quiet 2>&1 | Out-Null
+
+        $decResult = New-TaskWorktree -TaskId "t_decstash" -TaskName "stashes decisions" `
+                                      -ProjectRoot $decRoot -BotRoot $decBot
+        if ($decResult -and $decResult.success -and (Test-Path $decResult.worktree_path)) {
+            "decisions artifact" | Set-Content -Path (Join-Path $decResult.worktree_path "dec-artifact.txt") -Encoding UTF8
+
+            & git -C $decRoot checkout --detach main --quiet 2>&1 | Out-Null
+            "dirty and uncommitted" | Set-Content -Path $decFile -Encoding UTF8
+
+            $decMerge = Complete-TaskWorktree -TaskId "t_decstash" -ProjectRoot $decRoot -BotRoot $decBot -SkipRemotePush
+            Assert-True -Name "Decisions stash: merge succeeds with a dirty tracked decisions file" `
+                -Condition ($decMerge.success -eq $true) `
+                -Message "Expected success, got: $($decMerge | ConvertTo-Json -Depth 10 -Compress)"
+            Assert-PathExists -Name "Decisions stash: task artifact merged" `
+                -Path (Join-Path $decRoot "dec-artifact.txt")
+            $decStashes = @(& git -C $decRoot stash list 2>$null)
+            Assert-Equal -Name "Decisions stash: no stash entry left behind" `
+                -Expected 0 `
+                -Actual $decStashes.Count `
+                -Message "Leftover stash(es): $($decStashes -join ' | ')"
+            Assert-FileContains -Name "Decisions stash: the operator's dirty content is restored" `
+                -Path $decFile -Pattern 'dirty and uncommitted'
+        }
+    } finally {
+        if ($decResult -and $decResult.worktree_path -and (Test-Path $decResult.worktree_path)) {
+            & git -C $decRoot worktree remove -f $decResult.worktree_path 2>&1 | Out-Null
+        }
+        if ($decResult -and $decResult.branch_name) {
+            & git -C $decRoot branch -D $decResult.branch_name 2>&1 | Out-Null
+        }
+        Remove-TestProject -Path $decRoot
+    }
+
+    $aobRepo = New-TestProject -Prefix 'dotbot-test-assert-onbase'
+    try {
+        & git -C $aobRepo branch -M main 2>&1 | Out-Null
+        & git -C $aobRepo branch develop 2>&1 | Out-Null
+        $aobFn = (Get-Module Dotbot.Worktree).Invoke({ Get-Command Assert-OnBaseBranch })
+
+        Assert-Equal -Name "Assert-OnBaseBranch: returns the branch when already on it" `
+            -Expected "main" -Actual (& $aobFn -ProjectRoot $aobRepo -BranchName 'main')
+
+        & git -C $aobRepo checkout develop --quiet 2>&1 | Out-Null
+        Assert-Equal -Name "Assert-OnBaseBranch: checks out the requested branch" `
+            -Expected "main" -Actual (& $aobFn -ProjectRoot $aobRepo -BranchName 'main')
+        Assert-Equal -Name "Assert-OnBaseBranch: checkout actually moved HEAD" `
+            -Expected "main" -Actual ((& git -C $aobRepo rev-parse --abbrev-ref HEAD 2>$null).Trim())
+
+        & git -C $aobRepo checkout --detach main --quiet 2>&1 | Out-Null
+        Assert-Equal -Name "Assert-OnBaseBranch: returns the target from a detached HEAD" `
+            -Expected "main" -Actual (& $aobFn -ProjectRoot $aobRepo -BranchName 'main')
+        Assert-Equal -Name "Assert-OnBaseBranch: re-attaches a detached HEAD to the target" `
+            -Expected "main" -Actual ((& git -C $aobRepo rev-parse --abbrev-ref HEAD 2>$null).Trim())
+
+        & git -C $aobRepo checkout develop --quiet 2>&1 | Out-Null
+        "differs on develop" | Set-Content -Path (Join-Path $aobRepo "blocker.txt") -Encoding UTF8
+        & git -C $aobRepo add blocker.txt 2>&1 | Out-Null
+        & git -C $aobRepo commit -m "feat: blocker on develop" --quiet 2>&1 | Out-Null
+        "dirty and uncommitted" | Set-Content -Path (Join-Path $aobRepo "blocker.txt") -Encoding UTF8
+
+        $aobErr = ""
+        try { & $aobFn -ProjectRoot $aobRepo -BranchName 'main' } catch { $aobErr = "$($_.Exception.Message)" }
+        Assert-True -Name "Assert-OnBaseBranch: throws when the checkout is blocked" `
+            -Condition ([bool]$aobErr) -Message "Expected a throw for a blocked checkout"
+        Assert-True -Name "Assert-OnBaseBranch: throw still names both branches" `
+            -Condition ([bool]($aobErr -match 'currently on')) -Message "Got: $aobErr"
+        Assert-True -Name "Assert-OnBaseBranch: throw carries git's own reason" `
+            -Condition ([bool]($aobErr -match 'would be overwritten')) `
+            -Message "Expected git's stderr in the message, got: $aobErr"
+    } finally {
+        Remove-TestProject -Path $aobRepo
     }
 
     # Regression (#655): a multi-task workflow run passes -SkipRemotePush so
@@ -1115,6 +1435,80 @@ if (Test-Path $extractCommitInfoScript) {
         -Message "Expected workspace_short_id a1b2c3d4 from full GUID bot tag"
 } else {
     Write-TestResult -Name "Extract-CommitInfo module exists" -Status Fail -Message "Module not found at $extractCommitInfoScript"
+}
+
+Write-Host ""
+
+# BRACKETED PROJECT PATHS
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  BRACKETED PROJECT PATHS" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$bracketParent = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-bracket-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+$bracketRoot = Join-Path $bracketParent 'bracket[v2]'
+try {
+    [System.IO.Directory]::CreateDirectory($bracketRoot) | Out-Null
+    & git init -b main --quiet -- $bracketRoot 2>&1 | Out-Null
+    & git -C $bracketRoot config user.email "test@dotbot.dev" 2>&1 | Out-Null
+    & git -C $bracketRoot config user.name "Dotbot Test" 2>&1 | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $bracketRoot 'README.md'), "seed`n")
+    & git -C $bracketRoot add -A 2>&1 | Out-Null
+    & git -C $bracketRoot commit -m "seed" --quiet 2>&1 | Out-Null
+
+    Assert-True -Name "bracketed fixture is a real git repo" `
+        -Condition ([System.IO.Directory]::Exists((Join-Path $bracketRoot '.git'))) `
+        -Message "Fixture setup failed at $bracketRoot"
+
+    $env:DOTBOT_HOME = $dotbotDir
+    Push-Location -LiteralPath $bracketRoot
+    try {
+        $bracketInitOut = & pwsh -NoProfile -File (Join-Path $dotbotDir 'bin/dotbot.ps1') init -y 2>&1
+        $bracketInitCode = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "dotbot init exits 0 in a directory containing [ ]" `
+        -Expected 0 -Actual $bracketInitCode `
+        -Message "init output: $($bracketInitOut -join ' ')"
+    Assert-True -Name "dotbot init creates .bot in a directory containing [ ]" `
+        -Condition ([System.IO.Directory]::Exists((Join-Path $bracketRoot '.bot'))) `
+        -Message "A wildcard-interpreting .git probe makes init report 'not a git repository' for a repo that is one"
+
+    Push-Location -LiteralPath $bracketRoot
+    try {
+        $bracketResolved = Get-DotbotProjectBotPath
+    } finally {
+        Pop-Location
+    }
+
+    Assert-Equal -Name "Get-DotbotProjectBotPath resolves a project path containing [ ]" `
+        -Expected (Join-Path $bracketRoot '.bot') -Actual $bracketResolved `
+        -Message "Falling through to the temp-directory fallback silently redirects every consumer away from the project"
+
+    $bracketTaskId = "beefcafe-1111-2222-3333-444455556666"
+    $bracketWt = New-TaskWorktree -TaskId $bracketTaskId -TaskName "bracket-paths" `
+                                  -ProjectRoot $bracketRoot -BotRoot (Join-Path $bracketRoot '.bot')
+
+    Assert-True -Name "New-TaskWorktree succeeds under a path containing [ ]" `
+        -Condition ($null -ne $bracketWt -and $bracketWt.success -eq $true) `
+        -Message "Got: $($bracketWt | ConvertTo-Json -Compress)"
+    if ($bracketWt -and $bracketWt.success) {
+        Assert-True -Name "task worktree created under a path containing [ ] has its .git marker" `
+            -Condition ([System.IO.File]::Exists((Join-Path $bracketWt.worktree_path '.git')) -or [System.IO.Directory]::Exists((Join-Path $bracketWt.worktree_path '.git'))) `
+            -Message "Worktree at $($bracketWt.worktree_path) has no .git marker"
+    }
+} finally {
+    if ([System.IO.Directory]::Exists($bracketRoot)) {
+        foreach ($wtLine in @(& git -C $bracketRoot worktree list --porcelain 2>$null)) {
+            if ([string]$wtLine -match '^worktree (.+)$') {
+                $wtPath = $Matches[1].Trim()
+                if ($wtPath -and $wtPath -ne $bracketRoot) { & git -C $bracketRoot worktree remove --force $wtPath 2>&1 | Out-Null }
+            }
+        }
+    }
+    Remove-Item -LiteralPath $bracketParent -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host ""
