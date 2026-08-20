@@ -1215,9 +1215,9 @@ function Set-MothershipConfig {
 function Set-NotificationConfig { param([Parameter(Mandatory)] $Body) return Set-MothershipConfig -Body $Body }
 
 function Test-MothershipServerFromUI {
-    $notifModule = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "NotificationClient.psm1"
+    $notifModule = Join-Path $PSScriptRoot ".." ".." "mcp" "modules" "MothershipClient.psm1"
     if (-not (Test-Path $notifModule)) {
-        return @{ reachable = $false; error = "NotificationClient module not found" }
+        return @{ reachable = $false; error = "MothershipClient module not found" }
     }
 
     Import-Module $notifModule -Force
