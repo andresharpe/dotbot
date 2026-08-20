@@ -2,122 +2,84 @@
 @model Dotbot.Server.Pages.IndexModel
 @{
     Layout = "_LayoutDashboard";
-    ViewData["Title"] = "Dashboard";
+    ViewData["Title"] = "Fleet";
     ViewData["UserName"] = Model.UserName;
+    ViewData["ActiveRail"] = "fleet";
 }
 
-<!-- Tab Bar (in-page filters; become filter chips in #606) -->
-<div class="tab-bar-container">
-    <button class="tab active" data-tab="overview">Overview</button>
-    <button class="tab" data-tab="by-person">By Person</button>
-    <button class="tab" data-tab="by-project">By Project</button>
+@* Fleet dashboard (#547) — the Mothership landing surface. Static skeleton hydrated
+   by /js/fleet.js from /api/fleet/* (mock data now; live wiring in #598). *@
+
+<!-- Active alert banner (highest-severity open alerts) -->
+<div class="fleet-alert-banner" id="fleet-alert-banner" style="display:none;" role="alert"></div>
+
+<!-- Fleet overview stats -->
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">Instances</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value stat-online" id="stat-online">0</div>
+        <div class="stat-label">Online</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value stat-stale" id="stat-stale">0</div>
+        <div class="stat-label">Stale</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value stat-error" id="stat-error">0</div>
+        <div class="stat-label">Error</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-drones">0</div>
+        <div class="stat-label">Drones</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value stat-alerts" id="stat-alerts">0</div>
+        <div class="stat-label">Active Alerts</div>
+    </div>
 </div>
 
-<!-- Main Content -->
-<div class="main-content">
-            <!-- Overview Tab -->
-            <div class="tab-pane active" id="tab-overview">
-                <div class="stats-row">
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-total">0</div>
-                        <div class="stat-label">Total</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value stat-pending" id="stat-pending">0</div>
-                        <div class="stat-label">Pending</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value stat-sent" id="stat-sent">0</div>
-                        <div class="stat-label">Sent</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value stat-reminded" id="stat-reminded">0</div>
-                        <div class="stat-label">Reminded</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value stat-escalated" id="stat-escalated">0</div>
-                        <div class="stat-label">Escalated</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value stat-responded" id="stat-responded">0</div>
-                        <div class="stat-label">Responded</div>
-                    </div>
-                </div>
-
-                <div class="filter-row">
-                    <input type="text" class="filter-input" id="filter-search" placeholder="Search..." />
-                    <select class="filter-input" id="filter-status">
-                        <option value="">All Statuses</option>
-                        <option value="pending">Pending</option>
-                        <option value="scheduled">Scheduled</option>
-                        <option value="sent">Sent</option>
-                        <option value="reminded">Reminded</option>
-                        <option value="escalated">Escalated</option>
-                        <option value="responded">Responded</option>
-                        <option value="failed">Failed</option>
-                    </select>
-                    <select class="filter-input" id="filter-project">
-                        <option value="">All Projects</option>
-                    </select>
-                    <select class="filter-input" id="filter-channel">
-                        <option value="">All Channels</option>
-                        <option value="teams">Teams</option>
-                        <option value="email">Email</option>
-                        <option value="jira">Jira</option>
-                    </select>
-                </div>
-
-                <div class="module">
-                    <div class="module-header">
-                        <span>INSTANCES <span class="instance-count-badge" id="instance-count">0</span></span>
-                    </div>
-                    <div class="sort-bar">
-                        <button class="sort-btn active" data-sort="createdAt">Created <span class="sort-arrow">&#9660;</span></button>
-                        <button class="sort-btn" data-sort="questionTitle">Question</button>
-                        <button class="sort-btn" data-sort="projectName">Project</button>
-                        <button class="sort-btn" data-sort="overallStatus">Status</button>
-                        <button class="sort-btn" data-sort="respondedCount">Progress</button>
-                    </div>
-                    <div class="module-screen">
-                        <div class="instance-list" id="instances-list"></div>
-                        <div class="empty-state" id="empty-overview" style="display:none;">
-                            No instances found.
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- By Person Tab -->
-            <div class="tab-pane" id="tab-by-person">
-                <div class="split-view">
-                    <div class="list-panel">
-                        <div class="list-panel-header">
-                            <input type="text" class="filter-input" id="person-search" placeholder="Search people..." />
-                        </div>
-                        <div class="list-items" id="person-list"></div>
-                    </div>
-                    <div class="detail-panel" id="person-detail">
-                        <div class="empty-state">Select a person to view their questions.</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- By Project Tab -->
-            <div class="tab-pane" id="tab-by-project">
-                <div class="split-view">
-                    <div class="list-panel">
-                        <div class="list-panel-header">
-                            <input type="text" class="filter-input" id="project-search" placeholder="Search projects..." />
-                        </div>
-                        <div class="list-items" id="project-list"></div>
-                    </div>
-                    <div class="detail-panel" id="project-detail">
-                        <div class="empty-state">Select a project to view its instances.</div>
-                    </div>
-                </div>
-            </div>
+<!-- Instance health cards -->
+<div class="module">
+    <div class="module-header">
+        <span>INSTANCES <span class="instance-count-badge" id="fleet-instance-count">0</span></span>
+    </div>
+    <div class="module-screen">
+        <div class="fleet-instance-grid" id="fleet-instances-list"></div>
+        <div class="empty-state" id="fleet-instances-empty" style="display:none;">
+            No instances registered.
         </div>
+    </div>
+</div>
+
+<!-- Notification rail: active alerts -->
+<div class="module">
+    <div class="module-header">
+        <span>ALERTS <span class="instance-count-badge" id="fleet-alerts-count">0</span></span>
+    </div>
+    <div class="module-screen">
+        <div class="fleet-alert-list" id="fleet-alerts-active"></div>
+        <div class="empty-state" id="fleet-alerts-empty" style="display:none;">
+            No active alerts.
+        </div>
+    </div>
+</div>
+
+<!-- Alert history: cleared alerts with resolved timestamps -->
+<div class="module">
+    <div class="module-header">
+        <span>ALERT HISTORY <span class="instance-count-badge" id="fleet-history-count">0</span></span>
+    </div>
+    <div class="module-screen">
+        <div class="fleet-alert-list" id="fleet-alerts-history"></div>
+        <div class="empty-state" id="fleet-history-empty" style="display:none;">
+            No cleared alerts.
+        </div>
+    </div>
+</div>
 
 @section Scripts {
-    <script src="/js/dashboard.js"></script>
+    <script src="/js/fleet.js"></script>
 }
