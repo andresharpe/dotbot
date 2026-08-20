@@ -426,6 +426,64 @@ try {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# Unborn HEAD handling (regression: #659)
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "  Unborn HEAD — auto initial commit + silent Assert" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# Initialize-UnbornRepositoryForWorktree — creates an empty first commit on
+# fresh `git init`, so worktree setup doesn't hit the "no base branch" trap.
+$unbornSeed = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-unborn-seed-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+New-Item -ItemType Directory -Path $unbornSeed -Force | Out-Null
+try {
+    & git -C $unbornSeed init --quiet 2>$null | Out-Null
+    $r = Initialize-UnbornRepositoryForWorktree -ProjectRoot $unbornSeed
+    Assert-True -Name "Initialize-UnbornRepositoryForWorktree — created=true on unborn HEAD" -Condition ([bool]$r.created)
+    Assert-True -Name "Initialize-UnbornRepositoryForWorktree — reports branch name"          -Condition ([bool]$r.branch)
+
+    & git -C $unbornSeed rev-parse --verify HEAD 2>$null | Out-Null
+    Assert-True -Name "Initialize-UnbornRepositoryForWorktree — HEAD is now valid" -Condition ($LASTEXITCODE -eq 0)
+
+    $subject = (& git -C $unbornSeed log -1 --pretty=%s 2>$null).Trim()
+    Assert-Equal -Name "Initialize-UnbornRepositoryForWorktree — commit message" -Expected 'chore: initial commit' -Actual $subject
+
+    $count = [int]((& git -C $unbornSeed rev-list --count HEAD).Trim())
+    Assert-Equal -Name "Initialize-UnbornRepositoryForWorktree — one commit" -Expected 1 -Actual $count
+
+    # Second call must be idempotent — no extra commits.
+    $r2 = Initialize-UnbornRepositoryForWorktree -ProjectRoot $unbornSeed
+    Assert-True -Name "Initialize-UnbornRepositoryForWorktree — idempotent (created=false)" -Condition (-not [bool]$r2.created)
+    $countAfter = [int]((& git -C $unbornSeed rev-list --count HEAD).Trim())
+    Assert-Equal -Name "Initialize-UnbornRepositoryForWorktree — no extra commit on repeat call" -Expected 1 -Actual $countAfter
+} finally {
+    Remove-Item -Path $unbornSeed -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Assert-OnBaseBranch — defense-in-depth: silent no-op on unborn HEAD.
+# Callers that don't run Initialize-UnbornRepositoryForWorktree first must
+# still avoid the misleading "Cannot find base branch" warning.
+$unbornAssert = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-test-unborn-assert-$([System.Guid]::NewGuid().ToString().Substring(0,8))"
+New-Item -ItemType Directory -Path $unbornAssert -Force | Out-Null
+try {
+    & git -C $unbornAssert init --quiet 2>$null | Out-Null
+    $threw = $false
+    $result = $null
+    try {
+        $result = Assert-OnBaseBranch -ProjectRoot $unbornAssert
+    } catch {
+        $threw = $true
+    }
+    Assert-True -Name "Assert-OnBaseBranch — does not throw on unborn HEAD" -Condition (-not $threw)
+    Assert-True -Name "Assert-OnBaseBranch — returns null on unborn HEAD"    -Condition ($null -eq $result)
+    & git -C $unbornAssert rev-parse --verify HEAD 2>$null | Out-Null
+    Assert-True -Name "Assert-OnBaseBranch — does not create a commit"       -Condition ($LASTEXITCODE -ne 0)
+} finally {
+    Remove-Item -Path $unbornAssert -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # Summary
 # ═══════════════════════════════════════════════════════════════════
 

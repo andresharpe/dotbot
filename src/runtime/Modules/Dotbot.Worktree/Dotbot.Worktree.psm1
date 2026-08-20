@@ -214,18 +214,72 @@ function Resolve-UnbornBaseBranch {
     return 'main'
 }
 
+function Initialize-UnbornRepositoryForWorktree {
+    <#
+    .SYNOPSIS
+    Create an empty initial commit when the project repository is unborn.
+
+    .DESCRIPTION
+    A brand-new `git init` leaves HEAD pointing at a branch with no commits.
+    All the downstream worktree machinery — base-branch resolution,
+    integration-branch creation, `git worktree add -b <task> <path> <base>` —
+    needs a real commit to attach to; without one the first task of a fresh
+    project either crashes or falls back to code paths that don't exist on
+    older git (see issue #659).
+
+    Runs at the start of worktree setup for the first task of a new project.
+    Idempotent: if the repo already has commits, returns without touching git.
+    Uses `--allow-empty` so it doesn't stage the user's files, and pins the
+    committer identity so it works on machines where `user.name`/`user.email`
+    have never been configured. The generated commit reuses git's active branch
+    (whatever `init.defaultBranch` picked — usually `main` or `master`) so
+    dotbot doesn't force a naming choice on the user.
+
+    .OUTPUTS
+    Hashtable @{ created = <bool>; branch = <string>; message = <string> }.
+    On failure, returns @{ created = $false; error = <string> } — callers
+    decide whether to hard-fail or continue.
+    #>
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    if (Test-RepositoryHasCommits -ProjectRoot $ProjectRoot) {
+        return @{ created = $false; branch = $null; message = 'Repository already has commits' }
+    }
+
+    $branch = (git -C $ProjectRoot symbolic-ref --quiet --short HEAD 2>$null) -as [string]
+    $branch = if ($branch) { $branch.Trim() } else { 'main' }
+
+    $commitMessage = 'chore: initial commit'
+    $out = git -C $ProjectRoot `
+        -c user.name=dotbot `
+        -c user.email=dotbot@localhost `
+        commit --allow-empty --quiet -m $commitMessage 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        return @{ created = $false; error = ($out -join ' ') }
+    }
+    return @{ created = $true; branch = $branch; message = $commitMessage }
+}
+
 function Assert-OnBaseBranch {
     <#
     .SYNOPSIS
     Ensure the main repo is checked out on the specified branch (or the canonical
     main/master if none is specified). Checks out the branch if not already on it.
     Throws if the branch cannot be found or checked out.
-    Returns the confirmed base branch name.
+    Returns the confirmed base branch name, or $null when the repo is unborn.
+
+    Unborn repos have no base branch to switch to. In the normal workflow-run
+    flow Initialize-UnbornRepositoryForWorktree seeds a commit before this is
+    called; the silent no-op here is defense-in-depth for callers that reach
+    Assert-OnBaseBranch on an unborn repo directly (see issue #659).
     #>
     param(
         [Parameter(Mandatory)][string]$ProjectRoot,
         [string]$BranchName
     )
+    if (-not (Test-RepositoryHasCommits -ProjectRoot $ProjectRoot)) {
+        return $null
+    }
     if (-not $BranchName) {
         $BranchName = Resolve-MainBranch -ProjectRoot $ProjectRoot
     }
@@ -2202,6 +2256,8 @@ Export-ModuleMember -Function @(
     'Invoke-WorktreeMapLocked'
     'Resolve-DotbotBaseBranch'
     'Resolve-MainBranch'
+    'Test-RepositoryHasCommits'
+    'Initialize-UnbornRepositoryForWorktree'
     'Assert-OnBaseBranch'
     'Stop-WorktreeProcesses'
     'Invoke-Git'

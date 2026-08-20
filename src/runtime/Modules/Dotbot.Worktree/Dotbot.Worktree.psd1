@@ -21,6 +21,8 @@
         'Invoke-WorktreeMapLocked'
         'Resolve-DotbotBaseBranch'
         'Resolve-MainBranch'
+        'Test-RepositoryHasCommits'
+        'Initialize-UnbornRepositoryForWorktree'
         'Assert-OnBaseBranch'
         'Stop-WorktreeProcesses'
         'Invoke-Git'
