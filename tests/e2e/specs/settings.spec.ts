@@ -80,4 +80,65 @@ test.describe("Settings persistence via real /api/settings", () => {
     await expect(reloaded).toHaveCount(1);
     await expect(reloaded).toBeChecked({ checked: target, timeout: 5_000 });
   });
+
+  test('toggling "reduce motion" issues POST /api/settings, flips body[data-motion] and survives reload', async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await page.locator('.shell-rail-item[data-tab="settings"]').click();
+    await expect(page.locator("#tab-settings")).toHaveClass(/active/);
+
+    // reduce-motion lives in #settings-theme, the default-active section —
+    // no sub-nav click needed.
+    await expect(page.locator("#settings-theme")).not.toHaveClass(/hidden/);
+
+    const toggle = page.locator("#setting-reduce-motion");
+    await expect(toggle).toHaveCount(1);
+    const toggleLabel = toggle.locator(
+      'xpath=ancestor::label[contains(@class,"toggle-switch")][1]',
+    );
+    await expect(toggleLabel).toBeVisible();
+
+    const initial = await toggle.isChecked();
+    const target = !initial;
+
+    const [request] = await Promise.all([
+      page.waitForRequest(
+        (req) => req.url().endsWith("/api/settings") && req.method() === "POST",
+        { timeout: 5_000 },
+      ),
+      toggleLabel.click(),
+    ]);
+
+    const body = JSON.parse(request.postData() ?? "{}");
+    expect(body.reduceMotion).toBe(target);
+
+    // applyReduceMotion mirrors the setting onto <body data-motion="reduced">,
+    // which the shared CSS override block keys on.
+    if (target) {
+      await expect(page.locator("body")).toHaveAttribute(
+        "data-motion",
+        "reduced",
+      );
+    } else {
+      await expect(page.locator("body")).not.toHaveAttribute(
+        "data-motion",
+        "reduced",
+      );
+    }
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await page.locator('.shell-rail-item[data-tab="settings"]').click();
+    const reloaded = page.locator("#setting-reduce-motion");
+    await expect(reloaded).toHaveCount(1);
+    await expect(reloaded).toBeChecked({ checked: target, timeout: 5_000 });
+    if (target) {
+      await expect(page.locator("body")).toHaveAttribute(
+        "data-motion",
+        "reduced",
+      );
+    }
+  });
 });

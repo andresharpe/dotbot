@@ -1,17 +1,17 @@
 /* DOTBOT Shared Navigation Shell
  * One shell, many rooms: the v4 navigation frame shared by Mothership and Outpost.
- * Spec: docs/DOTBOT-v4-DESIGN-IDEAS.md §7 — 44px top bar · 56px icon rail (pinnable
+ * Spec: docs/DOTBOT-v4-DESIGN-IDEAS.md #7 — 44px top bar · 56px icon rail (pinnable
  * to 200px labelled mode) · 28px dispatch ticker · content capped at 1280px.
  *
  * Consumption order: dotbot-tokens.css → dotbot-crt.css → dotbot-shell.css
- * Shell chrome only — no page-content components live here.
+ * Shell chrome only — no page-content components live here. One deliberate
+ * exception: the persona type base rule (#607), scoped under .shell so it
+ * cannot leak into non-shell consumers (studio-ui imports this file).
  * Pure token consumer: zero raw colors, so all theme presets work via the
  * runtime --color-*-rgb injection (src/ui/static/modules/theme.js).
  *
  * Deferred hooks:
- *   Ticker scroll animation + pause/expand behaviour  → #607
  *   Command palette overlay                           → #553
- *   Persona type split (data-persona)                 → #607
  *   Responsive/mobile pass below 1200px               → #552 (content cap goes
  *   fluid via minmax below; rail/topbar geometry intentionally unchanged)
  */
@@ -25,7 +25,7 @@
     --shell-rail-w-pinned: 200px;
     --shell-ticker-h: 28px;
     --shell-content-max: 1280px;
-    /* Scanline intensity: 6% on chrome, 0% on content (spec §11) */
+    /* Scanline intensity: 6% on chrome, 0% on content (spec #11) */
     --shell-scanline-alpha: 0.06;
 
     display: grid;
@@ -46,7 +46,7 @@
 }
 
 /* The shell owns its own chrome texture; suppress the global crt.css overlay
- * so content panels stay at 0% (spec §11). No-op until .shell markup exists. */
+ * so content panels stay at 0% (spec #11). No-op until .shell markup exists. */
 body:has(.shell)::after {
     content: none;
 }
@@ -112,14 +112,19 @@ body:has(.shell)::after {
     color: var(--color-primary);
 }
 
-/* Search pill — the visible palette affordance. Behaviour lands with #553. */
+/* Search pill — the visible palette affordance (behaviour lands with #553).
+ * Centered mid-bar per the spec #7.3 sketch; clamp keeps it prominent on wide
+ * screens and lets it compress before identity values would truncate. */
 .shell-search {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex: 0 1 clamp(180px, 24vw, 340px);
+    min-width: 140px;
     margin-left: auto;
+    margin-right: auto;
     padding: 5px 12px;
-    min-width: 220px;
+    overflow: hidden;
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--color-muted);
@@ -276,8 +281,9 @@ body:has(.shell)::after {
 }
 
 /* === Dispatch ticker (28px) ============================================
- * Geometry + typography only. Scroll animation, pause-on-hover, collapse
- * behaviour and event wiring land with #607. */
+ * Two modes (#607): static (default when no data-mode attribute — harness
+ * and JS-free consumers keep rendering the summary line) and feed (the
+ * scrolling dispatch log). Click toggles; app JS owns feed content. */
 
 .shell-ticker {
     grid-area: ticker;
@@ -292,12 +298,48 @@ body:has(.shell)::after {
     font-size: 11px;
     letter-spacing: 0.05em;
     color: var(--color-muted);
+    cursor: pointer;
+}
+
+.shell-ticker[data-mode="feed"] .shell-ticker-line {
+    display: none;
+}
+
+.shell-ticker:not([data-mode="feed"]) .shell-ticker-feed {
+    display: none;
 }
 
 .shell-ticker-line {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+.shell-ticker-feed {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.shell-ticker-feed-track {
+    display: inline-flex;
+    gap: 64px;
+    padding-right: 64px;
+    will-change: transform;
+    animation: ticker-scroll var(--ticker-duration, 30s) linear infinite;
+}
+
+/* Pause in place — never reset position on hover/focus (spec: "stops on
+ * focus" read as stops moving; animation:none would snap to the start) */
+.shell-ticker:hover .shell-ticker-feed-track,
+.shell-ticker:focus-within .shell-ticker-feed-track {
+    animation-play-state: paused;
+}
+
+@keyframes ticker-scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
 }
 
 .shell-ticker-byline {
@@ -308,7 +350,9 @@ body:has(.shell)::after {
 
 /* === Reduced motion ====================================================
  * First prefers-reduced-motion implementation in the codebase (#551
- * Decision #7): keep color and shape, drop the movement. */
+ * Decision #7): keep color and shape, drop the movement. The body
+ * attribute variant is the in-app "Reduce motion" settings override —
+ * identical scope to the OS flag, zero exceptions. */
 
 @media (prefers-reduced-motion: reduce) {
     .shell *,
@@ -317,6 +361,23 @@ body:has(.shell)::after {
         transition: none !important;
         animation: none !important;
     }
+}
+
+body[data-motion="reduced"] .shell *,
+body[data-motion="reduced"] .shell *::before,
+body[data-motion="reduced"] .shell *::after {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* === Persona type split (#607, PRD 5.7) ================================
+ * Stakeholder surfaces read in the UI face at 14px; data values re-mono
+ * per app (each app's own stylesheet lists its data classes). Operator
+ * surfaces keep the 13px mono base — no attribute, no rules. */
+
+.shell [data-persona="stakeholder"] {
+    font-family: var(--font-ui);
+    font-size: 14px;
 }
 
 /* === Responsive ========================================================
